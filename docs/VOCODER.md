@@ -11,6 +11,36 @@ DMR überträgt Sprache als AMBE+2. Für den Übergang zu FRN (GSM) und Zello (O
 
 Alle Varianten sprechen das AMBE3000-Paketformat (Rate 33 = AMBE+2 3600/2450). Fällt der Vocoder aus, prüft die Bridge alle 20 s, ob er wieder antwortet; die Statusleiste zeigt den Zustand.
 
+## Stabilität (ab 1.3.1)
+
+Das AMBE3000-Paketformat hat **keine Sequenznummer**. Bis 1.3.0 wurde jede Antwort einfach der ältesten offenen Anfrage zugeordnet. Ging bei md380-emu ein UDP-Paket verloren oder kam eine Antwort zu spät, verschob sich die Zuordnung um einen Rahmen – und blieb verschoben. Hörbar war das als Knacken, Roboterstimme oder Aussetzer, die erst nach einem Neustart weg waren. Im Test mit absichtlich verlorenen und verspäteten Paketen waren 97 von 120 Rahmen falsch zugeordnet.
+
+Jetzt gilt bei md380-emu und AMBEserver:
+
+* **Eine Anfrage nach der anderen** (Lockstep) – md380-emu arbeitet ohnehin nur einen Rahmen gleichzeitig ab.
+* **Nach einem Timeout neuer UDP-Socket** (neuer Quellport): Eine verspätete Antwort landet am alten Socket und wird verworfen; sie kann keiner neuen Anfrage mehr zugeordnet werden.
+* **Ein zweiter Versuch** bei einem verlorenen Paket (abgeschaltet, sobald der Vocoder mehrfach hintereinander schweigt).
+* **Watchdog:** Antwortet md380-emu länger als *Watchdog: neu starten nach* (Standard 20 s) nicht, startet die Bridge den Dienst `md380-emu` über die sudo-Freigabe neu und verbindet sich danach neu. Abschaltbar mit *Hängenden md380-emu-Dienst automatisch neu starten*.
+* *Antwortzeit je Rahmen* (Standard 300 ms) einstellbar. md380-emu braucht normalerweise wenige Millisekunden.
+
+Beim USB-Stick werden nach einem Timeout alle offenen Anfragen verworfen und kurz gewartet, bis der Stick wieder synchron ist.
+
+Im Test ist jetzt kein Rahmen mehr falsch zugeordnet (`tests/test_vocoder.py`). Die Zähler stehen unter *Netze → Vocoder*: Timeouts, Wiederholungen, Dienst-Neustarts.
+
+## Alternativen zu md380-emu
+
+Für DMR braucht es AMBE+2. Ein freier, gleichwertiger Ersatz existiert nicht; Codec 2 oder M17 sind zu DMR **nicht** kompatibel. Was es gibt, nach Stabilität sortiert:
+
+| Option | Stabilität | Aufwand | Bemerkung |
+|---|---|---|---|
+| **USB-Stick AMBE3000** (ThumbDV, DVstick 30, DV3000-Hat) | ★★★ sehr stabil | ca. 100–150 € | Original-Chip von DVSI, beste Sprachqualität, kein qemu. In N8 Crosslink schon eingebaut (Betriebsart *USB-Stick*). |
+| **md380-emu nativ auf ARM** (Raspberry Pi 64 Bit) | ★★☆ stabil | keine Kosten, wenn ein Pi da ist | md380-emu ist ARM-Code. Auf x86 läuft er nur über qemu, das ist die häufigste Absturzursache. Auf einem Pi läuft er ohne Emulation. N8 Crosslink kann ihn über das Netz nutzen: Betriebsart *md380-emu*, Adresse = IP des Pi, Port 2470. |
+| **AMBEserver mit USB-Stick an einem anderen Rechner** | ★★★ | Stick + kleiner Rechner | Betriebsart *AMBEserver*. |
+| **md380-emu lokal über qemu** (x86) | ★☆☆ bis ★★☆ | keine Kosten | Ab 1.3.1 mit Lockstep, neuem Socket nach Timeout und automatischem Dienst-Neustart deutlich robuster. |
+
+Andere Software-Vocoder (mbelib zum Dekodieren, der AMBE-Encoder aus OP25, die Vocoder-Plugins von DroidStar) sind zum Teil nur Decoder oder klingen deutlich schlechter. Bei allen ist die Patent- bzw. Lizenzlage unklar, deshalb sind sie nicht eingebaut.
+
+
 ## md380-emu installieren (Software-Vocoder)
 
 md380-emu stammt aus dem **DVSwitch**-Projekt (Emulation der AMBE-Routinen der MD-380-Firmware). Er ist nicht in diesem Repository enthalten, sondern kommt als Paket aus der DVSwitch-Paketquelle. Einen öffentlichen Quellcode gibt es dafür nicht.

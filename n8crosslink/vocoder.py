@@ -96,7 +96,16 @@ class Vocoder:
         self.online = False
         self.product = ""
         self.version = ""
-        self.stats = {"enc": 0, "dec": 0, "timeouts": 0, "errors": 0, "reopens": 0}
+        self.stats = {"enc": 0, "dec": 0, "timeouts": 0, "errors": 0, "reopens": 0,
+                      "late": 0, "retries": 0, "restarts": 0}
+        self.consec_timeouts = 0
+        # UDP (md380-emu, AMBEserver): strikt eine Anfrage nach der anderen, damit eine
+        # verspätete Antwort nie der falschen Anfrage zugeordnet wird.
+        self.lockstep = self.mode in ("md380", "ambeserver")
+        self._req_lock = asyncio.Lock()
+        self._drain_until = 0.0
+        self._renew = False
+        self._udp_addr = None
         self.last_rx = 0.0
         self.offline_since: float | None = time.time()
         self._lock = asyncio.Lock()
@@ -112,8 +121,8 @@ class Vocoder:
                 host = self.cfg.get("md380_host" if self.mode == "md380" else "ambeserver_host", "127.0.0.1")
                 port = int(self.cfg.get("md380_port" if self.mode == "md380" else "ambeserver_port",
                                         2470 if self.mode == "md380" else 2460))
-                self.transport, _ = await self.loop.create_datagram_endpoint(
-                    lambda: _UdpProto(self), remote_addr=(host, port))
+                self._udp_addr = (host, port)
+                await self._open_udp()
                 log.info("Vocoder %s über UDP %s:%s", self.mode, host, port)
             elif self.mode == "usb":
                 import serial  # pyserial
@@ -140,6 +149,16 @@ class Vocoder:
             log.error("Vocoder-Start fehlgeschlagen: %s", e)
         if self.mode != "none" and (self.transport or self.serial):
             self._health_task = asyncio.create_task(self._health())
+
+    async def _open_udp(self) -> None:
+        """Neuer UDP-Socket (neuer Quellport): verspätete Antworten an den alten
+        Socket können so keiner neuen Anfrage mehr zugeordnet werden."""
+        old = self.transport
+        self.transport, _ = await self.loop.create_datagram_endpoint(
+            lambda: _UdpProto(self), remote_addr=self._udp_addr)
+        if old:
+            old.close()
+        self._renew = False
 
     async def _health(self) -> None:
         """Prüft alle 20 s, ob ein ausgefallener Vocoder wieder antwortet."""
@@ -231,6 +250,11 @@ class Vocoder:
             return
         self.last_rx = time.time()
         ptype = pkt[3]
+        if time.time() < self._drain_until:
+            # Nach einem Timeout: verspätete Antworten verwerfen, sonst verschiebt sich
+            # die Zuordnung Anfrage/Antwort dauerhaft um einen Rahmen.
+            self.stats["late"] += 1
+            return
         if ptype == TYPE_CHANNEL:
             q = self.enc_q
             # Felder: 0x01 CHAND, Bitanzahl, Daten
@@ -253,29 +277,60 @@ class Vocoder:
     async def _request(self, q: deque, packet: bytes, timeout: float):
         if not self.running:
             return None
+        if self.lockstep:
+            async with self._req_lock:
+                r = await self._request_once(q, packet, timeout)
+                if r is None and self.running and self.consec_timeouts <= 3:
+                    # UDP kann ein Paket verlieren – genau ein zweiter Versuch
+                    self.stats["retries"] += 1
+                    r = await self._request_once(q, packet, timeout)
+                return r
+        return await self._request_once(q, packet, timeout)
+
+    async def _request_once(self, q: deque, packet: bytes, timeout: float):
+        if self.lockstep and self._renew:
+            await self._open_udp()
+        wait = self._drain_until - time.time()
+        if wait > 0 and not self.lockstep:
+            await asyncio.sleep(wait)
         fut = self.loop.create_future()
         q.append(fut)
         self._write(packet)
         try:
-            return await asyncio.wait_for(asyncio.shield(fut), timeout)
+            r = await asyncio.wait_for(asyncio.shield(fut), timeout)
+            self.consec_timeouts = 0
+            return r
         except asyncio.TimeoutError:
             self.stats["timeouts"] += 1
+            self.consec_timeouts += 1
             try:
                 q.remove(fut)
             except ValueError:
                 pass
+            if not self.lockstep:
+                # USB-Stick: alle offenen Anfragen dieser Art verwerfen und neu synchronisieren
+                while q:
+                    f = q.popleft()
+                    if not f.done():
+                        f.set_result(None)
+            if self.lockstep:
+                self._renew = True
+            else:
+                self._drain_until = time.time() + 0.12
             if self.stats["timeouts"] % 50 == 1:
                 log.warning("Vocoder antwortet nicht (Timeouts: %s)", self.stats["timeouts"])
+            if self.consec_timeouts >= 5:
+                self.online = False
             return None
 
     async def _control(self, packet: bytes, timeout: float = 1.0):
         return await self._request(self.ctrl_q, packet, timeout)
 
     # ------------------------------------------------------------------ API
-    async def decode(self, ambe9: bytes, timeout: float = 0.5) -> bytes | None:
+    async def decode(self, ambe9: bytes, timeout: float | None = None) -> bytes | None:
         if self.mode == "none":
             return SILENCE_PCM
-        pcm = await self._request(self.dec_q, channel_packet(ambe9), timeout)
+        pcm = await self._request(self.dec_q, channel_packet(ambe9), timeout or self._timeout())
         if pcm is None:
             return None
         self.stats["dec"] += 1
@@ -284,17 +339,20 @@ class Vocoder:
             pcm = _gain(pcm, self.dec_gain)
         return pcm
 
-    async def encode(self, pcm_le: bytes, timeout: float = 0.5) -> bytes | None:
+    async def encode(self, pcm_le: bytes, timeout: float | None = None) -> bytes | None:
         if self.mode == "none":
             return AMBE_SILENCE
         if self.enc_gain:
             pcm_le = _gain(pcm_le, self.enc_gain)
-        ambe = await self._request(self.enc_q, speech_packet(pcm_le), timeout)
+        ambe = await self._request(self.enc_q, speech_packet(pcm_le), timeout or self._timeout())
         if ambe is None or len(ambe) != 9:
             return None
         self.stats["enc"] += 1
         self.online = True
         return ambe
+
+    def _timeout(self) -> float:
+        return float(self.cfg.get("vocoder_timeout_ms", 300 if self.lockstep else 500)) / 1000.0
 
     async def reopen(self) -> None:
         """Vocoder komplett neu öffnen (Watchdog), z. B. nachdem der USB-Stick neu eingesteckt wurde."""
@@ -302,6 +360,8 @@ class Vocoder:
         self.transport = None
         self.serial = None
         self.write_q.clear()
+        self.consec_timeouts = 0
+        self._drain_until = 0.0
         self.stats["reopens"] = self.stats.get("reopens", 0) + 1
         await self.start()
 
@@ -309,7 +369,8 @@ class Vocoder:
         names = {"md380": "md380-emu (Software)", "usb": "USB-Stick (AMBE3000)",
                  "ambeserver": "AMBEserver (UDP)", "none": "Test (ohne Vocoder)"}
         return {"mode": self.mode, "name": names.get(self.mode, self.mode), "online": self.online,
-                "product": self.product, "version": self.version, **self.stats}
+                "product": self.product, "version": self.version, "consec_timeouts": self.consec_timeouts,
+                **self.stats}
 
 
 def _gain(pcm: bytes, db: float) -> bytes:
@@ -321,7 +382,13 @@ class _UdpProto(asyncio.DatagramProtocol):
     def __init__(self, voc: Vocoder) -> None:
         self.voc = voc
 
+    def connection_made(self, transport) -> None:  # noqa: ANN001
+        self.transport = transport
+
     def datagram_received(self, data: bytes, addr) -> None:  # noqa: ANN001
+        if self.voc.transport is not None and self.transport is not self.voc.transport:
+            self.voc.stats["late"] += 1      # Antwort an einen bereits ersetzten Socket
+            return
         for pkt in _Parser().feed(data):
             self.voc._on_packet(pkt)
 

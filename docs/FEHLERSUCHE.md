@@ -15,6 +15,7 @@
 | DMR „MSTNAK“ | Peer-ID am Server nicht erlaubt, Passwort falsch oder die ID ist bereits durch eine andere Bridge (MMDVM_Bridge) belegt. |
 | DMR-Audio stumm | Vocoder offline (Statusleiste). Admin → Vocoder → 🧪 Testen. |
 | DMR-Audio abgehackt | Vorpuffer (Allgemein) auf 300–400 ms erhöhen; bei md380-emu auf x86 CPU-Last prüfen. |
+| DMR-Audio verzerrt, Roboterstimme, wird erst nach Neustart besser | Vor 1.3.1: Zuordnung Anfrage/Antwort beim Vocoder verschoben – auf 1.3.1 aktualisieren. Danach *Netze → Vocoder* prüfen: steigen Timeouts/Neustarts ständig, ist md380-emu unter qemu instabil → [Alternativen](VOCODER.md#alternativen-zu-md380-emu) (USB-Stick oder md380-emu auf einem Raspberry Pi). |
 | Zello „not authorized“ | Token abgelaufen (Entwickler-Token gilt 30 Tage) → neuen Token eintragen oder Issuer + Private Key verwenden. |
 | Zello-Kanal „offline“ | Konto ist nicht Mitglied des Kanals oder der Kanal erlaubt keine API-Clients. |
 | Durchsagen werden „blockiert“ | Gleichzeitig wurde auf einem anderen Netz gesprochen – gewollter Schleifenschutz. Sperrzeit ggf. verkleinern. |

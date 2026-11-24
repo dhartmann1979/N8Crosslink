@@ -2,6 +2,24 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.3.1] – 2026-11-24
+
+### Behoben: Vocoder instabil (md380-emu)
+- **Ursache:** Das AMBE3000-Paketformat hat keine Sequenznummer. Antworten wurden der ältesten offenen Anfrage zugeordnet. Ein verlorenes oder verspätetes UDP-Paket von md380-emu verschob die Zuordnung dauerhaft um einen Rahmen → Roboterstimme, Knacken, Aussetzer bis zum Neustart. Im Test mit Paketverlust waren 97 von 120 Rahmen falsch zugeordnet.
+- **Lockstep** bei md380-emu und AMBEserver: immer nur eine Anfrage unterwegs.
+- **Neuer UDP-Socket nach jedem Timeout**: verspätete Antworten landen am alten Socket und werden verworfen. Im selben Test jetzt **0 falsch zugeordnete Rahmen**.
+- **Ein Wiederholungsversuch** bei verlorenem Paket.
+- USB-Stick: nach einem Timeout werden offene Anfragen verworfen und neu synchronisiert.
+
+### Neu
+- **Watchdog startet md380-emu neu**: Antwortet der lokale md380-emu länger als 20 s nicht, startet die Bridge den Dienst über die sudo-Freigabe neu und verbindet sich neu (Ereignis im Log, Zähler „Neustarts“).
+- Neue Einstellungen unter *Vocoder*: *Antwortzeit je Rahmen (ms)*, *Watchdog: neu starten nach (s)*, *Hängenden md380-emu-Dienst automatisch neu starten*.
+- Vocoder-Status zeigt zusätzlich Wiederholungen, verspätete Antworten und Dienst-Neustarts.
+
+### Doku & Tests
+- `docs/VOCODER.md`: Abschnitte „Stabilität“ und „Alternativen zu md380-emu“ (USB-Stick, md380-emu nativ auf einem Raspberry Pi über das Netz, AMBEserver).
+- Neuer Test `tests/test_vocoder.py` mit absichtlich verlorenen und verspäteten Antworten; Simulation weiter 53/53.
+
 ## [1.3.0] – 2026-11-24
 
 ### Neu: FRN-Passwort anfordern

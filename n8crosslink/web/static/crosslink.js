@@ -293,7 +293,7 @@ function renderNetDetails() {
       ['Durchgänge', `⇣ ${z.counters?.rx || 0} · ⇡ ${z.counters?.tx || 0}`], ...wd(z)])) +
     card('voc', 'Vocoder (AMBE+2)', kv([['Status', v ? (v.online ? '<span class="badge ok">bereit</span>' : '<span class="badge off">offline</span>') : '<span class="badge warn">nicht gestartet</span>'],
       ['Betriebsart', esc(v?.name)], ['Gerät', esc(v?.product)], ['Version', esc(v?.version)],
-      ['Rahmen', v ? `Encode ${v.enc} · Decode ${v.dec} · Timeouts ${v.timeouts}` : '–'],
+      ['Rahmen', v ? `Encode ${v.enc} · Decode ${v.dec} · Timeouts ${v.timeouts} · Wiederholt ${v.retries ?? 0} · Neustarts ${v.restarts ?? 0}` : '–'],
       ['Watchdog', v ? `${v.reopens || 0}× neu geöffnet` : '–']]));
 }
 
@@ -479,20 +479,20 @@ function renderVocoder() {
     ['none', '🧪 Test ohne Vocoder', 'Nur zum Testen der Verbindungen – DMR-Audio ist dann stumm.'],
   ];
   const fields = {
-    md380: [F('md380_host', 'md380-emu Adresse'), F('md380_port', 'md380-emu Port', 'number'), F('md380_send_init', 'Init-Pakete (Reset/Rate) senden', 'bool')],
+    md380: [F('md380_host', 'md380-emu Adresse'), F('md380_port', 'md380-emu Port', 'number'), F('md380_send_init', 'Init-Pakete (Reset/Rate) senden', 'bool'), F('md380_auto_restart', 'Hängenden md380-emu-Dienst automatisch neu starten', 'bool')],
     usb: [F('usb_device', 'Gerät', 'text', { help: 'z. B. /dev/ttyUSB0 oder /dev/serial/by-id/…' }),
       F('usb_baud', 'Baudrate', 'select', { options: [[460800, '460800 (ThumbDV / DVstick 30)'], [230400, '230400 (DV3000 Pi-Hat)'], [921600, '921600']] }),
       F('usb_send_init', 'Init-Pakete (Reset/Rate) senden', 'bool')],
     ambeserver: [F('ambeserver_host', 'AMBEserver Adresse'), F('ambeserver_port', 'AMBEserver Port', 'number'), F('ambeserver_send_init', 'Init-Pakete senden', 'bool')],
     none: [],
   };
-  const common = [F('vocoder_enc_gain_db', 'Pegel vor dem Kodieren (dB)', 'number', { step: 0.5 }), F('vocoder_dec_gain_db', 'Pegel nach dem Dekodieren (dB)', 'number', { step: 0.5 })];
+  const common = [F('vocoder_enc_gain_db', 'Pegel vor dem Kodieren (dB)', 'number', { step: 0.5 }), F('vocoder_dec_gain_db', 'Pegel nach dem Dekodieren (dB)', 'number', { step: 0.5 }), F('vocoder_timeout_ms', 'Antwortzeit je Rahmen (ms)', 'number'), F('vocoder_restart_s', 'Watchdog: neu starten nach (s) ohne Antwort', 'number')];
   const sel = window._vocSel || mode;
   const flds = [...fields[sel], ...common];
   const v = S.state?.vocoder;
   $('#adminBody').innerHTML = `<div class="voc-choice">${opts.map(([k, t, d]) => `<div class="voc-opt ${k === sel ? 'active' : ''}" data-m="${k}"><b>${t}${k === mode ? ' · aktiv' : ''}</b><small>${d}</small></div>`).join('')}</div>
     <div class="form">${flds.map(f => fieldHtml('vocoder', f, c[f.key])).join('')}
-      <div class="field wide"><label>Aktueller Zustand</label><div>${v ? `${v.online ? '<span class="badge ok">bereit</span>' : '<span class="badge off">offline</span>'} ${esc(v.name)} ${esc(v.product || '')} · Encode ${v.enc} · Decode ${v.dec} · Timeouts ${v.timeouts}` : '<span class="badge warn">nicht gestartet</span>'}</div>
+      <div class="field wide"><label>Aktueller Zustand</label><div>${v ? `${v.online ? '<span class="badge ok">bereit</span>' : '<span class="badge off">offline</span>'} ${esc(v.name)} ${esc(v.product || '')} · Encode ${v.enc} · Decode ${v.dec} · Timeouts ${v.timeouts} · Wiederholt ${v.retries ?? 0} · Neustarts ${v.restarts ?? 0}` : '<span class="badge warn">nicht gestartet</span>'}</div>
       <small id="vocTestRes"></small></div></div>
     <pre id="mdOut" style="font-size:11.5px;white-space:pre-wrap;color:var(--text-dim);padding:0 4px"></pre>
     <div class="form-actions">${sel === 'usb' ? '<button class="btn secondary" id="scanBtn">🔍 USB-Geräte suchen</button>' : ''}

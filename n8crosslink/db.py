@@ -106,6 +106,7 @@ DEFAULTS: dict = {
         "usb_device": "/dev/ttyUSB0", "usb_baud": 460800, "usb_send_init": True,
         "ambeserver_host": "127.0.0.1", "ambeserver_port": 2460, "ambeserver_send_init": True,
         "vocoder_enc_gain_db": 0.0, "vocoder_dec_gain_db": 0.0,
+        "vocoder_timeout_ms": 300, "vocoder_restart_s": 20, "md380_auto_restart": True,
     },
 }
 

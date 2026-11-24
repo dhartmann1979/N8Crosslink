@@ -34,7 +34,7 @@ Alles läuft in **einem** Python-Dienst mit Live-Dashboard und Adminportal – i
 | ♻️ **Neuanfang** | Zurücksetzen im Webinterface (Verlauf / Einstellungen / alles) und `uninstall.sh` mit „Daten behalten“ oder „komplett entfernen“, inkl. Wiedereinschalten der alten Dienste |
 | 📊 **Dashboard** | On-Air-Anzeige mit Pegel und Zeit, Netzkarten mit RX/TX, Last Heard, FRN-Raumliste, Ereignisse, Statistik (Heute … 90 Tage) |
 | ⚙️ **Adminportal** | Alle Einstellungen in SQLite, Benutzerverwaltung, Bridge-/Dienst-Neustart, ID-Datenbank-Update, Export/Import |
-| 🐕 **Watchdogs** | Jede Verbindung (FRN, DMR, Zello) baut sich nach einem Abbruch selbst neu auf; zusätzlich baut ein Watchdog ein Netz komplett neu auf, wenn es zu lange offline bleibt oder seine Verbindungsschleife stirbt. Der Vocoder wird bei Ausfall neu geöffnet, und der systemd-Watchdog startet den Dienst neu, falls er hängt |
+| 🐕 **Watchdogs** | Jede Verbindung (FRN, DMR, Zello) baut sich nach einem Abbruch selbst neu auf; zusätzlich baut ein Watchdog ein Netz komplett neu auf, wenn es zu lange offline bleibt oder seine Verbindungsschleife stirbt. Der Vocoder arbeitet im Lockstep mit neuem Socket nach jedem Timeout (keine verschobenen Rahmen), ein hängender md380-emu-Dienst wird automatisch neu gestartet, und der systemd-Watchdog startet den Dienst neu, falls er hängt |
 | 🗂️ **ID-Listen** | Alle Listen der FreeRadioID.net-API (alle DMR-IDs, registrierte IDs, Einzelabfrage unbekannter IDs) plus Talkgroup-Namen aus `n8schicht/talkgroup_ids.json` – 1× täglich und per Knopf |
 | 🖼️ **Avatare** | In SQLite zwischengespeichert (192 px WebP), 1× täglich oder per Knopf aktualisiert: FreeRadioID-Bilder für DMR, Rufzeichen-Zuordnung für FRN und Zello, eigene Zello-Bilder per Upload |
 | ⬆️ **Updates** | Prüfung stündlich zur vollen Stunde, Banner mit Änderungen, **„Update jetzt“** direkt im Webinterface |
@@ -107,7 +107,7 @@ Senden in die Netze:
 
 * [Installation & Update](docs/INSTALLATION.md)
 * [Konfiguration / Adminportal](docs/KONFIGURATION.md)
-* [Vocoder: md380-emu oder USB-Stick](docs/VOCODER.md)
+* [Vocoder: md380-emu oder USB-Stick, Stabilität und Alternativen](docs/VOCODER.md)
 * [Umstieg von SvxLink und der alten Zello-Bridge](docs/MIGRATION.md)
 * [Technik & Protokolle](docs/TECHNIK.md)
 * [Betrieb: Watchdogs, Updates, sudo & Berechtigungen](docs/BETRIEB.md)

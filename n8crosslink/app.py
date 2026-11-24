@@ -141,14 +141,28 @@ class Bridge:
                         self.voc_offline_since = None
                     elif self.voc_offline_since is None:
                         self.voc_offline_since = _t.time()
-                    elif _t.time() - self.voc_offline_since > 60:
-                        self.router.event("warn", f"Watchdog: Vocoder ({v.mode}) antwortet nicht – wird neu geöffnet")
+                    elif _t.time() - self.voc_offline_since > float(self.cfg["vocoder"].get("vocoder_restart_s", 20)):
                         self.voc_offline_since = _t.time()
-                        await v.reopen()
+                        await self.recover_vocoder(v)
                 online = [p.label for p in self.router.ports.values() if p.enabled and p.online]
                 sd_notify("STATUS=" + (", ".join(online) + " online" if online else "keine Verbindung"))
             except Exception as e:  # noqa: BLE001
                 log.exception("Watchdog: %s", e)
+
+    async def recover_vocoder(self, v: Vocoder) -> None:
+        """Hängender Vocoder: md380-emu-Dienst (lokal) neu starten, dann neu verbinden."""
+        local = str(v.cfg.get("md380_host", "127.0.0.1")) in ("127.0.0.1", "localhost", "::1")
+        if v.mode == "md380" and local and self.cfg["vocoder"].get("md380_auto_restart", True) \
+                and self.system.allowed("md380-emu.service", "restart"):
+            ok, out = await self.system.unit_action("md380-emu.service", "restart")
+            v.stats["restarts"] += 1
+            self.router.event("warn" if ok else "error",
+                              "Watchdog: md380-emu antwortet nicht – Dienst neu gestartet" if ok
+                              else f"Watchdog: md380-emu-Neustart fehlgeschlagen: {out[:120]}")
+            await asyncio.sleep(3)
+        else:
+            self.router.event("warn", f"Watchdog: Vocoder ({v.mode}) antwortet nicht – wird neu geöffnet")
+        await v.reopen()
 
     def start_background(self) -> None:
         for coro in (self.housekeeping(), self.watchdog(), self.idlists.loop(), self.avatars.loop(), self.updater.loop()):

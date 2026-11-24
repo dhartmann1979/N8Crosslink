@@ -32,6 +32,15 @@ def _since(rng: str) -> float:
     return time.time() - RANGES[rng]
 
 
+NET_LABELS = (("frn", "FRN"), ("dmr", "DMR"), ("zello", "Zello"))
+
+
+def nets_label(cfg: dict) -> str:
+    """Nur die eingeschalteten Netze, z. B. „FRN · DMR“ – für Titel, Untertitel und Fußzeile."""
+    on = [lbl for key, lbl in NET_LABELS if (cfg.get(key) or {}).get("enabled")]
+    return " · ".join(on) if on else "keine Netze aktiv"
+
+
 def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
     db: Database = bridge.db
     app = FastAPI(title="N8 Crosslink", version=__version__,
@@ -46,8 +55,29 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
     env = Environment(loader=FileSystemLoader(HERE / "templates"), autoescape=select_autoescape(["html"]))
 
     # ------------------------------------------------------------ Auth
+    # API-Token (HobbyRadioPortal): nur diese Admin-Pfade – nie Benutzer, Backup, System, Updates, Aussehen
+    TOKEN_PATHS = {"/api/admin/settings", "/api/admin/restart", "/api/admin/vocoder/params", "/api/admin/vocoder/options",
+                   "/api/admin/vocoder/preview", "/api/admin/vocoder-test", "/api/admin/announce/preview",
+                   "/api/admin/frn/request-password", "/api/admin/events", "/api/admin/ids", "/api/admin/ids/update",
+                   "/api/admin/avatars/refresh", "/api/admin/serial-ports"}
+
     def current_user(request: Request) -> str | None:
-        return db.session_user(request.cookies.get(COOKIE))
+        u = db.session_user(request.cookies.get(COOKIE))
+        if u:
+            return u
+        auth = request.headers.get("authorization") or ""
+        if auth[:7].lower() == "bearer " and request.url.path in TOKEN_PATHS:
+            name = db.token_user(auth[7:].strip(), request.client.host if request.client else "")
+            if name:
+                who = re.sub(r"[^A-Za-z0-9._@-]", "", request.headers.get("x-portal-user", ""))[:40]
+                return name + (f" ({who})" if who else "")
+        return None
+
+    def require_human(request: Request) -> str:
+        u = require_admin(request)
+        if u.startswith("api:"):
+            raise HTTPException(403, "Nicht mit einem API-Token")
+        return u
 
     def require_admin(request: Request) -> str:
         u = current_user(request)
@@ -66,7 +96,7 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
     @app.get("/", response_class=HTMLResponse)
     async def index() -> str:
         g = bridge.cfg["general"]
-        return env.get_template("index.html").render(title=g.get("title", "N8 Crosslink"),
+        return env.get_template("index.html").render(title=g.get("title", "N8 Crosslink"), nets=nets_label(db.load_config()),
                                                      server_name=g.get("server_name", ""), version=__version__,
                                                      theme=_theme(g.get("theme")))
 
@@ -154,7 +184,9 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
     @app.get("/api/info")
     async def info() -> dict:
         g = bridge.cfg["general"]
+        cfg = db.load_config()
         return {"title": g.get("title"), "server_name": g.get("server_name"), "announcement": g.get("announcement"),
+                "nets": [k for k, _ in NET_LABELS if (cfg.get(k) or {}).get("enabled")], "nets_label": nets_label(cfg),
                 "links": g.get("links", []), "version": __version__, "routes": bridge.cfg["routes"]}
 
     @app.get("/api/avatar/{source}/{key}")
@@ -238,6 +270,57 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         bridge.router.notify()
         restart = any(s in data for s in ("frn", "dmr", "zello", "vocoder"))
         return {"ok": True, "restart_required": restart}
+
+    # ---- Einstellungen als Beschreibung (für das HobbyRadioPortal und andere Dienste)
+    @app.get("/api/admin/settings")
+    async def settings_describe(request: Request, user: str = Depends(require_admin)) -> dict:
+        from ..settings_schema import describe
+        from ..vocoder import PROFILES
+        return {"sections": describe(db.load_config(), api=user.startswith("api:")), "version": __version__,
+                "vocoder_profiles": list(PROFILES)}
+
+    @app.put("/api/admin/settings")
+    async def settings_update(data: dict = Body(...), user: str = Depends(require_admin)) -> dict:
+        from ..settings_schema import SettingsError, describe, validate
+        api_user = user.startswith("api:")
+        try:
+            clean = validate(data.get("changes") or {}, api=api_user)
+        except SettingsError as e:
+            raise HTTPException(400, str(e)) from e
+        old = db.load_config()
+        changed = [f"{sec}.{k}" for sec, vals in clean.items() for k, v in vals.items() if old.get(sec, {}).get(k) != v]
+        for sec, vals in clean.items():
+            db.save_section(sec, vals)
+        new = db.load_config()
+        bridge.cfg["routes"].update(new["routes"])
+        bridge.cfg["general"].update({k: v for k, v in new["general"].items() if k not in ("web_host", "web_port")})
+        bridge.cfg["ids"].update(new["ids"])
+        bridge.router.notify()
+        restart = any(k.split(".")[0] in ("frn", "dmr", "zello", "vocoder") for k in changed)
+        if changed:
+            bridge.router.event("info", f"Einstellungen geändert von {user}: {', '.join(changed)[:200]}")
+        return {"changed": changed, "restart_required": restart, "sections": describe(new, api=api_user)}
+
+    # ---- API-Token verwalten (nur angemeldete Admins, nie per Token)
+    @app.get("/api/admin/api-tokens")
+    async def api_tokens(_: str = Depends(require_human)) -> dict:
+        return {"tokens": db.list_api_tokens(), "paths": sorted(TOKEN_PATHS)}
+
+    @app.post("/api/admin/api-tokens")
+    async def api_token_create(data: dict = Body(...), user: str = Depends(require_human)) -> dict:
+        try:
+            t = db.create_api_token(str(data.get("name") or ""), user)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        bridge.router.event("info", f"API-Token „{t['name']}“ angelegt von {user}")
+        return {"token": t}
+
+    @app.delete("/api/admin/api-tokens/{token_id}")
+    async def api_token_revoke(token_id: int, user: str = Depends(require_human)) -> dict:
+        if not db.revoke_api_token(token_id):
+            raise HTTPException(404, "Token nicht gefunden")
+        bridge.router.event("info", f"API-Token {token_id} widerrufen von {user}")
+        return {"ok": True}
 
     @app.post("/api/admin/restart")
     async def restart(_: str = Depends(require_admin)) -> dict:

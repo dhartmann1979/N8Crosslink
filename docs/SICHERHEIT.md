@@ -40,6 +40,18 @@ Rufzeichen, Namen und Orte kommen von FRN-Clients, aus DMR (ID-Liste, Talker Ali
 
 Sitzungs-Cookie `HttpOnly`/`SameSite`; der Standard-Login `n8schicht / n8schicht` wird angemahnt, bis er geändert ist. Mithören läuft über einen eigenen WebSocket, der nur angemeldete Admins annimmt.
 
+## API-Token für das HobbyRadioPortal
+
+- Anlegen nur angemeldet unter *Benutzer → Portal-Zugang* (nie mit einem Token selbst). Der Token `n8x_…` hat 256 Bit Zufall,
+  gespeichert wird nur sein SHA-256 (Tabelle `api_tokens`), angezeigt nur die letzten vier Zeichen, zuletzt benutzt und letzte IP.
+- Anmeldung mit `Authorization: Bearer n8x_…` – nur auf diesen Pfaden: `/api/admin/settings` (lesen/ändern), `/api/admin/restart`
+  (Bridge), `/api/admin/vocoder/params|options|preview`, `/api/admin/vocoder-test`, `/api/admin/announce/preview`,
+  `/api/admin/frn/request-password`, `/api/admin/events`, `/api/admin/ids`, `/api/admin/ids/update`, `/api/admin/avatars/refresh`,
+  `/api/admin/serial-ports`. Alles andere antwortet `401`.
+- Gesperrt auch innerhalb der Einstellungen: Web-Adresse, Web-Port und Update-Quelle.
+- Passwörter (FRN, DMR, Zello, Token, Private Key) gehen nie hinaus; leer gelassen bleiben sie unverändert.
+- Jede Änderung im Ereignisprotokoll mit Token-Name und Portal-Benutzer (`X-Portal-User`, bereinigt).
+
 ## Reverse-Proxy davor (empfohlen)
 
 N8 Crosslink bringt kein eigenes HTTPS mit. Soll das Dashboard aus dem Internet erreichbar sein, gehört ein **Reverse-Proxy** mit HTTPS davor: Zertifikate, Header und Protokolle an einer Stelle. Das Dashboard lauscht dann nur lokal (Admin → Allgemein → Web-Adresse `127.0.0.1`, Port z. B. 8080; Neustart des Dienstes). Die Weiterleitungs-Header (`X-Forwarded-Proto`) wertet N8 Crosslink aus.

@@ -113,5 +113,27 @@ Betriebsart (N8schicht-Vocoder, USB-Stick, AMBEserver, Test), Pegel und Watchdog
 
 ![Klang-Einstellungen](screenshots/admin-vocoder-klang.png)
 
+## 🔌 Portal-Zugang (API-Token) – im HobbyRadioPortal verwalten
+Seit 1.8.0 lässt sich die Brücke auch im [HobbyRadioPortal](https://github.com/dhartmann1979/HobbyRadioPortal) einstellen
+(*Admin → Dienste → 🔀 Crosslink & Vocoder*): Allgemein, Sprachansage (mit Probehören), Routing, FRN (mit *Passwort anfordern*), DMR,
+Zello, Vocoder mit **Klang-Einstellungen** und Probehören, ID-Listen & Avatare, Bridge neu starten, Vocoder testen.
+
+1. Hier unter **👥 Benutzer → 🔌 Portal-Zugang** einen Namen eintragen (z. B. *HobbyRadioPortal*) → **➕ Token anlegen** →
+   Token (`n8x_…`) **sofort kopieren**, er wird nur einmal angezeigt.
+2. Im Portal: *Dienste & Plugins → N8 Crosslink* → Adresse (z. B. `http://127.0.0.1:8080/`) und **API-Token** eintragen → Speichern.
+
+Der Token darf nur Einstellungen, Routing, Vocoder-Klang, Sprachansage, FRN-Passwort-Anforderung, ID-Listen, Ereignisse und den
+Neustart der Brücke – **nie** Benutzer, Backup/Neuanfang, System (Dienste, Neustart des Servers), Updates, Aussehen, Export/Import.
+Web-Adresse/-Port und die Update-Quelle sind für Token gesperrt. Jede Änderung steht im Ereignisprotokoll als
+`api:<Name> (<Portal-Benutzer>)`. **Widerrufen** entzieht den Zugang sofort. Mehr: [SICHERHEIT.md](SICHERHEIT.md#api-token-für-das-hobbyradioportal).
+
+![Portal-Zugang](screenshots/admin-benutzer-token.png)
+
+Für andere Programme beschreibt `GET /api/admin/settings` alle Einstellungen (Bereiche, Felder, Art, Grenzen, Hilfetexte; Passwörter
+nie im Klartext), `PUT /api/admin/settings {"changes": {"frn.port": 10024, …}}` ändert sie mit Prüfung.
+
+**Titel:** Untertitel, Fußzeile und Seitenbeschreibung nennen nur die **eingeschalteten** Netze (z. B. *FRN · DMR*); `/api/info`
+liefert dazu `nets` und `nets_label`.
+
 ## 👥 Benutzer · 🛠️ System
 Benutzer anlegen/löschen/Passwort ändern. System: **Dienste** (N8 Crosslink, erkannte alte Dienste wie svxlink/mmdvm_bridge/Zello-Bridge) mit Start, Stopp, Neustart, Autostart an/aus; **Berechtigungen prüfen & korrigieren**; **Server neu starten** (falls bei der Installation erlaubt); Bridge neu starten (nur die Netze), Dienst neu starten, ID-Listen aktualisieren, Konfiguration exportieren/importieren (ohne Passwörter), Ereignisprotokoll. Siehe [BETRIEB.md](BETRIEB.md).

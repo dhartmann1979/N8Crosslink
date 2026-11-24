@@ -2,6 +2,40 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.8.0] – 2026-11-24
+
+**Portal-Zugang: N8 Crosslink lässt sich komplett im HobbyRadioPortal einstellen – und der Titel nennt nur noch die eingeschalteten Netze.**
+
+### 🔌 API-Token (Benutzer → Portal-Zugang)
+- Token anlegen (Name), **einmal anzeigen und kopieren**, Liste mit den letzten vier Zeichen, angelegt von/wann, zuletzt benutzt,
+  letzte IP, **Widerrufen**. Höchstens 20. Gespeichert nur als SHA-256 (neue Tabelle `api_tokens`, kommt mit ins Backup).
+- Anmeldung per `Authorization: Bearer n8x_…` **nur** auf: Einstellungen, Bridge neu starten, Vocoder-Klang (Regler, Profil,
+  Probehören), Vocoder testen, Ansage probehören, FRN-Passwort anfordern, Ereignisse, ID-Listen und Avatare aktualisieren,
+  serielle Geräte. **Nie:** Benutzer, Token, Backup/Neuanfang/Wiederherstellen, System (Dienste, Server-Neustart, Rechte),
+  Updates, Aussehen, Export/Import. Web-Adresse/-Port und Update-Quelle sind auch in den Einstellungen gesperrt.
+- Jede Änderung im Ereignisprotokoll als `api:<Name> (<Portal-Benutzer>)`.
+
+### 📋 Einstellungen als Beschreibung
+- `GET /api/admin/settings`: alle Einstellungen in acht Bereichen (Allgemein, Sprachansage, Routing, FRN, DMR, Zello, Vocoder,
+  ID-Listen & Avatare) mit Art, Grenzen, Hilfetexten, Abhängigkeiten, *Erweitert* und „Neustart nötig“ – im selben Format wie
+  HBlink4-FreeRadioID. Passwörter nie im Klartext (`set` sagt, ob eins gespeichert ist).
+- `PUT /api/admin/settings {"changes": {…}}`: prüft jeden Wert (Typ, Bereich, Auswahl, JSON) mit verständlicher Meldung, speichert,
+  übernimmt Routing, Allgemein, Ansage und ID-Listen sofort und meldet, ob die Bridge neu starten muss.
+- Neu: `n8crosslink/settings_schema.py` – ein Test stellt sicher, dass jede Einstellung aus `DEFAULTS` beschrieben ist.
+
+### 🏷️ Titel nur mit den eingeschalteten Netzen
+- Untertitel (*FRN · DMR · servername*), Fußzeile und Seitenbeschreibung nennen nur noch die Netze, die an sind – z. B. *FRN · DMR*,
+  wenn Zello aus ist. `/api/info` liefert dazu `nets` und `nets_label`; die Seite aktualisiert sich nach dem Speichern.
+
+### 🧪 Tests
+- `tests/test_api_tokens.py`: Beschreibung deckt alle Einstellungen ab, Prüfung (Grenzen, Auswahl, JSON, gesperrte Felder),
+  Token-Pfade erlaubt/verboten, Passwörter verdeckt, Protokolleintrag mit Portal-Benutzer, Widerrufen, Titel ohne Zello.
+  `sim_e2e.py` weiter 57/57.
+
+### 📖 Doku
+- [KONFIGURATION.md → Portal-Zugang](docs/KONFIGURATION.md#-portal-zugang-api-token--im-hobbyradioportal-verwalten) mit Screenshot,
+  [SICHERHEIT.md → API-Token](docs/SICHERHEIT.md#api-token-für-das-hobbyradioportal).
+
 ## [1.7.1] – 2026-11-24
 
 ### 🌐 N8 Kit 1.0.1

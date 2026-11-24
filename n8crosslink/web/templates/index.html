@@ -18,11 +18,11 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="{{ title }}">
   <meta name="application-name" content="{{ title }}">
-  <meta name="description" content="{{ title }} – FRN · DMR · Zello Bridge der N8schicht">
+  <meta name="description" content="{{ title }} – {{ nets }} Bridge der N8schicht">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Die N8schicht">
   <meta property="og:title" content="{{ title }}">
-  <meta property="og:description" content="FRN · DMR · Zello Bridge – Live-Dashboard">
+  <meta property="og:description" content="{{ nets }} Bridge – Live-Dashboard">
   <meta property="og:image" content="/static/icons/og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
@@ -46,7 +46,7 @@
         <img src="/static/n8crosslink-icon.svg" alt="{{ title }}" class="logo">
         <div>
           <h1 id="title">{{ title }}</h1>
-          <div class="subtitle" id="serverName">FRN · DMR · Zello · {{ server_name }}</div>
+          <div class="subtitle" id="serverName">{{ nets }} · {{ server_name }}</div>
         </div>
       </div>
       <nav class="main-tabs" id="mainTabs" role="tablist">
@@ -166,7 +166,7 @@
     <div class="card" id="adminBody"></div>
   </section>
 
-  <footer>© Die N8schicht · N8 Crosslink {{ version }} · FRN · DMR · Zello ·
+  <footer>© Die N8schicht · N8 Crosslink {{ version }} · <span id="footNets">{{ nets }}</span> ·
     <a href="https://github.com/dhartmann1979/N8Crosslink" target="_blank" rel="noopener">GitHub</a></footer>
 </div>
 

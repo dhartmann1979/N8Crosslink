@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import re
 import hmac
 import json
 import os
@@ -158,6 +159,8 @@ class Database:
         CREATE TABLE IF NOT EXISTS settings (section TEXT, key TEXT, value TEXT, PRIMARY KEY(section, key));
         CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, pw_hash TEXT, role TEXT DEFAULT 'admin', created REAL);
         CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, username TEXT, expires REAL);
+        CREATE TABLE IF NOT EXISTS api_tokens (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, token_hash TEXT UNIQUE, hint TEXT,
+            created REAL, created_by TEXT, last_used REAL, last_ip TEXT DEFAULT '');
         CREATE TABLE IF NOT EXISTS lastheard (
             id INTEGER PRIMARY KEY AUTOINCREMENT, ts_start REAL, ts_end REAL, duration REAL,
             source TEXT, name TEXT, callsign TEXT, detail TEXT, dmr_id INTEGER,
@@ -295,6 +298,45 @@ class Database:
         if row and row["expires"] > time.time():
             return row["username"]
         return None
+
+    # ------------------------------------------------------------ API-Token (HobbyRadioPortal)
+    def create_api_token(self, name: str, created_by: str = "") -> dict:
+        name = (name or "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9 ._@-]{2,40}", name):
+            raise ValueError("Name: 2–40 Buchstaben, Ziffern, Leerzeichen oder . _ @ -")
+        with self.lock:
+            if self.conn.execute("SELECT COUNT(*) FROM api_tokens").fetchone()[0] >= 20:
+                raise ValueError("Höchstens 20 Token")
+            token = "n8x_" + secrets.token_urlsafe(32)
+            cur = self.conn.execute("INSERT INTO api_tokens (name, token_hash, hint, created, created_by) VALUES (?,?,?,?,?)",
+                                    (name, hashlib.sha256(token.encode()).hexdigest(), token[-4:], time.time(), created_by))
+            self.conn.commit()
+        return {"id": cur.lastrowid, "name": name, "hint": token[-4:], "token": token}
+
+    def list_api_tokens(self) -> list[dict]:
+        with self.lock:
+            rows = self.conn.execute("SELECT id, name, hint, created, created_by, last_used, last_ip FROM api_tokens ORDER BY id").fetchall()
+        return [dict(r) for r in rows]
+
+    def revoke_api_token(self, token_id: int) -> bool:
+        with self.lock:
+            n = self.conn.execute("DELETE FROM api_tokens WHERE id=?", (int(token_id),)).rowcount
+            self.conn.commit()
+        return n > 0
+
+    def token_user(self, token: str | None, ip: str = "") -> str | None:
+        """Name des Tokens (\"api:Name\") oder None."""
+        if not token or not token.startswith("n8x_") or len(token) > 100:
+            return None
+        h = hashlib.sha256(token.encode()).hexdigest()
+        with self.lock:
+            r = self.conn.execute("SELECT id, name, last_used, last_ip FROM api_tokens WHERE token_hash=?", (h,)).fetchone()
+            if not r:
+                return None
+            if not r["last_used"] or time.time() - r["last_used"] > 60 or r["last_ip"] != ip:
+                self.conn.execute("UPDATE api_tokens SET last_used=?, last_ip=? WHERE id=?", (time.time(), ip, r["id"]))
+                self.conn.commit()
+        return "api:" + r["name"]
 
     def end_session(self, token: str) -> None:
         with self.lock:

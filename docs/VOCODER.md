@@ -61,11 +61,11 @@ Im Vocoder-Bereich auf der Karte **N8schicht-Vocoder** auf **„🎚️ Klang-Ei
 
 | Regler | DroidStar | N8schicht | Wirkung |
 |---|---|---|---|
-| Lautstärke (Ausgang) | 2,07 | 2,07 | Verstärkung aller Obertöne. Zu hoch = Übersteuerung (der weiche Begrenzer greift), zu niedrig = leise |
+| Lautstärke (Ausgang) | 2,07 | **2,20** | Verstärkung aller Obertöne. Zu hoch = Übersteuerung (der weiche Begrenzer greift), zu niedrig = leise |
 | Kompressor (Frame-Limiter) | an | **aus** | Drückt laute Rahmen zusammen (ab ≈ 78 dB Rahmenpegel, Verhältnis 0,3). **An = „komprimierter“, gepresster Klang**; aus = natürliche Dynamik. Übersteuerung verhindert weiterhin der weiche Begrenzer |
-| Höhen anheben (Brillanz) | 0,50 | **0,80** | Hebt die oberen Obertöne an. Mit 0,8 bleibt der Frequenzgang bis ≈ 3,65 kHz innerhalb ±1 dB; mehr = heller/schärfer |
-| Höhen ab (Anteil der Obertöne) | 0,66 | 0,66 | Ab welchem Teil der Obertöne die Anhebung beginnt |
-| Klarheit (Formantverstärkung) | 0,61 | 0,61 | Betont die Formanten (Vokalklang). 0 = dumpf, viel = scharf/blechern |
+| Höhen anheben (Brillanz) | 0,50 | **0,90** | Hebt die oberen Obertöne an. Mit 0,8 bleibt der Frequenzgang bis ≈ 3,65 kHz innerhalb ±1 dB; mehr = heller/schärfer (N8schicht seit 1.9.1: 0,9) |
+| Höhen ab (Anteil der Obertöne) | 0,66 | **0,60** | Ab welchem Teil der Obertöne die Anhebung beginnt |
+| Klarheit (Formantverstärkung) | 0,61 | **0,65** | Betont die Formanten (Vokalklang). 0 = dumpf, viel = scharf/blechern |
 | Tonhöhen-Übergang (Samples) | 160 | **120** | Interpolation der Grundfrequenz zwischen zwei Rahmen (160 Samples = 20 ms). Kürzer = die Sprachmelodie wird schneller nachgeführt → natürlicher, verständlicher |
 | Lautstärke-Übergang (Samples) | 160 | 160 | Interpolation der Obertonpegel zwischen zwei Rahmen. Kürzer klingt härter (gemessen schlechter) |
 | Übergang stimmhaft → stimmlos | 50 | **80** | Wie weich ein Oberton ausblendet, wenn er stimmlos wird (Vokal → „s“). Länger = weichere, natürlichere Übergänge |
@@ -73,7 +73,7 @@ Im Vocoder-Bereich auf der Karte **N8schicht-Vocoder** auf **„🎚️ Klang-Ei
 | Phasenstreuung | 0,30 | 0,30 | Wenig = „summend/brummig“, viel = rau |
 | Zischlaute / Rauschanteil | 0,85 | 0,85 | Pegel der stimmlosen Anteile (s, f, sch, t). Höher = deutlichere Konsonanten, aber mehr Rauschen |
 | Komfortrauschen bei Ausfall | 1,0 | 1,0 | Leises Rauschen statt harter Stille, wenn Rahmen wegen Funkfehlern ausfallen |
-| Fehlerrahmen überbrücken | 3 | 3 | So viele kaputte Rahmen werden durch Wiederholen überbrückt, danach stumm |
+| Fehlerrahmen überbrücken | 3 | **4** | So viele kaputte Rahmen werden durch Wiederholen überbrückt, danach stumm |
 
 **✨ Nachbearbeitung (in der Bridge)**
 
@@ -85,7 +85,7 @@ Im Vocoder-Bereich auf der Karte **N8schicht-Vocoder** auf **„🎚️ Klang-Ei
 
 | Regler | DroidStar | N8schicht | Wirkung |
 |---|---|---|---|
-| Tiefen-Filter (Hz) | 135 | 135 | Entfernt Brummen/Rumpeln vor dem Kodieren. Höher = dünner, aber bei verbrummten FRN-Stationen klarer |
+| Tiefen-Filter (Hz) | 135 | **150** | Entfernt Brummen/Rumpeln vor dem Kodieren. Höher = dünner, aber bei verbrummten FRN-Stationen klarer |
 | Rauschsperre (dBFS) | −70 | −70 | Leisere Rahmen werden als Stille gesendet. Höher = mehr Rauschunterdrückung, aber leise Silben können verschwinden |
 | Glättung (vorheriger Rahmen) | 0,05 | 0,05 | Mischt die Pegel des vorigen Rahmens bei – ruhiger, aber verwaschener |
 
@@ -110,6 +110,8 @@ Gespeichert wird in der Datenbank (`vocoder.n8vocoder_profile`, `vocoder.n8vocod
 | Frequenzgang 3,5–3,8 kHz (natürliche Stimmen) | −1,9 dB | **+1,0 dB** |
 | Frequenzgang 3,8–4,0 kHz | −20,4 dB | **−2,4 dB** |
 | Pegel (Eingang −20 dBFS) | −20 dBFS | −20 dBFS |
+
+**Nachschärfung in 1.9.1:** Im Livebetrieb wurde die gemessene Abstimmung nach Gehör nachgestellt und als neuer Standard übernommen: Lautstärke 2,07 → 2,20, Höhen anheben 0,80 → 0,90, Höhen ab 0,66 → 0,60, Klarheit 0,61 → 0,65, Fehlerrahmen überbrücken 3 → 4, Tiefen-Filter 135 → 150 Hz. Die Tabelle oben zeigt die Messung der Abstimmung aus 1.6.0; mit `tools/vocoder_test.py --compare` lässt sich die aktuelle Abstimmung jederzeit selbst nachmessen.
 
 Die größten Gewinne brachten: **Kompressor aus** (genau der „komprimierte“ Klang), **schnellere Tonhöhen-Interpolation** und **weicherer Übergang stimmhaft → stimmlos**. Bei einzelnen Sätzen kann das Ergebnis anders ausfallen – deshalb gibt es das Probehören mit eigenen Aufnahmen.
 

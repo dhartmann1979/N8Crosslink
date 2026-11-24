@@ -105,10 +105,14 @@ def find_n8vocoder_lib(cfg: dict | None = None) -> str | None:
 find_droidstar_lib = find_n8vocoder_lib          # alter Name (Tests, Fremdskripte)
 
 # ------------------------------------------------------------------ Klang-Einstellungen
-# Abstimmung „N8schicht“: mit STOI/PESQ an deutschen Testsätzen gemessen (docs/VOCODER.md).
+# Abstimmung „N8schicht“: Grundlage mit STOI/PESQ an deutschen Testsätzen gemessen (docs/VOCODER.md),
+# seit 1.9.1 im Livebetrieb nach Gehör nachgeschärft (etwas lauter, heller, klarer, robuster bei Bitfehlern).
 PROFILES = {
-    "n8schicht": {"dec": {"frame_limiter": 0, "pitch_glide_end": 120, "voicing_off_end": 80,
-                          "high_band_tilt": 0.8}, "enc": {}, "post": {"bwe_db": 0.0}},
+    "n8schicht": {"dec": {"output_gain": 2.2, "frame_limiter": 0, "high_band_tilt": 0.9,
+                          "high_band_start": 0.6, "enhance_strength": 0.65, "pitch_glide_end": 120,
+                          "voicing_off_end": 80, "repeat_max": 4},
+                  "enc": {"highpass_hz": 150},
+                  "post": {"bwe_db": 0.0}},
     "droidstar": {"dec": {}, "enc": {}, "post": {}},
 }
 # Regler im Adminportal: Seite, Schlüssel, Bezeichnung, min, max, Schritt, Grundwert DroidStar, Erklärung
@@ -118,7 +122,8 @@ PARAMS = [
     ("dec", "frame_limiter", "Kompressor (Frame-Limiter)", 0, 1, 1, 1,
      "Drückt laute Rahmen zusammen. Aus = natürlichere Dynamik, weniger „komprimierter“ Klang (N8schicht: aus)."),
     ("dec", "high_band_tilt", "Höhen anheben (Brillanz)", 0.0, 1.5, 0.05, 0.5,
-     "Hebt die oberen Obertöne an (log2 an der Obergrenze). 0,8 ergibt einen glatten Frequenzgang bis ≈ 3,8 kHz."),
+     "Hebt die oberen Obertöne an (log2 an der Obergrenze). 0,8 ergibt einen glatten Frequenzgang bis ≈ 3,8 kHz, "
+     "mehr = heller (N8schicht: 0,9)."),
     ("dec", "high_band_start", "Höhen ab (Anteil der Obertöne)", 0.3, 0.9, 0.01, 0.66,
      "Ab welchem Teil der Obertöne die Höhenanhebung beginnt (0,66 = oberes Drittel)."),
     ("dec", "enhance_strength", "Klarheit (Formantverstärkung)", 0.0, 1.0, 0.01, 0.61,

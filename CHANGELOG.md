@@ -2,6 +2,29 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.9.1] – 2026-11-25
+
+**N8schicht-Vocoder: neue Standard-Abstimmung „N8schicht“ – die im Livebetrieb nach Gehör eingestellten Klangwerte sind jetzt der Standard.**
+
+### 🎚️ Admin → 🎛️ Vocoder → Klang-Einstellungen
+Die Grundabstimmung ⭐ *N8schicht* hat neue Werte (in Klammern der bisherige N8schicht-Wert):
+
+| Regler | DroidStar | N8schicht bisher | **N8schicht neu** | Wirkung |
+|---|---|---|---|---|
+| Lautstärke (Ausgang) | 2,07 | 2,07 | **2,20** | etwas lauter auf FRN/Zello |
+| Höhen anheben (Brillanz) | 0,50 | 0,80 | **0,90** | heller, Zischlaute deutlicher |
+| Höhen ab (Anteil der Obertöne) | 0,66 | 0,66 | **0,60** | Anhebung setzt etwas früher ein |
+| Klarheit (Formantverstärkung) | 0,61 | 0,61 | **0,65** | Vokale klarer, weniger verwaschen |
+| Fehlerrahmen überbrücken | 3 | 3 | **4** | ein kaputter Rahmen mehr wird überbrückt, bevor stummgeschaltet wird – ruhiger bei schwachem Signal |
+| Tiefen-Filter vor dem Kodieren | 135 Hz | 135 Hz | **150 Hz** | weniger Brummen/Rumpeln von FRN/Zello ins DMR |
+
+Unverändert bleiben: Kompressor aus, Tonhöhen-Übergang 120, Lautstärke-Übergang 160, stimmhaft → stimmlos 80, stimmlos → stimmhaft 90,
+Phasenstreuung 0,30, Zischlaute 0,85, Komfortrauschen 1,0, Höhen-Ergänzung 0 dB, Rauschsperre −70 dBFS, Glättung 0,05.
+
+- Wer bisher eigene Werte gesetzt hatte, behält sie. Mit **↺ Eigene Werte löschen** gilt die neue Standard-Abstimmung.
+- Die Abstimmung *DroidStar-Original* ist unverändert.
+- `docs/VOCODER.md`: Reglertabelle mit den neuen N8schicht-Werten, Hinweis zur Nachschärfung.
+
 ## [1.9.0] – 2026-11-24
 
 **Umzug ins HobbyRadioPortal: das verschlüsselte Backup ist das Umzugspaket – der Web-Installer des Portals richtet N8 Crosslink damit

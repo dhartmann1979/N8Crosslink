@@ -170,6 +170,14 @@
     <div class="form-actions"><button class="btn secondary" id="lCancel">Abbrechen</button><button class="btn" id="lOk">Anmelden</button></div>
   </div>
 </div>
+<div class="modal-overlay" id="statusModal">
+  <div class="modal-content status-pop" id="statusBox">
+    <div class="sp-icon" id="spIcon"><span class="spinner"></span></div>
+    <h2 id="spTitle">Bitte warten …</h2>
+    <p id="spText"></p>
+    <div class="form-actions" style="justify-content:center"><button class="btn" id="spOk" hidden>OK</button></div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 <script src="/static/crosslink.js?v={{ version }}"></script>
 </body>

@@ -234,6 +234,20 @@ class FakeFRN:
             await asyncio.sleep(0.2)
 
 
+# ---------------------------------------------------------------------------- Fake-System-Manager
+class FakeSysman:
+    """Antwortet auf IG: beim ersten Mal mit OK, danach mit NU (Rufzeichen vergeben)."""
+    def __init__(self) -> None:
+        self.lines: list[str] = []
+
+    async def handle(self, reader, writer) -> None:  # noqa: ANN001
+        line = (await reader.readline()).decode(errors="replace").strip()
+        self.lines.append(line)
+        writer.write(b"OK\r\n" if len(self.lines) == 1 else b"NU\r\n")
+        await writer.drain()
+        writer.close()
+
+
 # ---------------------------------------------------------------------------- Fake-Zello
 class FakeZello:
     def __init__(self) -> None:
@@ -553,6 +567,27 @@ async def main() -> int:
           and "1.0.0" not in st_u["notes"], f"{st_u['current']} → {st_u['latest']}")
     rq = await bridge.updater.request_update("test", bridge.system)
     check("Update jetzt ohne systemd-Unit sauber abgelehnt", not rq["ok"], rq["message"][:50])
+
+    # ---------------- FRN: Passwort anfordern
+    print("\n▶ FRN: Passwort anfordern (System Manager)")
+    from n8crosslink.frn import request_password
+    sm = FakeSysman()
+    srv = await asyncio.start_server(sm.handle, "127.0.0.1", 20025)
+    reg = {"callsign": "DO1NEU", "op_name": "Neu", "email": "neu@example.org", "band": "Crosslink",
+           "description": "Test", "country": "Germany", "city": "Minden - JO42",
+           "sysman_server": "127.0.0.1", "sysman_port": 20025}
+    ok1, t1, _ = await request_password(reg)
+    check("Anforderung angenommen (OK) + korrektes IG-Format",
+          ok1 and sm.lines[0] == "IG:<ON>DO1NEU, Neu</ON><EA>neu@example.org</EA><BC>Crosslink</BC><DS>Test</DS><NN>Germany</NN><CT>Minden - JO42</CT>",
+          f"{t1}: {sm.lines[0][:60]}…")
+    ok2, t2, _ = await request_password(reg)
+    check("Bereits registriert (NU) erkannt", not ok2 and t2 == "Bereits registriert", t2)
+    ok3, t3, m3 = await request_password({**reg, "email": "kaputt", "city": "Minden", "band": "UKW"})
+    check("Ungültige Eingaben vor dem Senden abgefangen", not ok3 and t3 == "Eingaben prüfen" and len(sm.lines) == 2
+          and m3.count("\n") == 2, m3.replace("\n", " | ")[:90])
+    srv.close()
+    ok4, t4, _ = await request_password({**reg, "sysman_port": 20099})
+    check("System Manager nicht erreichbar sauber gemeldet", not ok4 and t4 == "Keine Verbindung", t4)
 
     # ---------------- Backup / Wiederherstellung / Zurücksetzen
     print("\n▶ Verschlüsseltes Backup")

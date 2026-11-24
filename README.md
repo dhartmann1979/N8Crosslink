@@ -28,6 +28,7 @@ Alles läuft in **einem** Python-Dienst mit Live-Dashboard und Adminportal – i
 | 🛡️ **Schleifenschutz** | Immer nur eine aktive Quelle; alles andere wird gesperrt und als „blockiert“ protokolliert, plus Sperrzeit nach jeder Aussendung |
 | 🏷️ **Stationsnamen überall** | FRN-Sprecher (aus der Raumliste), DMR-Rufzeichen (ID-Datenbank + empfangener Talker Alias) und Zello-Benutzer erscheinen im Dashboard, im Last Heard, als **DMR Talker Alias** (Embedded LC, 7-Bit) und als **Zello-Textnachricht** |
 | 🎛️ **Vocoder wählbar** | Im Adminportal: **md380-emu** (Software-Vocoder – Installer und Webinterface installieren ihn komplett inkl. DVSwitch-Paketquelle, qemu auf x86, Dienst und Funktionstest) oder **USB-Stick** (ThumbDV, DVstick 30, DV3000) – zusätzlich AMBEserver im Netz |
+| 📧 **FRN-Passwort anfordern** | Knopf im FRN-Adminbereich: Registrierung beim FRN-System-Manager, Ergebnis als Status-Popup, Passwort kommt per E-Mail |
 | 🎧 **Mithören** | Angemeldete Admins hören die aktive Durchsage direkt im Browser mit (aus jedem Netz) |
 | 💾 **Backup** | Alles als vollständig verschlüsselte Datei zum Download (AES-256-GCM). **Der Schlüssel ist das Superadmin-Passwort – im Passwortsafe aufbewahren!** Wiederherstellen im Webinterface, per CLI oder direkt im Installer |
 | ♻️ **Neuanfang** | Zurücksetzen im Webinterface (Verlauf / Einstellungen / alles) und `uninstall.sh` mit „Daten behalten“ oder „komplett entfernen“, inkl. Wiedereinschalten der alten Dienste |
@@ -86,6 +87,10 @@ Senden in die Netze:
 |---|---|
 | ![Mithören](docs/screenshots/dashboard-mithoeren.png) | ![Backup](docs/screenshots/admin-backup.png) |
 
+| Admin – FRN: Passwort anfordern | Admin – FRN |
+|---|---|
+| ![FRN-Passwort](docs/screenshots/admin-frn-passwort-anfordern.png) | ![FRN](docs/screenshots/admin-frn.png) |
+
 | Admin – ID-Listen & Avatare | Admin – Updates |
 |---|---|
 | ![ID-Listen](docs/screenshots/admin-idlisten-avatare.png) | ![Updates](docs/screenshots/admin-updates.png) |
@@ -118,7 +123,7 @@ Senden in die Netze:
 python3 tests/sim_e2e.py
 ```
 
-Startet einen simulierten FRN-Server, einen simulierten HBlink-Master, einen simulierten Zello-Server und einen simulierten AMBE3000 und prüft alle Richtungen, Talker Alias, Textnachrichten, Start/Stop-Erkennung und den Schleifenschutz (aktuell 49/49 Prüfungen: alle Richtungen, zwei Durchsagen direkt hintereinander, Mithören, ID-Listen, Avatare, Verbindungsabbrüche mit Watchdog, Updateprüfung, verschlüsseltes Backup, Zurücksetzen und Wiederherstellen). `tests/test_fec.py` vergleicht die DMR-FEC bitgenau mit dmr_utils3. `tests/demo_server.py` startet dieselbe Simulation mit echtem Dashboard (Login `demo` / `demo12345`).
+Startet einen simulierten FRN-Server, einen simulierten HBlink-Master, einen simulierten Zello-Server und einen simulierten AMBE3000 und prüft alle Richtungen, Talker Alias, Textnachrichten, Start/Stop-Erkennung und den Schleifenschutz (aktuell 53/53 Prüfungen: FRN-Passwortanforderung, alle Richtungen, zwei Durchsagen direkt hintereinander, Mithören, ID-Listen, Avatare, Verbindungsabbrüche mit Watchdog, Updateprüfung, verschlüsseltes Backup, Zurücksetzen und Wiederherstellen). `tests/test_fec.py` vergleicht die DMR-FEC bitgenau mit dmr_utils3. `tests/demo_server.py` startet dieselbe Simulation mit echtem Dashboard (Login `demo` / `demo12345`).
 
 ## Lizenz & Danksagung
 

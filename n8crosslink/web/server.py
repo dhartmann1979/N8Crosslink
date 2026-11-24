@@ -354,6 +354,22 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         await bridge.restart()
         return {"ok": True, "relogin": scope == "all"}
 
+    # ---- FRN: Passwort anfordern (Registrierung beim System Manager)
+    last_frn_req = {"t": 0.0}
+
+    @app.post("/api/admin/frn/request-password")
+    async def frn_request_password(data: dict = Body(...), user: str = Depends(require_admin)) -> dict:
+        from ..frn import request_password
+        if time.time() - last_frn_req["t"] < 60:
+            return {"ok": False, "title": "Bitte warten",
+                    "message": f"Eine Anforderung ist erst vor {int(time.time() - last_frn_req['t'])} s gelaufen – bitte eine Minute warten."}
+        v = dict(db.load_config()["frn"])
+        v.update({k: str(val) for k, val in data.items() if k in v and val not in (None, "")})
+        last_frn_req["t"] = time.time()
+        ok, title, msg = await request_password(v)
+        bridge.router.event("info" if ok else "warn", f"FRN-Passwort angefordert von {user} für {v.get('callsign')}: {title}")
+        return {"ok": ok, "title": title, "message": msg}
+
     # ---- Software-Vocoder
     @app.post("/api/admin/md380/install")
     async def md380_install(user: str = Depends(require_admin)) -> dict:

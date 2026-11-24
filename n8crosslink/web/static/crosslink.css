@@ -289,3 +289,13 @@ footer a { color: var(--text-dim); text-decoration: underline; text-decoration-c
   .kv { grid-template-columns: 1fr; }
   .bar-row { grid-template-columns: 54px 1fr 90px; }
 }
+
+/* ---------- Status-Popup ---------- */
+.status-pop { max-width: 440px; text-align: center; }
+.status-pop .sp-icon { width: 64px; height: 64px; margin: 4px auto 10px; border-radius: 20px; display: grid; place-items: center; font-size: 30px;
+  background: rgba(var(--accent-rgb), .14); border: 1px solid rgba(var(--accent-rgb), .4); }
+.status-pop.ok .sp-icon { background: rgba(48,209,88,.16); border-color: rgba(48,209,88,.5); }
+.status-pop.err .sp-icon { background: rgba(255,69,58,.14); border-color: rgba(255,69,58,.5); }
+.status-pop p { white-space: pre-line; line-height: 1.5; color: var(--text); opacity: .85; }
+.spinner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid rgba(255,255,255,.15); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }

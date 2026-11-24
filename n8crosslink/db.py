@@ -50,6 +50,8 @@ DEFAULTS: dict = {
         "version": "2014003",
         "rx_timeout_ms": 1000,
         "text_messages": False,     # experimentell: Sprechername als FRN-Textnachricht
+        "sysman_server": "sysman.freeradionetwork.eu",   # System Manager für „Passwort anfordern“
+        "sysman_port": 10025,
         "rx_gain_db": 0.0, "tx_gain_db": 0.0,
     },
     "dmr": {

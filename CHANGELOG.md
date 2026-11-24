@@ -2,6 +2,19 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.3.0] – 2026-11-24
+
+### Neu: FRN-Passwort anfordern
+- Knopf **„📧 Passwort anfordern“** im FRN-Adminbereich. Registriert die Station beim FRN-System-Manager (`IG:`-Befehl, gleiches Format wie das SvxLink-Skript `frn-register`); das Passwort kommt per E-Mail.
+- Nimmt die Werte direkt aus dem Formular (auch ungespeichert) und prüft sie vor dem Senden: Rufzeichen + Name, E-Mail, Band/Kanal („PC Only“, „Crosslink“ oder Frequenzformat), Land, Ort („Ort - Ortsteil“), keine spitzen Klammern.
+- **Status-Popup** mit Fortschritt (Spinner) und Ergebnis: angenommen (`OK`), bereits registriert (`NU`), Eingaben prüfen, keine Verbindung/Antwort, abgelehnt (mit Antwortcode). Jede Anforderung erscheint in den Ereignissen.
+- System Manager einstellbar (Standard `sysman.freeradionetwork.eu:10025`) für eigene FRN-Netze; Schutz gegen Mehrfachklicks (1 Anforderung pro Minute).
+- Wiederverwendbares Status-Popup für weitere Admin-Aktionen.
+
+### Tests & Doku
+- Simulation mit Fake-System-Manager: OK, NU, ungültige Eingaben (nichts gesendet), Server nicht erreichbar – jetzt **53/53 Prüfungen**.
+- Doku (Konfiguration → FRN-Passwort anfordern), README und neuer Screenshot.
+
 ## [1.2.2] – 2026-11-24
 
 ### Behoben

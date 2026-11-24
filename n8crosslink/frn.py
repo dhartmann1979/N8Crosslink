@@ -38,6 +38,63 @@ def split_on(on: str) -> tuple[str, str]:
     return on.strip(), ""
 
 
+BC_RE = re.compile(r"^(PC Only|Crosslink|[0-9]+\.[0-9]+(AM|FM|DIG)( (CTC[0-9.]+|DSC[0-9]+|CID[0-9]+|NONE))?)$")
+EMAIL_RE = re.compile(r"^[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+$")
+
+
+def validate_registration(v: dict) -> list[str]:
+    """Prüft die Angaben wie das SvxLink-Skript frn-register."""
+    errs = []
+    if not v.get("callsign", "").strip() or not v.get("op_name", "").strip():
+        errs.append("Rufzeichen und Name müssen ausgefüllt sein (FRN: „Rufzeichen, Name“)")
+    if not EMAIL_RE.match(v.get("email", "").strip()):
+        errs.append("E-Mail-Adresse ist ungültig")
+    if not BC_RE.match(v.get("band", "").strip()):
+        errs.append("Band/Kanal muss „PC Only“, „Crosslink“ oder z. B. „446.03125FM CTC131.8“ sein")
+    if not v.get("country", "").strip():
+        errs.append("Land fehlt")
+    if not re.match(r"^.+ - .+$", v.get("city", "").strip()):
+        errs.append("Ort muss die Form „Ort - Ortsteil“ haben (z. B. „Minden - JO42“)")
+    for k in ("callsign", "op_name", "email", "band", "description", "country", "city"):
+        if "<" in str(v.get(k, "")) or ">" in str(v.get(k, "")):
+            errs.append(f"„{k}“ darf keine spitzen Klammern enthalten")
+    return errs
+
+
+async def request_password(v: dict) -> tuple[bool, str, str]:
+    """FRN-Registrierung beim System Manager: das Passwort kommt per E-Mail.
+
+    Rückgabe: (erfolgreich, Kurzstatus, Meldung)."""
+    errs = validate_registration(v)
+    if errs:
+        return False, "Eingaben prüfen", "\n".join(errs)
+    on = f"{v['callsign'].strip()}, {v['op_name'].strip()}"
+    cmd = ("IG:" + f"<ON>{on}</ON>" + f"<EA>{v['email'].strip()}</EA>" + f"<BC>{v['band'].strip()}</BC>"
+           + f"<DS>{v.get('description', '').strip()}</DS>" + f"<NN>{v['country'].strip()}</NN>"
+           + f"<CT>{v['city'].strip()}</CT>")
+    host, port = v.get("sysman_server") or "sysman.freeradionetwork.eu", int(v.get("sysman_port") or 10025)
+    try:
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), 15)
+    except (OSError, asyncio.TimeoutError) as e:
+        return False, "Keine Verbindung", f"System Manager {host}:{port} nicht erreichbar ({e or 'Zeitüberschreitung'})"
+    try:
+        writer.write(cmd.encode("latin-1", errors="replace") + b"\n")
+        await writer.drain()
+        ans = (await asyncio.wait_for(reader.readline(), 30)).decode("latin-1", errors="replace").strip()
+    except (OSError, asyncio.TimeoutError):
+        return False, "Keine Antwort", f"Der System Manager {host}:{port} hat nicht geantwortet"
+    finally:
+        writer.close()
+    if ans == "OK":
+        return True, "Passwort angefordert", (f"Die Registrierung für „{on}“ wurde angenommen. Das Passwort wird an "
+                                              f"{v['email'].strip()} geschickt – bitte auch im Spam-Ordner nachsehen. "
+                                              "Danach das Passwort hier eintragen und speichern.")
+    if ans == "NU":
+        return False, "Bereits registriert", (f"„{on}“ bzw. die E-Mail ist beim FRN schon vergeben. Das vorhandene "
+                                              "Passwort verwenden (steht in der damaligen E-Mail) oder den FRN-Admin fragen.")
+    return False, "Abgelehnt", f"Der System Manager hat die Daten abgelehnt (Antwort: „{ans or 'leer'}“). Angaben prüfen."
+
+
 class FrnPort(Port):
     key = "frn"
     label = "FRN"

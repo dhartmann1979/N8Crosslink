@@ -24,6 +24,7 @@ with sync_playwright() as p:
     b = p.chromium.launch(args=["--autoplay-policy=no-user-gesture-required"])
     ctx = b.new_context(viewport={"width": 1440, "height": 1100}, device_scale_factor=1)
     page = ctx.new_page()
+    page.on("dialog", lambda d: d.accept())
     page.goto(BASE)
     time.sleep(2)
     wait_live(page, "FRN")
@@ -60,6 +61,13 @@ with sync_playwright() as p:
         page.click(f"#adminNav button[data-s={sec}]")
         time.sleep(0.8)
         page.screenshot(path=f"{OUT}/{name}.png", full_page=True)
+    # FRN: Passwort anfordern -> Status-Popup
+    page.click("#adminNav button[data-s=frn]")
+    time.sleep(0.8)
+    page.click("#frnPwBtn")
+    time.sleep(2)
+    page.screenshot(path=f"{OUT}/admin-frn-passwort-anfordern.png", full_page=False)
+    page.click("#spOk")
     # Mobil
     m = b.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True)
     mp = m.new_page()

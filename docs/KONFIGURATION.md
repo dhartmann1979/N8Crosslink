@@ -20,6 +20,19 @@ Matrix mit allen sechs Richtungen. Wirkt sofort, ohne Neustart.
 ## 📻 FRN
 Server, Backup-Server, Konto, Rufzeichen/Name (erscheint im FRN-Raum als „Rufzeichen, Name“), Client-Typ (0 = Crosslink, 1 = Gateway, 2 = PC Only), Band/Kanal, Raum. *Ende-Erkennung RX* ist die Zeit ohne Sprachpaket, nach der ein Durchgang als beendet gilt. Die FRN-Textnachricht mit dem Sprechernamen ist experimentell (nicht jeder FRN-Server/Client zeigt sie an).
 
+### 📧 FRN-Passwort anfordern
+Wer noch kein FRN-Konto hat: Rufzeichen, Name, E-Mail, Band/Kanal, Land und Ort („Ort - Ortsteil“) ausfüllen und **„📧 Passwort anfordern“** klicken. Die Werte aus dem Formular werden auch ohne Speichern genommen. Die Bridge registriert die Station beim **System Manager** (Standard `sysman.freeradionetwork.eu:10025`, einstellbar für eigene FRN-Netze), genauso wie das SvxLink-Skript `frn-register`. Ein Popup zeigt das Ergebnis:
+
+| Popup | Bedeutung |
+|---|---|
+| ✅ Passwort angefordert | Registrierung angenommen – das Passwort kommt per E-Mail (auch Spam-Ordner prüfen), dann ins Feld „Passwort (FRN)“ eintragen und speichern |
+| ⚠️ Bereits registriert | Rufzeichen/E-Mail ist schon vergeben – vorhandenes Passwort verwenden |
+| ⚠️ Eingaben prüfen | z. B. ungültige E-Mail, Band/Kanal nicht im Format „PC Only“ / „Crosslink“ / „446.03125FM CTC131.8“, Ort ohne „ - “ – es wurde nichts gesendet |
+| ⚠️ Keine Verbindung / Keine Antwort | System Manager nicht erreichbar |
+| ⚠️ Abgelehnt | System Manager lehnt die Daten ab (Antwortcode wird angezeigt) |
+
+Pro Minute ist eine Anforderung möglich.
+
 ## 📡 DMR
 | Feld | Bedeutung |
 |---|---|

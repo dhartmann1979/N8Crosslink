@@ -40,6 +40,15 @@ function avatar(src, key, label, cls = 'avatar', style = '') {
   return `<span class="${cls} ${src}" ${style}><span class="av-fb">${esc(initials(label))}</span>${img}</span>`;
 }
 const badge = (k, extra = '') => `<span class="badge ${k} ${extra}">${esc(NET[k]?.label || k)}</span>`;
+/* Status-Popup: statusPopup('busy'|'ok'|'err', Titel, Text) */
+function statusPopup(state, title, text = '') {
+  const box = $('#statusBox');
+  box.classList.remove('ok', 'err'); if (state !== 'busy') box.classList.add(state);
+  $('#spIcon').innerHTML = state === 'busy' ? '<span class="spinner"></span>' : state === 'ok' ? '✅' : '⚠️';
+  $('#spTitle').textContent = title; $('#spText').textContent = text;
+  $('#spOk').hidden = state === 'busy';
+  $('#statusModal').classList.add('open');
+}
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2800); }
 async function api(path, opts = {}) {
   const o = { headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', ...opts };
@@ -358,7 +367,10 @@ const SCHEMA = {
     F('version', 'Protokollversion'), F('rx_timeout_ms', 'Ende-Erkennung RX (ms)', 'number', { help: 'Kein Sprachpaket für diese Zeit = Durchgang beendet (SvxLink: 1000)' }),
     F('rx_gain_db', 'Pegel FRN → Bridge (dB)', 'number', { step: 0.5 }), F('tx_gain_db', 'Pegel Bridge → FRN (dB)', 'number', { step: 0.5 }),
     F('text_messages', 'Sprechername als FRN-Textnachricht (experimentell)', 'bool'),
-  ] },
+    F('sysman_server', 'System Manager (für „Passwort anfordern“)', 'text', { help: 'Standard sysman.freeradionetwork.eu – bei eigenem FRN-Netz dessen System Manager' }),
+    F('sysman_port', 'System-Manager-Port', 'number'),
+  ], extra: `<div class="banner" style="margin:12px 4px 0">🔑 <span class="grow">Noch kein FRN-Passwort? Rufzeichen, Name, E-Mail, Band/Kanal, Land und Ort ausfüllen und anfordern – das Passwort kommt per E-Mail.</span>
+      <button class="btn" type="button" id="frnPwBtn">📧 Passwort anfordern</button></div>` },
   dmr: { title: '📡 DMR', fields: [
     F('enabled', 'DMR aktiv', 'bool'), F('host', 'Server (HBlink4 / FreeDMR)'), F('port', 'Port', 'number'),
     F('password', 'Passwort (Passphrase)', 'password', { help: 'leer lassen = unverändert' }),
@@ -404,7 +416,8 @@ async function loadAdmin() {
   $$('#adminNav button').forEach(b => b.onclick = () => { S.adminSec = b.dataset.s; loadAdmin(); });
   const sec = SCHEMA[S.adminSec];
   if (sec.custom) return sec.custom();
-  renderForm(S.adminSec, sec.fields);
+  renderForm(S.adminSec, sec.fields, sec.extra || '');
+  if (S.adminSec === 'frn') $('#frnPwBtn').onclick = requestFrnPassword;
 }
 
 function fieldHtml(sec, f, val) {
@@ -645,6 +658,24 @@ async function startUpdate() {
 $('#updateNowBtn')?.addEventListener('click', () => startUpdate());
 $('#updateInfoBtn')?.addEventListener('click', () => { S.adminSec = 'update'; showTab('admin'); });
 $('#pwChangeBtn')?.addEventListener('click', () => { S.adminSec = 'users'; showTab('admin'); });
+
+$('#spOk').addEventListener('click', () => $('#statusModal').classList.remove('open'));
+
+/* ---------- FRN: Passwort anfordern ---------- */
+async function requestFrnPassword() {
+  const v = {};
+  for (const k of ['callsign', 'op_name', 'email', 'band', 'description', 'country', 'city', 'sysman_server', 'sysman_port']) {
+    const el = $(`#f_frn_${k}`); if (el) v[k] = el.value.trim();
+  }
+  const miss = [['callsign', 'Rufzeichen'], ['op_name', 'Name'], ['email', 'E-Mail'], ['band', 'Band/Kanal'], ['country', 'Land'], ['city', 'Ort']].filter(([k]) => !v[k]).map(([, l]) => l);
+  if (miss.length) return statusPopup('err', 'Angaben fehlen', 'Bitte ausfüllen: ' + miss.join(', '));
+  if (!confirm(`FRN-Passwort für „${v.callsign}, ${v.op_name}“ an ${v.email} anfordern?`)) return;
+  statusPopup('busy', 'Passwort wird angefordert …', `Verbinde mit ${v.sysman_server || 'sysman.freeradionetwork.eu'}:${v.sysman_port || 10025}`);
+  try {
+    const r = await api('/api/admin/frn/request-password', { method: 'POST', body: v });
+    statusPopup(r.ok ? 'ok' : 'err', r.title, r.message);
+  } catch (e) { statusPopup('err', 'Fehler', e.message); }
+}
 
 /* ---------- Backup & Neuanfang ---------- */
 function renderBackup() {

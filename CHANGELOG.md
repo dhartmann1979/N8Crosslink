@@ -2,6 +2,13 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.7.1] – 2026-11-24
+
+### 🌐 N8 Kit 1.0.1
+- Absätze, die im Quelltext über mehrere Zeilen gehen, werden beim Umschalten **DE | EN** als Ganzes übersetzt (vorher Zeile für Zeile,
+  deshalb blieben längere Hilfetexte manchmal in der Originalsprache). `n8-kit.js` ist wieder in allen vier N8schicht-Projekten gleich
+  (HBlink4-FreeRadioID 1.6.0, adn-frn-server, N8-HotSpot, N8 Crosslink).
+
 ## [1.7.0] – 2026-11-24
 
 N8 Crosslink zieht auf **N8 Theme 2** und das **N8 Kit** um – dieselben Bausteine wie HBlink4-FreeRadioID, adn-frn-server und

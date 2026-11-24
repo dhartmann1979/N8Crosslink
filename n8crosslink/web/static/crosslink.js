@@ -844,6 +844,14 @@ function renderBackup() {
     <div class="form"><div class="field"><label>Superadmin-Passwort (dein aktuelles Passwort)</label><input type="password" id="bkPw" autocomplete="current-password"></div></div>
     <div class="form-actions" style="justify-content:flex-start"><button class="btn" id="bkBtn">💾 Verschlüsseltes Backup erstellen</button><span id="bkMsg" style="font-size:13px;color:var(--text-dim)"></span></div>
 
+    <h2 class="section-header">📦 Umzug ins HobbyRadioPortal</h2>
+    <div class="banner" style="margin:6px 0 14px;align-items:flex-start;border-left:3px solid #0a84ff">📦 <div class="grow">
+      Ziehst du N8 Crosslink auf den Server des <b>HobbyRadioPortals</b> um, ist dieses Backup das <b>Umzugspaket</b>:
+      oben erstellen und herunterladen, dann im Web-Installer des Portals unter <b>Crosslink übernehmen</b> hochladen und dasselbe Superadmin-Passwort eingeben.
+      Der Installer richtet N8 Crosslink dort mit allen Einstellungen, Benutzern und Daten ein (Web-Port 8070, auf Wunsch FRN und DMR über 127.0.0.1)
+      und verbindet das Portal per API-Token. <b>Hier bleibt alles, wie es ist</b> – erst nach dem Umzug abschalten, sonst laufen zwei Bridges im selben Raum.
+      <a href="https://github.com/dhartmann1979/HobbyRadioPortal/blob/main/docs/UMZUG.md" target="_blank" rel="noopener">Anleitung</a></div></div>
+
     <h2 class="section-header">Backup wiederherstellen</h2>
     <div class="form"><div class="field"><label>Backupdatei (.n8xbak)</label><input type="file" id="rsFile" accept=".n8xbak"></div>
       <div class="field"><label>Superadmin-Passwort zum Zeitpunkt des Backups</label><input type="password" id="rsPw" autocomplete="off"></div></div>

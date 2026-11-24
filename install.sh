@@ -3,6 +3,13 @@
 #  N8 Crosslink – geführter Installer
 #  FRN · DMR · Zello Bridge im Die-N8schicht-Design (nur Python, ohne SvxLink)
 #  Debian 12/13, Ubuntu 22.04+, Raspberry Pi OS, DietPi (amd64 / arm64 / armhf)
+#
+#  Ohne Rückfragen aus einem Backup (Umzug, z. B. durch den Web-Installer des HobbyRadioPortals):
+#    N8X_RESTORE=/pfad/backup.n8xbak          verschlüsseltes Backup
+#    N8X_RESTORE_PASSWORD_FILE=/pfad/datei    Superadmin-Passwort des Backups (erste Zeile)
+#    N8X_WEB_PORT=8070                        Web-Port auf dem neuen Server (sonst der aus dem Backup)
+#    N8X_LOCAL_LINKS=1                        FRN- und DMR-Server auf 127.0.0.1 umstellen (laufen auf demselben Rechner)
+#    N8X_PORTAL_TOKEN_FILE=/pfad/datei        API-Token „HobbyRadioPortal“ anlegen und hierhin schreiben (600)
 # =============================================================================
 set -euo pipefail
 
@@ -294,7 +301,13 @@ ARCH=$(dpkg --print-architecture 2>/dev/null || uname -m)
 info "System: ${PRETTY_NAME:-unbekannt} (${ARCH}) · N8 Crosslink ${APP_VERSION}"
 
 MODE="neu"
-if [[ -f "$DB" && "${N8X_UPDATE:-0}" == "1" ]]; then
+UNATTENDED=0
+if [[ -n "${N8X_RESTORE:-}" ]]; then
+  UNATTENDED=1
+  [[ -f "$N8X_RESTORE" ]] || fail "Backup nicht gefunden: $N8X_RESTORE"
+  [[ -f "${N8X_RESTORE_PASSWORD_FILE:-}" ]] || fail "N8X_RESTORE_PASSWORD_FILE fehlt (Superadmin-Passwort des Backups)"
+  info "Umzug ohne Rückfragen aus $(basename "$N8X_RESTORE")"
+elif [[ -f "$DB" && "${N8X_UPDATE:-0}" == "1" ]]; then
   MODE="update"
 elif [[ -f "$DB" ]]; then
   echo
@@ -340,6 +353,22 @@ fix_perms
 runuser -u "$SVC_USER" -- "$APP_DIR/venv/bin/python" -c "import sys; sys.path.insert(0, '$APP_DIR'); from n8crosslink.audio import gsm, opus; gsm.GsmEncoder(); opus.OpusEncoder()" \
   || fail "libgsm/libopus konnten nicht geladen werden"
 ok "Abhängigkeiten installiert, GSM- und Opus-Codec geprüft"
+
+if (( UNATTENDED )); then
+  step 4 "Backup einspielen (Umzug)"
+  install -m 600 -o "$SVC_USER" -g "$SVC_USER" "$N8X_RESTORE" "$DATA_DIR/restore.n8xbak"
+  if head -n1 "$N8X_RESTORE_PASSWORD_FILE" | cli restore "$DATA_DIR/restore.n8xbak"; then
+    MODE="restored"; rm -f "$DATA_DIR/restore.n8xbak"
+  else
+    rm -f "$DATA_DIR/restore.n8xbak"; fail "Backup nicht eingespielt (Passwort falsch oder Datei beschädigt)"
+  fi
+  if [[ -n "${N8X_WEB_PORT:-}" ]]; then setcfg general web_port "$N8X_WEB_PORT"; ok "Web-Port $N8X_WEB_PORT"; fi
+  if [[ "${N8X_LOCAL_LINKS:-0}" == 1 ]]; then
+    setcfg frn server 127.0.0.1; setcfg dmr host 127.0.0.1
+    ok "FRN- und DMR-Server auf 127.0.0.1 umgestellt (laufen auf diesem Rechner)"
+  fi
+  ok "Backup eingespielt – alle Einstellungen, Benutzer und Daten übernommen"
+fi
 
 if [[ "$MODE" == "neu" ]]; then
   echo
@@ -543,6 +572,13 @@ if [[ "$MODE" == "neu" ]]; then
     certbot --nginx -d "$SERVER_NAME" --non-interactive --agree-tos -m "$LE_MAIL" --redirect >/dev/null 2>&1 \
       && ok "HTTPS aktiv: https://${SERVER_NAME}" || warn "Zertifikat fehlgeschlagen – DNS/Port 80 prüfen, dann: certbot --nginx -d ${SERVER_NAME}"
   fi
+fi
+
+if [[ -n "${N8X_PORTAL_TOKEN_FILE:-}" ]]; then
+  if TOK=$(cli api-token HobbyRadioPortal 2>&1); then
+    install -m 600 /dev/null "$N8X_PORTAL_TOKEN_FILE"; printf '%s\n' "$TOK" > "$N8X_PORTAL_TOKEN_FILE"; unset TOK
+    ok "API-Token „HobbyRadioPortal“ angelegt"
+  else warn "API-Token nicht angelegt: $TOK"; fi
 fi
 
 echo

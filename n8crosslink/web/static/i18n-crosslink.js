@@ -106,7 +106,7 @@ N8Kit.i18n.add({
 
         // Admin: Updates (N8 Kit), Backup, Benutzer, System
         'Update-Dienst': 'Update service', 'eingerichtet': 'set up', 'Update-Dienst fehlt – einmal': 'Update service missing – run once', 'ausführen': '', 'zurückgesetzt auf': 'rolled back to',
-        'Verschlüsseltes Backup erstellen': 'Create encrypted backup', 'Backup herunterladen': 'Download backup', 'Backup wiederherstellen': 'Restore backup', 'Backupdatei (.n8xbak)': 'Backup file (.n8xbak)',
+        'Verschlüsseltes Backup erstellen': 'Create encrypted backup', '📦 Umzug ins HobbyRadioPortal': '📦 Move to the HobbyRadioPortal', 'Umzug ins HobbyRadioPortal': 'Move to the HobbyRadioPortal', 'Anleitung': 'Guide', 'Backup herunterladen': 'Download backup', 'Backup wiederherstellen': 'Restore backup', 'Backupdatei (.n8xbak)': 'Backup file (.n8xbak)',
         'WICHTIG – Superadmin-Passwort = Schlüssel des Backups': 'IMPORTANT – superadmin password = key of the backup',
         'Das Backup wird vollständig verschlüsselt (AES-256-GCM, kein Klartext). Der Schlüssel ist das': 'The backup is fully encrypted (AES-256-GCM, no plain text). The key is the',
         'Superadmin-Passwort': 'superadmin password', 'zum Zeitpunkt des Backups. Ohne dieses Passwort lässt sich das Backup': 'at the time of the backup. Without this password the backup cannot be',

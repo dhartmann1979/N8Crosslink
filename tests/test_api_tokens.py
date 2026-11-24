@@ -92,3 +92,17 @@ if __name__ == "__main__":
         if n.startswith("test_"):
             f()
             print("✓", n)
+
+
+def test_cli_api_token(tmp_path, monkeypatch, capsys):
+    """Der Installer legt beim Umzug ins Portal so den Token an (N8X_PORTAL_TOKEN_FILE)."""
+    import sys
+    from n8crosslink import cli
+    from n8crosslink.db import Database
+    db = tmp_path / "x.db"
+    monkeypatch.setattr(sys, "argv", ["cli", "--db", str(db), "api-token", "HobbyRadioPortal"])
+    assert cli.main() == 0
+    tok = capsys.readouterr().out.strip()
+    assert tok.startswith("n8x_") and Database(str(db)).list_api_tokens()[0]["name"] == "HobbyRadioPortal"
+    monkeypatch.setattr(sys, "argv", ["cli", "--db", str(db), "api-token", "x"])
+    assert cli.main() == 2

@@ -101,12 +101,12 @@ DEFAULTS: dict = {
         "rx_gain_db": 0.0, "tx_gain_db": 0.0,
     },
     "vocoder": {
-        "vocoder_mode": "md380",     # md380 | usb | ambeserver | none
-        "md380_host": "127.0.0.1", "md380_port": 2470, "md380_send_init": False,
+        "vocoder_mode": "droidstar",   # droidstar | usb | ambeserver | none
+        "droidstar_lib": "",           # leer = automatisch (/opt/n8crosslink/lib/libambe2.so)
         "usb_device": "/dev/ttyUSB0", "usb_baud": 460800, "usb_send_init": True,
         "ambeserver_host": "127.0.0.1", "ambeserver_port": 2460, "ambeserver_send_init": True,
         "vocoder_enc_gain_db": 0.0, "vocoder_dec_gain_db": 0.0,
-        "vocoder_timeout_ms": 300, "vocoder_restart_s": 20, "md380_auto_restart": True,
+        "vocoder_timeout_ms": 300, "vocoder_restart_s": 20,
     },
 }
 
@@ -173,7 +173,25 @@ class Database:
                         cfg[row["section"]][row["key"]] = json.loads(row["value"])
                     except json.JSONDecodeError:
                         pass
+        # 1.4.0: md380-emu entfällt – alte Einstellungen auf den DroidStar-Vocoder umstellen
+        v = cfg["vocoder"]
+        for k in [k for k in v if k.startswith("md380_")]:
+            del v[k]
+        if v.get("vocoder_mode") == "md380":
+            v["vocoder_mode"] = "droidstar"
         return cfg
+
+    def migrate_vocoder(self) -> bool:
+        """Entfernt md380-emu-Einstellungen aus der Datenbank. True, wenn umgestellt wurde."""
+        with self.lock:
+            row = self.conn.execute("SELECT value FROM settings WHERE section='vocoder' AND key='vocoder_mode'").fetchone()
+            changed = bool(row and json.loads(row["value"]) == "md380")
+            if changed:
+                self.conn.execute("UPDATE settings SET value=? WHERE section='vocoder' AND key='vocoder_mode'",
+                                  (json.dumps("droidstar"),))
+            self.conn.execute("DELETE FROM settings WHERE section='vocoder' AND key LIKE 'md380\\_%' ESCAPE '\\'")
+            self.conn.commit()
+        return changed
 
     def save_section(self, section: str, values: dict) -> None:
         if section not in DEFAULTS:

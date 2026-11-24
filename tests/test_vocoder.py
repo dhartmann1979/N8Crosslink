@@ -1,7 +1,7 @@
 """Vocoder-Robustheit: verlorene und verspätete UDP-Antworten dürfen die
 Zuordnung Anfrage/Antwort nicht verschieben.
 
-Der Fake-md380 kodiert die laufende Nummer aus dem ersten PCM-Sample in das
+Der Fake-AMBEserver kodiert die laufende Nummer aus dem ersten PCM-Sample in das
 erste AMBE-Byte zurück. Jede 7. Antwort geht verloren, jede 11. kommt 450 ms
 zu spät. Erwartet: jede gelieferte Antwort passt zu ihrer Anfrage.
 """
@@ -20,7 +20,7 @@ from n8crosslink.vocoder import Vocoder  # noqa: E402
 PORT = 24701
 
 
-class FlakyMd380(asyncio.DatagramProtocol):
+class FlakyAmbeServer(asyncio.DatagramProtocol):
     def __init__(self) -> None:
         self.n = 0
 
@@ -46,8 +46,9 @@ class FlakyMd380(asyncio.DatagramProtocol):
 
 async def main() -> int:
     loop = asyncio.get_running_loop()
-    await loop.create_datagram_endpoint(FlakyMd380, local_addr=("127.0.0.1", PORT))
-    v = Vocoder({"vocoder_mode": "md380", "md380_port": PORT, "vocoder_timeout_ms": 200})
+    await loop.create_datagram_endpoint(FlakyAmbeServer, local_addr=("127.0.0.1", PORT))
+    v = Vocoder({"vocoder_mode": "ambeserver", "ambeserver_port": PORT, "ambeserver_send_init": False,
+                 "vocoder_timeout_ms": 200})
     await v.start()
     assert v.online, "Vocoder nicht online"
     futs = []
@@ -66,7 +67,33 @@ async def main() -> int:
     if ok < 110:
         print("FEHLER: zu viele Ausfälle trotz Wiederholung")
         return 1
-    print("OK")
+    print("OK (AMBEserver)")
+    return await droidstar()
+
+
+async def droidstar() -> int:
+    """DroidStar-Vocoder (falls gebaut, z. B. N8X_AMBE_LIB=…/libambe2.so)."""
+    from n8crosslink.dmr.burst import AMBE_SILENCE
+    from n8crosslink.vocoder import find_droidstar_lib, tone_test
+    if not find_droidstar_lib():
+        print("DroidStar-Vocoder nicht gebaut – Test übersprungen")
+        return 0
+    v = Vocoder({"vocoder_mode": "droidstar"})
+    await v.start()
+    assert v.online, "DroidStar-Vocoder nicht online"
+    r = await tone_test(v, 50)
+    # Stille-Rahmen aus dem DMR-Burst muss Stille ergeben (Bitreihenfolge stimmt)
+    v.new_stream("dec")
+    pcm = [await v.decode(AMBE_SILENCE) for _ in range(5)]
+    rms = float(np.sqrt(np.mean(np.frombuffer(pcm[-1], dtype="<i2").astype(float) ** 2)))
+    # parallele Aufrufe bleiben in Reihenfolge
+    outs = await asyncio.gather(*[v.encode(bytes(320)) for _ in range(30)])
+    await v.stop()
+    print(f"DroidStar: {r}, Stille-RMS {rms:.0f}, {sum(o is not None for o in outs)}/30 parallel")
+    if not r["ok"] or rms > 50 or not all(outs):
+        print("FEHLER DroidStar")
+        return 1
+    print("OK (DroidStar)")
     return 0
 
 

@@ -35,7 +35,7 @@ def main() -> int:
     ik.add_argument("--issuer", default=None)
     sub.add_parser("zello-key-info")
     vt = sub.add_parser("vocoder-test")
-    vt.add_argument("--mode", default=None, help="md380 | usb | ambeserver (Standard: aus der Konfiguration)")
+    vt.add_argument("--mode", default=None, help="droidstar | usb | ambeserver (Standard: aus der Konfiguration)")
     vt.add_argument("--host", default=None)
     vt.add_argument("--port", type=int, default=None)
     b = sub.add_parser("backup")
@@ -101,32 +101,26 @@ def main() -> int:
         return 0
     if args.cmd == "vocoder-test":
         import asyncio
-        import time
 
-        import numpy as np
-
-        from .vocoder import Vocoder
+        from .vocoder import Vocoder, tone_test
         cfg = dict(db.load_config()["vocoder"])
         if args.mode:
             cfg["vocoder_mode"] = args.mode
         m = cfg["vocoder_mode"]
         if args.host:
-            cfg["md380_host" if m == "md380" else "ambeserver_host"] = args.host
+            cfg["ambeserver_host"] = args.host
         if args.port:
-            cfg["md380_port" if m == "md380" else "ambeserver_port"] = args.port
+            cfg["ambeserver_port"] = args.port
 
         async def run() -> int:
             v = Vocoder(cfg)
             await v.start()
-            t0 = time.perf_counter()
-            tone = (np.sin(2 * np.pi * 1000 * np.arange(160) / 8000) * 9000).astype("<i2").tobytes()
-            amb = await v.encode(tone, timeout=2)
-            pcm = await v.decode(amb, timeout=2) if amb else None
+            r = await tone_test(v) if v.running else {"ok": False, "frames": 0}
             await v.stop()
-            if amb and pcm:
-                print(f"OK {m}: Encode+Decode in {(time.perf_counter() - t0) * 1000:.0f} ms {v.product}".strip())
+            if r["ok"]:
+                print(f"OK {m}: {r['ms']} ms je Rahmen, 1 kHz -> {r['hz']} Hz {v.product} {v.version}".strip())
                 return 0
-            print(f"FEHLER {m}: keine Antwort")
+            print(f"FEHLER {m}: {r.get('frames', 0)} Rahmen, {r.get('hz', 0)} Hz – {v.product or 'keine Antwort'}")
             return 1
         return asyncio.run(run())
     if args.cmd in ("backup", "restore"):

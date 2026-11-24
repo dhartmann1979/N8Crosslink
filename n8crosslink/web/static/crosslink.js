@@ -112,7 +112,7 @@ function renderState() {
   }
   const v = st.vocoder;
   $('#ssVoc').className = 'ss ' + (v ? (v.online ? 'on' : '') : 'warn');
-  $('#ssVocLbl').innerHTML = '&nbsp;' + esc(v ? (v.mode === 'md380' ? 'md380-emu' : v.mode === 'usb' ? 'USB-Stick' : v.mode) + (v.online ? '' : ' offline') : 'aus');
+  $('#ssVocLbl').innerHTML = '&nbsp;' + esc(v ? (v.mode === 'droidstar' ? 'DroidStar' : v.mode === 'usb' ? 'USB-Stick' : v.mode) + (v.online ? '' : ' offline') : 'aus');
   $('#ssInfo').textContent = st.active ? '' : 'Ruhe';
   renderOnAir(); renderNetCards(); renderRoom();
   const up = st.update;
@@ -293,7 +293,7 @@ function renderNetDetails() {
       ['Durchgänge', `⇣ ${z.counters?.rx || 0} · ⇡ ${z.counters?.tx || 0}`], ...wd(z)])) +
     card('voc', 'Vocoder (AMBE+2)', kv([['Status', v ? (v.online ? '<span class="badge ok">bereit</span>' : '<span class="badge off">offline</span>') : '<span class="badge warn">nicht gestartet</span>'],
       ['Betriebsart', esc(v?.name)], ['Gerät', esc(v?.product)], ['Version', esc(v?.version)],
-      ['Rahmen', v ? `Encode ${v.enc} · Decode ${v.dec} · Timeouts ${v.timeouts} · Wiederholt ${v.retries ?? 0} · Neustarts ${v.restarts ?? 0}` : '–'],
+      ['Rahmen', v ? `Encode ${v.enc} · Decode ${v.dec} · Timeouts ${v.timeouts} · Wiederholt ${v.retries ?? 0} · Neu geöffnet ${v.reopens ?? 0}` : '–'],
       ['Watchdog', v ? `${v.reopens || 0}× neu geöffnet` : '–']]));
 }
 
@@ -473,30 +473,32 @@ function renderRoutes() {
 function renderVocoder() {
   const c = S.cfg.vocoder, mode = c.vocoder_mode;
   const opts = [
-    ['md380', '🧠 md380-emu (Software)', 'Ohne Zusatzhardware. Läuft nativ auf ARM (Raspberry Pi), auf x86 über qemu-user. Standard UDP 127.0.0.1:2470.'],
+    ['droidstar', '🧠 DroidStar (Software)', 'AMBE+2-Software-Vocoder aus DroidStar. Ohne Zusatzhardware, ohne qemu und ohne Zusatzdienst – läuft direkt in der Bridge (x86 und ARM).'],
     ['usb', '🔌 USB-Stick (AMBE3000)', 'ThumbDV, DVstick 30, DV3000 direkt per USB/seriell. Beste Qualität, kein Zusatzdienst nötig.'],
     ['ambeserver', '🌐 AMBEserver (Netz)', 'AMBE3000 an einem anderen Rechner hinter AMBEserver (UDP 2460).'],
     ['none', '🧪 Test ohne Vocoder', 'Nur zum Testen der Verbindungen – DMR-Audio ist dann stumm.'],
   ];
   const fields = {
-    md380: [F('md380_host', 'md380-emu Adresse'), F('md380_port', 'md380-emu Port', 'number'), F('md380_send_init', 'Init-Pakete (Reset/Rate) senden', 'bool'), F('md380_auto_restart', 'Hängenden md380-emu-Dienst automatisch neu starten', 'bool')],
+    droidstar: [F('droidstar_lib', 'Bibliothek (leer = automatisch)', 'text', { help: 'Standard: /opt/n8crosslink/lib/libambe2.so' })],
     usb: [F('usb_device', 'Gerät', 'text', { help: 'z. B. /dev/ttyUSB0 oder /dev/serial/by-id/…' }),
       F('usb_baud', 'Baudrate', 'select', { options: [[460800, '460800 (ThumbDV / DVstick 30)'], [230400, '230400 (DV3000 Pi-Hat)'], [921600, '921600']] }),
       F('usb_send_init', 'Init-Pakete (Reset/Rate) senden', 'bool')],
     ambeserver: [F('ambeserver_host', 'AMBEserver Adresse'), F('ambeserver_port', 'AMBEserver Port', 'number'), F('ambeserver_send_init', 'Init-Pakete senden', 'bool')],
     none: [],
   };
-  const common = [F('vocoder_enc_gain_db', 'Pegel vor dem Kodieren (dB)', 'number', { step: 0.5 }), F('vocoder_dec_gain_db', 'Pegel nach dem Dekodieren (dB)', 'number', { step: 0.5 }), F('vocoder_timeout_ms', 'Antwortzeit je Rahmen (ms)', 'number'), F('vocoder_restart_s', 'Watchdog: neu starten nach (s) ohne Antwort', 'number')];
-  const sel = window._vocSel || mode;
+  const sel = window._vocSel || (fields[mode] ? mode : 'droidstar');
+  const common = [F('vocoder_enc_gain_db', 'Pegel vor dem Kodieren (dB)', 'number', { step: 0.5 }), F('vocoder_dec_gain_db', 'Pegel nach dem Dekodieren (dB)', 'number', { step: 0.5 }),
+    ...(sel === 'usb' || sel === 'ambeserver' ? [F('vocoder_timeout_ms', 'Antwortzeit je Rahmen (ms)', 'number')] : []),
+    F('vocoder_restart_s', 'Watchdog: neu öffnen nach (s) ohne Antwort', 'number')];
   const flds = [...fields[sel], ...common];
   const v = S.state?.vocoder;
   $('#adminBody').innerHTML = `<div class="voc-choice">${opts.map(([k, t, d]) => `<div class="voc-opt ${k === sel ? 'active' : ''}" data-m="${k}"><b>${t}${k === mode ? ' · aktiv' : ''}</b><small>${d}</small></div>`).join('')}</div>
     <div class="form">${flds.map(f => fieldHtml('vocoder', f, c[f.key])).join('')}
-      <div class="field wide"><label>Aktueller Zustand</label><div>${v ? `${v.online ? '<span class="badge ok">bereit</span>' : '<span class="badge off">offline</span>'} ${esc(v.name)} ${esc(v.product || '')} · Encode ${v.enc} · Decode ${v.dec} · Timeouts ${v.timeouts} · Wiederholt ${v.retries ?? 0} · Neustarts ${v.restarts ?? 0}` : '<span class="badge warn">nicht gestartet</span>'}</div>
+      <div class="field wide"><label>Aktueller Zustand</label><div>${v ? `${v.online ? '<span class="badge ok">bereit</span>' : '<span class="badge off">offline</span>'} ${esc(v.name)} ${esc(v.product || '')} ${esc(v.version || '')} · Encode ${v.enc} · Decode ${v.dec} · Timeouts ${v.timeouts} · Wiederholt ${v.retries ?? 0} · Neu geöffnet ${v.reopens ?? 0}` : '<span class="badge warn">nicht gestartet</span>'}</div>
       <small id="vocTestRes"></small></div></div>
     <pre id="mdOut" style="font-size:11.5px;white-space:pre-wrap;color:var(--text-dim);padding:0 4px"></pre>
     <div class="form-actions">${sel === 'usb' ? '<button class="btn secondary" id="scanBtn">🔍 USB-Geräte suchen</button>' : ''}
-      ${sel === 'md380' ? '<button class="btn secondary" id="mdBtn">🧠 md380-emu installieren / reparieren</button>' : ''}
+      ${sel === 'droidstar' ? '<button class="btn secondary" id="mdBtn">🔨 DroidStar-Vocoder bauen / aktualisieren</button>' : ''}
       <button class="btn secondary" id="vocTestBtn">🧪 Vocoder testen</button><button class="btn" id="saveBtn">💾 Speichern &amp; neu starten</button></div>`;
   $$('.voc-opt').forEach(o => o.onclick = () => { window._vocSel = o.dataset.m; renderVocoder(); });
   $('#saveBtn').onclick = async () => {
@@ -505,9 +507,9 @@ function renderVocoder() {
     window._vocSel = null; toast('🔄 Vocoder gespeichert, Bridge startet neu …'); setTimeout(loadAdmin, 2500);
   };
   if ($('#mdBtn')) $('#mdBtn').onclick = async () => {
-    if (!confirm('md380-emu jetzt installieren bzw. reparieren? (DVSwitch-Paketquelle, ggf. qemu, Dienst, Funktionstest – dauert bis zu einigen Minuten)')) return;
-    $('#mdOut').textContent = 'installiere … (bitte warten)';
-    try { const r = await api('/api/admin/md380/install', { method: 'POST' }); $('#mdOut').textContent = r.message; toast(r.ok ? '✅ md380-emu bereit' : '⚠️ siehe Ausgabe');
+    if (!confirm('DroidStar-Vocoder jetzt aus den DroidStar-Quellen bauen? (Compiler wird bei Bedarf installiert, Funktionstest – dauert ca. 1–5 Minuten)')) return;
+    $('#mdOut').textContent = 'baue … (bitte warten)';
+    try { const r = await api('/api/admin/vocoder/build', { method: 'POST' }); $('#mdOut').textContent = r.message; toast(r.ok ? '✅ DroidStar-Vocoder bereit' : '⚠️ siehe Ausgabe');
       if (r.ok) { await api('/api/admin/restart', { method: 'POST' }); } }
     catch (e) { $('#mdOut').textContent = '⚠️ ' + e.message; }
   };

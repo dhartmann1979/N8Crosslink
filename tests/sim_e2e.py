@@ -75,6 +75,7 @@ class FakeVocoder(asyncio.DatagramProtocol):
 # ---------------------------------------------------------------------------- Fake-HBlink
 class FakeHB(asyncio.DatagramProtocol):
     PASS = "testpass"
+    tone: list = []
 
     def __init__(self) -> None:
         self.peer = None
@@ -123,8 +124,12 @@ class FakeHB(asyncio.DatagramProtocol):
             await asyncio.sleep(0.06)
         n = sf = 0
         t_end = time.time() + seconds
+        k = 0
         while time.time() < t_end:
-            amb = (B.AMBE_SILENCE,) * 3
+            if self.tone:      # echte AMBE+2-Rahmen (1-kHz-Ton, mit DroidStar kodiert)
+                amb = tuple(self.tone[(k + i) % len(self.tone)] for i in range(3)); k += 3
+            else:
+                amb = (B.AMBE_SILENCE,) * 3
             if n == 0:
                 p = pkt(seq, 0x10, B.build_voice_burst(amb, 0, 1, None))
             else:
@@ -374,7 +379,19 @@ async def main() -> int:
                             "userdb_url": "", "userdb_fallback_url": ""})
     db.save_section("zello", {"enabled": True, "server": f"ws://127.0.0.1:{ZELLO_PORT}/ws", "channel": "N8test",
                               "username": "n8bridge", "password": "pw", "auth_mode": "none"})
-    db.save_section("vocoder", {"vocoder_mode": "ambeserver", "ambeserver_port": VOC_PORT})
+    # N8X_SIM_VOCODER=droidstar: echter DroidStar-Vocoder statt Fake-AMBEserver
+    use_ds = os.environ.get("N8X_SIM_VOCODER") == "droidstar"
+    if use_ds:
+        from n8crosslink.vocoder import DroidStarCodec, find_droidstar_lib
+        lib = find_droidstar_lib()
+        assert lib, "N8X_AMBE_LIB nicht gesetzt / DroidStar-Vocoder nicht gebaut"
+        c = DroidStarCodec(lib)
+        t = (np.sin(2 * np.pi * 1000 * np.arange(160 * 50) / 8000) * 9000).astype("<i2")
+        FakeHB.tone = [c.encode(t[i * 160:(i + 1) * 160].tobytes()) for i in range(50)][5:]
+        c.close()
+        db.save_section("vocoder", {"vocoder_mode": "droidstar"})
+    else:
+        db.save_section("vocoder", {"vocoder_mode": "ambeserver", "ambeserver_port": VOC_PORT})
     db.save_section("general", {"hang_time_ms": 400, "watchdog_offline_s": 4})
     web_base = f"http://127.0.0.1:{ZELLO_PORT}/ids"
     db.save_section("ids", {"subscriber_csv_url": f"{web_base}/subscriber_ids.csv", "subscriber_json_url": "",
@@ -395,7 +412,7 @@ async def main() -> int:
     for k, p in r.ports.items():
         check(f"{k} online", p.online, f"{p.state} {p.detail}")
     v = bridge.vocoder.status()
-    check("Vocoder (AMBEserver-Protokoll) bereit", v["online"], f"{v['product']} {v['version'][:20]}")
+    check("Vocoder bereit (" + ("DroidStar" if use_ds else "AMBEserver-Protokoll") + ")", v["online"], f"{v['product']} {v['version'][:20]}")
     check("FRN-Login als Crosslink (CL=0, BC=Crosslink)", "<CL>0</CL>" in frn.login and "<BC>Crosslink</BC>" in frn.login)
     check("DMR RPTC 302 Byte + RPTO", getattr(hb, "cfg_len", 0) == 302 and hb.options == b"TS2=262",
           f"{getattr(hb, 'cfg_len', 0)} Byte, RPTO={hb.options!r}")

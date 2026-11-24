@@ -9,7 +9,6 @@ import os
 import time
 from pathlib import Path
 
-import numpy as np
 from fastapi import Body, Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -18,7 +17,6 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from .. import __version__
 from .. import backup as bk
 from ..db import DEFAULTS, Database
-from ..dmr.burst import AMBE_SILENCE
 
 HERE = Path(__file__).parent
 COOKIE = "n8x_session"
@@ -371,10 +369,10 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         return {"ok": ok, "title": title, "message": msg}
 
     # ---- Software-Vocoder
-    @app.post("/api/admin/md380/install")
-    async def md380_install(user: str = Depends(require_admin)) -> dict:
-        ok, out = await bridge.system.install_md380()
-        bridge.router.event("info" if ok else "warn", f"md380-emu-Installation durch {user}: {'ok' if ok else 'Fehler'}")
+    @app.post("/api/admin/vocoder/build")
+    async def vocoder_build(user: str = Depends(require_admin)) -> dict:
+        ok, out = await bridge.system.build_vocoder()
+        bridge.router.event("info" if ok else "warn", f"DroidStar-Vocoder gebaut durch {user}: {'ok' if ok else 'Fehler'}")
         return {"ok": ok, "message": out}
 
     # ---- Updates
@@ -396,14 +394,11 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         v = bridge.vocoder
         if v is None or not v.running:
             return {"ok": False, "message": "Vocoder ist nicht gestartet (DMR deaktiviert?)"}
-        t0 = time.perf_counter()
-        tone = (np.sin(2 * np.pi * 1000 * np.arange(160) / 8000) * 9000).astype("<i2").tobytes()
-        amb = await v.encode(tone, timeout=1.5)
-        pcm = await v.decode(amb or AMBE_SILENCE, timeout=1.5)
-        ms = (time.perf_counter() - t0) * 1000
-        ok = amb is not None and pcm is not None
-        return {"ok": ok, "ms": round(ms, 1), "status": v.status(),
-                "message": f"Encode+Decode in {ms:.0f} ms" if ok else "Keine Antwort vom Vocoder"}
+        from ..vocoder import tone_test
+        r = await tone_test(v)
+        msg = (f"1-kHz-Ton über {r['frames']} Rahmen: {r['ms']} ms je Rahmen, Ergebnis {r['hz']} Hz"
+               if r["frames"] else "Keine Antwort vom Vocoder")
+        return {"ok": r["ok"], "ms": r["ms"], "status": v.status(), "message": msg}
 
     @app.get("/api/admin/serial-ports")
     async def serial_ports(_: str = Depends(require_admin)) -> list:

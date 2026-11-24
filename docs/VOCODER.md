@@ -1,71 +1,70 @@
-# Vocoder: md380-emu oder USB-Stick
+# Vocoder: DroidStar (Software) oder USB-Stick
 
-DMR überträgt Sprache als AMBE+2. Für den Übergang zu FRN (GSM) und Zello (Opus) muss N8 Crosslink AMBE+2 dekodieren und kodieren. Die Betriebsart wählst du im **Adminportal → 🎛️ Vocoder** (oder im Installer, Schritt 8). Nach dem Speichern startet die Bridge automatisch neu; mit **🧪 Vocoder testen** wird ein 1-kHz-Ton einmal kodiert und dekodiert und die Laufzeit angezeigt.
+DMR überträgt Sprache als AMBE+2. Für den Übergang zu FRN (GSM) und Zello (Opus) muss N8 Crosslink AMBE+2 dekodieren und kodieren. Die Betriebsart wählst du im **Adminportal → 🎛️ Vocoder** (oder im Installer, Schritt 8). Nach dem Speichern startet die Bridge automatisch neu. **🧪 Vocoder testen** schickt einen 1-kHz-Ton über 25 Rahmen durch Encoder und Decoder und zeigt die Laufzeit je Rahmen und die Frequenz, die herauskommt.
 
 | Betriebsart | Wann | Einstellungen |
 |---|---|---|
-| 🧠 **md380-emu** | keine Zusatzhardware | Adresse/Port (Standard `127.0.0.1:2470`), Init-Pakete aus |
+| 🧠 **DroidStar** (Standard) | keine Zusatzhardware | keine – Bibliothek wird automatisch gefunden |
 | 🔌 **USB-Stick** | ThumbDV, DVstick 30, DV3000 am selben Rechner | Gerät (`/dev/ttyUSB0` oder `/dev/serial/by-id/…`), Baudrate (460800 bzw. 230400 beim DV3000-Hat) |
 | 🌐 **AMBEserver** | AMBE3000 hängt an einem anderen Rechner | Adresse/Port (Standard 2460) |
 | 🧪 **Test** | nur Verbindungen testen | DMR-Audio ist stumm |
 
-Alle Varianten sprechen das AMBE3000-Paketformat (Rate 33 = AMBE+2 3600/2450). Fällt der Vocoder aus, prüft die Bridge alle 20 s, ob er wieder antwortet; die Statusleiste zeigt den Zustand.
+> **md380-emu wird ab Version 1.4.0 nicht mehr unterstützt.** Er lief auf x86 nur über den ARM-Emulator qemu und war die häufigste Ursache für Abstürze und Aussetzer. Beim Update wird eine md380-Einstellung automatisch auf DroidStar umgestellt und md380-emu deinstalliert (siehe unten).
 
-## Stabilität (ab 1.3.1)
+## DroidStar-Vocoder
 
-Das AMBE3000-Paketformat hat **keine Sequenznummer**. Bis 1.3.0 wurde jede Antwort einfach der ältesten offenen Anfrage zugeordnet. Ging bei md380-emu ein UDP-Paket verloren oder kam eine Antwort zu spät, verschob sich die Zuordnung um einen Rahmen – und blieb verschoben. Hörbar war das als Knacken, Roboterstimme oder Aussetzer, die erst nach einem Neustart weg waren. Im Test mit absichtlich verlorenen und verspäteten Paketen waren 97 von 120 Rahmen falsch zugeordnet.
+[DroidStar](https://github.com/nostar/DroidStar) von Doug McLain (AD8DP) bringt einen eigenen Software-Vocoder für AMBE+2 half-rate mit – genau das Format, das DMR benutzt (3600 bit/s mit FEC, 2450 bit/s Sprache). N8 Crosslink verwendet davon nur den Codec (Verzeichnis `mbe/`, C-Schnittstelle `ambe2.h`), nicht die DroidStar-App.
 
-Jetzt gilt bei md380-emu und AMBEserver:
+**Vorteile gegenüber md380-emu**
 
-* **Eine Anfrage nach der anderen** (Lockstep) – md380-emu arbeitet ohnehin nur einen Rahmen gleichzeitig ab.
-* **Nach einem Timeout neuer UDP-Socket** (neuer Quellport): Eine verspätete Antwort landet am alten Socket und wird verworfen; sie kann keiner neuen Anfrage mehr zugeordnet werden.
-* **Ein zweiter Versuch** bei einem verlorenen Paket (abgeschaltet, sobald der Vocoder mehrfach hintereinander schweigt).
-* **Watchdog:** Antwortet md380-emu länger als *Watchdog: neu starten nach* (Standard 20 s) nicht, startet die Bridge den Dienst `md380-emu` über die sudo-Freigabe neu und verbindet sich danach neu. Abschaltbar mit *Hängenden md380-emu-Dienst automatisch neu starten*.
-* *Antwortzeit je Rahmen* (Standard 300 ms) einstellbar. md380-emu braucht normalerweise wenige Millisekunden.
+* läuft **nativ** auf x86 und ARM – kein qemu, keine Fremd-Firmware
+* läuft **direkt in der Bridge** (per ctypes) – kein Zusatzdienst, kein UDP, nichts kann „hängen bleiben“ oder Pakete verlieren
+* schnell: unter 1 ms je 20-ms-Rahmen für Encode + Decode auf einem normalen x86-Server
+* Encoder und Decoder werden bei jeder neuen Übertragung zurückgesetzt; der Decoder überbrückt kaputte Rahmen (Wiederholen, Stummschalten, Komfortrauschen)
 
-Beim USB-Stick werden nach einem Timeout alle offenen Anfragen verworfen und kurz gewartet, bis der Stick wieder synchron ist.
+**Woher er kommt:** Der Vocoder ist **nicht** in diesem Repository enthalten. Der Installer lädt einen festen, geprüften Stand der DroidStar-Quellen von GitHub (`/usr/local/src/n8crosslink-droidstar`). Er übersetzt nur die Codec-Dateien mit `g++` – ohne Qt, die App wird nicht gebaut. Das Ergebnis ist `/opt/n8crosslink/lib/libambe2.so` (root, 644); daneben steht `libambe2.ref` mit dem Quellstand. Der Code von DroidStar steht unter GPL-3.0-or-later.
 
-Im Test ist jetzt kein Rahmen mehr falsch zugeordnet (`tests/test_vocoder.py`). Die Zähler stehen unter *Netze → Vocoder*: Timeouts, Wiederholungen, Dienst-Neustarts.
+**Bauen / aktualisieren**
 
-## Alternativen zu md380-emu
+* automatisch im Installer (Schritt 8 → „DroidStar“) und bei jedem Update. Beim Update wird nur gebaut, wenn sich der festgelegte Quellstand geändert hat oder der Test fehlschlägt.
+* im Webinterface: **Admin → 🎛️ Vocoder → „🔨 DroidStar-Vocoder bauen / aktualisieren“** (läuft über die sudo-Freigabe `install.sh --build-vocoder`)
+* von Hand: `sudo /opt/n8crosslink/install.sh --build-vocoder`
 
-Für DMR braucht es AMBE+2. Ein freier, gleichwertiger Ersatz existiert nicht; Codec 2 oder M17 sind zu DMR **nicht** kompatibel. Was es gibt, nach Stabilität sortiert:
+Ablauf: `g++` und `git` installieren (falls nötig) → DroidStar-Quellen auf den festgelegten Stand bringen → Bibliothek bauen (ca. 30 s auf x86, 2–5 Min. auf einem Raspberry Pi) → Funktionstest mit 1-kHz-Ton. Erst wenn der Test eine Frequenz um 1 kHz zurückliefert, meldet der Installer Erfolg.
 
-| Option | Stabilität | Aufwand | Bemerkung |
-|---|---|---|---|
-| **USB-Stick AMBE3000** (ThumbDV, DVstick 30, DV3000-Hat) | ★★★ sehr stabil | ca. 100–150 € | Original-Chip von DVSI, beste Sprachqualität, kein qemu. In N8 Crosslink schon eingebaut (Betriebsart *USB-Stick*). |
-| **md380-emu nativ auf ARM** (Raspberry Pi 64 Bit) | ★★☆ stabil | keine Kosten, wenn ein Pi da ist | md380-emu ist ARM-Code. Auf x86 läuft er nur über qemu, das ist die häufigste Absturzursache. Auf einem Pi läuft er ohne Emulation. N8 Crosslink kann ihn über das Netz nutzen: Betriebsart *md380-emu*, Adresse = IP des Pi, Port 2470. |
-| **AMBEserver mit USB-Stick an einem anderen Rechner** | ★★★ | Stick + kleiner Rechner | Betriebsart *AMBEserver*. |
-| **md380-emu lokal über qemu** (x86) | ★☆☆ bis ★★☆ | keine Kosten | Ab 1.3.1 mit Lockstep, neuem Socket nach Timeout und automatischem Dienst-Neustart deutlich robuster. |
+Von Hand testen: `cd /opt/n8crosslink && sudo -u n8crosslink venv/bin/python -m n8crosslink.cli vocoder-test --mode droidstar`
+Ausgabe z. B. `OK droidstar: 0.6 ms je Rahmen, 1 kHz -> 997 Hz DroidStar AMBE+2 Quelle fc8e340a61d6`.
 
-Andere Software-Vocoder (mbelib zum Dekodieren, der AMBE-Encoder aus OP25, die Vocoder-Plugins von DroidStar) sind zum Teil nur Decoder oder klingen deutlich schlechter. Bei allen ist die Patent- bzw. Lizenzlage unklar, deshalb sind sie nicht eingebaut.
+Einen anderen DroidStar-Stand bauen (nur für Tests): `sudo N8X_DROIDSTAR_REF=<commit> /opt/n8crosslink/install.sh --build-vocoder`.
 
+**Klang:** Ein Software-Codec klingt nicht ganz wie der Original-Chip von DVSI. Wer die beste Sprachqualität will, nimmt einen USB-Stick (unten). Pegel lassen sich unter *Vocoder* (vor dem Kodieren / nach dem Dekodieren) und je Netz (RX/TX) anpassen.
 
-## md380-emu installieren (Software-Vocoder)
+## md380-emu wurde entfernt
 
-md380-emu stammt aus dem **DVSwitch**-Projekt (Emulation der AMBE-Routinen der MD-380-Firmware). Er ist nicht in diesem Repository enthalten, sondern kommt als Paket aus der DVSwitch-Paketquelle. Einen öffentlichen Quellcode gibt es dafür nicht.
+Beim Update auf 1.4.0 (und bei `install.sh --build-vocoder`) geschieht automatisch:
 
-**Automatisch** – im Installer (Schritt 8 → „md380-emu“), bei jedem Update (wenn md380 eingestellt, aber nicht installiert ist) oder im Webinterface unter **Admin → 🎛️ Vocoder → „md380-emu installieren / reparieren“** (läuft über die sudo-Freigabe). Ablauf:
+1. Steht der Vocoder auf md380-emu, wird er auf **DroidStar** umgestellt; alte `md380_*`-Einstellungen werden aus der Datenbank gelöscht.
+2. Der DroidStar-Vocoder wird gebaut und getestet.
+3. **md380-emu wird deinstalliert:** Dienst `md380-emu` stoppen und deaktivieren, Unit-Datei löschen, Paket `md380-emu` entfernen (`apt purge`), `/opt/md380-emu` löschen und die sudo-Freigaben für md380-emu entfernen.
+4. Die **DVSwitch-Paketquelle** wird nur entfernt, wenn keine anderen DVSwitch-Pakete mehr installiert sind (z. B. Analog_Bridge, MMDVM_Bridge). Sonst bleibt sie, und der Installer sagt, wer sie noch nutzt.
+5. `qemu-user-static` bleibt installiert, weil es auch von anderen Programmen genutzt werden kann. Der Installer zeigt den Befehl zum Entfernen: `sudo apt purge qemu-user-static binfmt-support`.
 
-1. Vorhandenes md380-emu suchen (`md380-emu` im PATH, `/opt/md380-emu/md380-emu`, `/usr/local/bin`, `/usr/bin`).
-2. Falls keins da ist: DVSwitch-Paketquelle einrichten mit `http://dvswitch.org/bookworm`. Das gilt für Debian 12 und 13, Raspberry Pi OS sowie Ubuntu 22.04/24.04; für Debian 11 wird `bullseye` genommen. Danach `apt install md380-emu`.
-3. Ausführrechte setzen. Auf **x86** wird `qemu-user-static` + `binfmt-support` installiert, weil md380-emu ARM-Code ist. Auf dem Raspberry Pi läuft er nativ.
-4. Dienst: Bringt das Paket einen funktionierenden `md380-emu.service` mit, wird er verwendet. Sonst richtet der Installer einen eigenen Dienst ein – so wie DVSwitch ihn startet, **über qemu-arm-static mit `-S 2470`**:
-   1. mit dem `qemu-arm-static`, das neuere DVSwitch-Pakete in `/opt/md380-emu/` mitbringen (wichtig unter **Debian 13**: das System-qemu 10 bringt md380-emu zum Absturz),
-   2. mit dem System-`qemu-arm-static`,
-   3. direkt (ARM nativ).
-   Der Dienst läuft als Benutzer `n8crosslink` (nicht als root) mit `NoNewPrivileges`/`ProtectSystem=strict`; `/opt/md380-emu` wird auf root gesetzt, damit ihn kein Benutzer verändern kann.
-5. **Funktionstest:** Ein 1-kHz-Ton wird über UDP 2470 kodiert und wieder dekodiert. Erst wenn das klappt, meldet der Installer Erfolg.
-
-Hinweise:
-* DVSwitch bietet die Pakete für **amd64 und arm64** an. Auf 32-Bit-Raspberry-Pi-OS (armhf) gibt es keine aktuellen Pakete – dort ein 64-Bit-System oder einen USB-Stick nutzen.
-* Von Hand testen: `cd /opt/n8crosslink && sudo -u n8crosslink venv/bin/python -m n8crosslink.cli vocoder-test --mode md380`
+> Hinweis: Eine alte DVSwitch-Kette (SvxLink → MMDVM_Bridge → Analog_Bridge → md380-emu) funktioniert danach nicht mehr. N8 Crosslink ersetzt sie ja; zum Zurückwechseln müsste md380-emu neu installiert werden.
 
 ## USB-Stick
 
 * Der Dienstbenutzer `n8crosslink` ist in der Gruppe `dialout` – ein zusätzlicher AMBEserver ist **nicht** nötig.
 * Stabilen Gerätenamen verwenden: **🔍 USB-Geräte suchen** im Adminportal schlägt `/dev/serial/by-id/…` vor.
 * Beim Start sendet die Bridge Reset, Rate 33, Produkt-ID und Version; Gerät und Firmware erscheinen unter *Netze → Vocoder*.
+* Nach einem Timeout werden offene Anfragen verworfen und der Stick neu synchronisiert.
+
+## AMBEserver
+
+AMBE3000-Paketprotokoll über UDP. Weil dieses Protokoll keine Sequenznummern hat, arbeitet N8 Crosslink hier **im Lockstep**: Es ist immer nur eine Anfrage unterwegs. Nach jedem Timeout wird ein **neuer UDP-Socket** geöffnet, damit eine verspätete Antwort keinem falschen Rahmen zugeordnet wird. Ein verlorenes Paket wird einmal wiederholt. *Antwortzeit je Rahmen* (Standard 300 ms) ist einstellbar.
+
+## Watchdog
+
+Antwortet der Vocoder länger als *Watchdog: neu öffnen nach* (Standard 20 s) nicht, öffnet die Bridge ihn komplett neu – beim DroidStar-Vocoder heißt das: Bibliothek neu laden, Encoder/Decoder neu anlegen. Die Zähler stehen unter *Netze → Vocoder* und *Admin → Vocoder*: Encode, Decode, Timeouts, Wiederholungen.
 
 ## Pegel
 

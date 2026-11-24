@@ -150,18 +150,8 @@ class Bridge:
                 log.exception("Watchdog: %s", e)
 
     async def recover_vocoder(self, v: Vocoder) -> None:
-        """Hängender Vocoder: md380-emu-Dienst (lokal) neu starten, dann neu verbinden."""
-        local = str(v.cfg.get("md380_host", "127.0.0.1")) in ("127.0.0.1", "localhost", "::1")
-        if v.mode == "md380" and local and self.cfg["vocoder"].get("md380_auto_restart", True) \
-                and self.system.allowed("md380-emu.service", "restart"):
-            ok, out = await self.system.unit_action("md380-emu.service", "restart")
-            v.stats["restarts"] += 1
-            self.router.event("warn" if ok else "error",
-                              "Watchdog: md380-emu antwortet nicht – Dienst neu gestartet" if ok
-                              else f"Watchdog: md380-emu-Neustart fehlgeschlagen: {out[:120]}")
-            await asyncio.sleep(3)
-        else:
-            self.router.event("warn", f"Watchdog: Vocoder ({v.mode}) antwortet nicht – wird neu geöffnet")
+        """Hängender oder ausgefallener Vocoder: komplett neu öffnen."""
+        self.router.event("warn", f"Watchdog: Vocoder ({v.mode}) antwortet nicht – wird neu geöffnet")
         await v.reopen()
 
     def start_background(self) -> None:
@@ -189,6 +179,8 @@ def main() -> None:
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO,
                         format="%(asctime)s %(levelname)-7s %(name)-8s %(message)s", stream=sys.stdout)
     db = Database(args.db)
+    if db.migrate_vocoder():
+        log.info("Vocoder von md380-emu auf DroidStar umgestellt")
     cfg = db.load_config()
     host = args.host or cfg["general"].get("web_host", "0.0.0.0")
     port = args.port or int(cfg["general"].get("web_port", 8080))

@@ -1,22 +1,26 @@
 """AMBE+2-Vocoder für DMR.
 
-Zwei Betriebsarten, im Adminportal wählbar:
+Betriebsarten, im Adminportal wählbar:
 
-* ``md380``  – Software-Vocoder md380-emu (DVSwitch), UDP, Standard 127.0.0.1:2470
-* ``usb``    – AMBE3000-USB-Stick (ThumbDV, DVstick 30, DV3000) direkt seriell
-               (Standard /dev/ttyUSB0, 460800 Baud)
+* ``droidstar``  – Software-Vocoder aus DroidStar (AMBE+2 half-rate, ``mbe/``), lokal
+                   aus den DroidStar-Quellen gebaut (``lib/libambe2.so``), direkt per ctypes
+                   im Prozess – kein Zusatzdienst, kein qemu
+* ``usb``        – AMBE3000-USB-Stick (ThumbDV, DVstick 30, DV3000) direkt seriell
+                   (Standard /dev/ttyUSB0, 460800 Baud)
 * ``ambeserver`` – AMBE3000 hinter einem AMBEserver (UDP, Standard 2460)
-* ``none``   – nur für Tests: liefert Stille
+* ``none``       – nur für Tests: liefert Stille
 
-Alle sprechen das AMBE3000-Paketformat (0x61, Länge, Typ, Felder). DMR nutzt
+USB-Stick und AMBEserver sprechen das AMBE3000-Paketformat (0x61, Länge, Typ, Felder). DMR nutzt
 Rate 33 (AMBE+2 3600/2450). Ein Sprachrahmen = 20 ms = 160 Samples @ 8 kHz;
 ein AMBE-Rahmen = 72 Bit = 9 Byte (so wie er im DMR-Burst steht).
 """
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
+import ctypes
 import logging
-import socket
+import os
 import struct
 import threading
 import time
@@ -80,9 +84,85 @@ class _Parser:
         return out
 
 
+LIB_NAME = "libambe2.so"
+
+
+def find_droidstar_lib(cfg: dict | None = None) -> str | None:
+    """Sucht die gebaute DroidStar-Bibliothek."""
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for p in ((cfg or {}).get("droidstar_lib") or "", os.environ.get("N8X_AMBE_LIB", ""),
+              os.path.join(here, "lib", LIB_NAME), "/opt/n8crosslink/lib/" + LIB_NAME,
+              "/usr/local/lib/" + LIB_NAME):
+        if p and os.path.isfile(p):
+            return p
+    return None
+
+
+def droidstar_ref(lib: str | None) -> str:
+    try:
+        with open(os.path.join(os.path.dirname(lib), "libambe2.ref")) as f:  # type: ignore[arg-type]
+            return f.read().strip()[:12]
+    except (OSError, TypeError):
+        return ""
+
+
+class DroidStarCodec:
+    """AMBE+2 (DMR, 3600x2450) über die C-API ``ambe2.h`` aus DroidStar.
+
+    Je ein Encoder und ein Decoder mit Zustand von Rahmen zu Rahmen; bei jeder neuen
+    Übertragung werden sie neu angelegt. Alle Aufrufe laufen nacheinander in einem
+    eigenen Thread, damit die Event-Loop nicht blockiert und die Reihenfolge stimmt."""
+
+    def __init__(self, path: str) -> None:
+        L = ctypes.CDLL(path)
+        vp, cp = ctypes.c_void_p, ctypes.c_char_p
+        L.ambe2_encoder_new.restype = vp
+        L.ambe2_decoder_new.restype = vp
+        L.ambe2_encoder_free.argtypes = [vp]
+        L.ambe2_decoder_free.argtypes = [vp]
+        L.ambe2_encode.argtypes = [vp, cp, cp]
+        L.ambe2_pack.argtypes = [cp, cp]
+        L.ambe2_decode_packed.argtypes = [vp, cp, cp]
+        L.ambe2_decode_packed.restype = ctypes.c_int
+        self.L = L
+        self.path = path
+        self.enc = L.ambe2_encoder_new()
+        self.dec = L.ambe2_decoder_new()
+        if not self.enc or not self.dec:
+            raise RuntimeError("DroidStar-Vocoder: Encoder/Decoder nicht anlegbar")
+        self._bits = ctypes.create_string_buffer(49)
+        self._frame = ctypes.create_string_buffer(9)
+        self._pcm = ctypes.create_string_buffer(320)
+        self.pool = concurrent.futures.ThreadPoolExecutor(1, thread_name_prefix="ambe2")
+
+    def reset(self, which: str) -> None:
+        if which in ("enc", "both"):
+            self.L.ambe2_encoder_free(self.enc)
+            self.enc = self.L.ambe2_encoder_new()
+        if which in ("dec", "both"):
+            self.L.ambe2_decoder_free(self.dec)
+            self.dec = self.L.ambe2_decoder_new()
+
+    def encode(self, pcm_le: bytes) -> bytes:
+        self.L.ambe2_encode(self.enc, pcm_le, self._bits)
+        self.L.ambe2_pack(self._bits.raw, self._frame)
+        return self._frame.raw
+
+    def decode(self, ambe9: bytes) -> bytes:
+        self.L.ambe2_decode_packed(self.dec, ambe9, self._pcm)
+        return self._pcm.raw
+
+    def close(self) -> None:
+        self.pool.shutdown(wait=True)
+        self.L.ambe2_encoder_free(self.enc)
+        self.L.ambe2_decoder_free(self.dec)
+        self.enc = self.dec = None
+
+
 class Vocoder:
     def __init__(self, cfg: dict) -> None:
-        self.mode = cfg.get("vocoder_mode", "md380")
+        mode = cfg.get("vocoder_mode", "droidstar")
+        self.mode = "droidstar" if mode == "md380" else mode   # md380-emu wird nicht mehr unterstützt
         self.cfg = cfg
         self.loop: asyncio.AbstractEventLoop | None = None
         self.enc_q: deque[asyncio.Future] = deque()
@@ -97,11 +177,12 @@ class Vocoder:
         self.product = ""
         self.version = ""
         self.stats = {"enc": 0, "dec": 0, "timeouts": 0, "errors": 0, "reopens": 0,
-                      "late": 0, "retries": 0, "restarts": 0}
+                      "late": 0, "retries": 0}
         self.consec_timeouts = 0
-        # UDP (md380-emu, AMBEserver): strikt eine Anfrage nach der anderen, damit eine
+        # UDP (AMBEserver): strikt eine Anfrage nach der anderen, damit eine
         # verspätete Antwort nie der falschen Anfrage zugeordnet wird.
-        self.lockstep = self.mode in ("md380", "ambeserver")
+        self.lockstep = self.mode == "ambeserver"
+        self.codec: DroidStarCodec | None = None
         self._req_lock = asyncio.Lock()
         self._drain_until = 0.0
         self._renew = False
@@ -117,10 +198,22 @@ class Vocoder:
         self.loop = asyncio.get_running_loop()
         self.running = True
         try:
-            if self.mode in ("md380", "ambeserver"):
-                host = self.cfg.get("md380_host" if self.mode == "md380" else "ambeserver_host", "127.0.0.1")
-                port = int(self.cfg.get("md380_port" if self.mode == "md380" else "ambeserver_port",
-                                        2470 if self.mode == "md380" else 2460))
+            if self.mode == "droidstar":
+                lib = find_droidstar_lib(self.cfg)
+                if not lib:
+                    raise RuntimeError("DroidStar-Vocoder nicht gebaut – Admin → Vocoder → „DroidStar-Vocoder bauen“ "
+                                       "oder sudo /opt/n8crosslink/install.sh --build-vocoder")
+                self.codec = DroidStarCodec(lib)
+                ref = droidstar_ref(lib)
+                self.product = "DroidStar AMBE+2"
+                self.version = f"Quelle {ref}" if ref else ""
+                pcm = await self.decode(AMBE_SILENCE)
+                self.online = pcm is not None and len(pcm) == 320
+                log.info("Vocoder DroidStar (%s) bereit: %s", lib, self.online)
+                return
+            if self.mode == "ambeserver":
+                host = self.cfg.get("ambeserver_host", "127.0.0.1")
+                port = int(self.cfg.get("ambeserver_port", 2460))
                 self._udp_addr = (host, port)
                 await self._open_udp()
                 log.info("Vocoder %s über UDP %s:%s", self.mode, host, port)
@@ -139,10 +232,10 @@ class Vocoder:
             if self._send_init():
                 await self._init_chip()
             else:
-                # md380-emu kennt keine Steuerpakete – Probe-Dekodierung als Lebenszeichen
+                # ohne Steuerpakete: Probe-Dekodierung als Lebenszeichen
                 pcm = await self.decode(AMBE_SILENCE, timeout=1.5)
                 self.online = pcm is not None
-                self.product = "md380-emu" if self.mode == "md380" else "AMBE"
+                self.product = "AMBE"
         except Exception as e:  # noqa: BLE001
             self.online = False
             self.stats["errors"] += 1
@@ -174,9 +267,8 @@ class Vocoder:
                     log.info("Vocoder wieder erreichbar")
 
     def _send_init(self) -> bool:
-        key = {"md380": "md380_send_init", "usb": "usb_send_init", "ambeserver": "ambeserver_send_init"}[self.mode]
-        default = self.mode != "md380"
-        return bool(self.cfg.get(key, default))
+        key = {"usb": "usb_send_init", "ambeserver": "ambeserver_send_init"}[self.mode]
+        return bool(self.cfg.get(key, True))
 
     async def _init_chip(self) -> None:
         if self.mode == "usb":
@@ -199,6 +291,9 @@ class Vocoder:
         if getattr(self, "_health_task", None):
             self._health_task.cancel()
         self.online = False
+        if self.codec:
+            codec, self.codec = self.codec, None
+            await asyncio.get_running_loop().run_in_executor(None, codec.close)
         if self.transport:
             self.transport.close()
         if self.serial:
@@ -330,6 +425,8 @@ class Vocoder:
     async def decode(self, ambe9: bytes, timeout: float | None = None) -> bytes | None:
         if self.mode == "none":
             return SILENCE_PCM
+        if self.mode == "droidstar":
+            return await self._local("decode", ambe9)
         pcm = await self._request(self.dec_q, channel_packet(ambe9), timeout or self._timeout())
         if pcm is None:
             return None
@@ -344,12 +441,39 @@ class Vocoder:
             return AMBE_SILENCE
         if self.enc_gain:
             pcm_le = _gain(pcm_le, self.enc_gain)
+        if self.mode == "droidstar":
+            return await self._local("encode", pcm_le)
         ambe = await self._request(self.enc_q, speech_packet(pcm_le), timeout or self._timeout())
         if ambe is None or len(ambe) != 9:
             return None
         self.stats["enc"] += 1
         self.online = True
         return ambe
+
+    async def _local(self, op: str, data: bytes) -> bytes | None:
+        c = self.codec
+        if c is None or not self.running:
+            return None
+        try:
+            out = await self.loop.run_in_executor(c.pool, getattr(c, op), data)
+        except Exception as e:  # noqa: BLE001
+            self.stats["errors"] += 1
+            self.online = False
+            log.error("DroidStar-Vocoder: %s fehlgeschlagen: %s", op, e)
+            return None
+        self.last_rx = time.time()
+        if op == "decode":
+            self.stats["dec"] += 1
+            return _gain(out, self.dec_gain) if self.dec_gain else out
+        self.stats["enc"] += 1
+        return out
+
+    def new_stream(self, which: str) -> None:
+        """Neue Übertragung beginnt (``enc`` = nach DMR senden, ``dec`` = von DMR empfangen).
+        Der Software-Vocoder setzt dann seinen Zustand zurück; die Chips brauchen das nicht."""
+        c = self.codec
+        if c is not None and self.running:
+            c.pool.submit(c.reset, which)
 
     def _timeout(self) -> float:
         return float(self.cfg.get("vocoder_timeout_ms", 300 if self.lockstep else 500)) / 1000.0
@@ -360,17 +484,44 @@ class Vocoder:
         self.transport = None
         self.serial = None
         self.write_q.clear()
+        self.codec = None
         self.consec_timeouts = 0
         self._drain_until = 0.0
         self.stats["reopens"] = self.stats.get("reopens", 0) + 1
         await self.start()
 
     def status(self) -> dict:
-        names = {"md380": "md380-emu (Software)", "usb": "USB-Stick (AMBE3000)",
+        names = {"droidstar": "DroidStar (Software)", "usb": "USB-Stick (AMBE3000)",
                  "ambeserver": "AMBEserver (UDP)", "none": "Test (ohne Vocoder)"}
         return {"mode": self.mode, "name": names.get(self.mode, self.mode), "online": self.online,
                 "product": self.product, "version": self.version, "consec_timeouts": self.consec_timeouts,
                 **self.stats}
+
+
+async def tone_test(v: "Vocoder", frames: int = 25) -> dict:
+    """1-kHz-Ton über ``frames`` Rahmen kodieren und wieder dekodieren.
+    Liefert ok, ms (je Rahmen), hz (stärkste Frequenz im Ergebnis)."""
+    t0 = time.perf_counter()
+    n = np.arange(160 * frames)
+    tone = (np.sin(2 * np.pi * 1000 * n / 8000) * 9000).astype("<i2")
+    out, okc = [], 0
+    if v.codec is not None:
+        v.new_stream("both")
+    for i in range(frames):
+        amb = await v.encode(tone[i * 160:(i + 1) * 160].tobytes(), timeout=1.5)
+        pcm = await v.decode(amb or AMBE_SILENCE, timeout=1.5)
+        if amb is not None and pcm is not None:
+            okc += 1
+            out.append(np.frombuffer(pcm, dtype="<i2"))
+    ms = (time.perf_counter() - t0) * 1000 / frames
+    hz = 0.0
+    if len(out) > 8:
+        y = np.concatenate(out[len(out) // 3:]).astype(np.float32)
+        if np.abs(y).max() > 50:
+            f = np.abs(np.fft.rfft(y * np.hanning(len(y))))
+            hz = float(np.fft.rfftfreq(len(y), 1 / 8000)[int(np.argmax(f))])
+    ok = okc == frames and (v.mode != "droidstar" or 850 <= hz <= 1150)
+    return {"ok": ok, "ms": round(ms, 2), "hz": round(hz), "frames": okc}
 
 
 def _gain(pcm: bytes, db: float) -> bytes:

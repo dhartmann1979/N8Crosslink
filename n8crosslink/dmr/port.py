@@ -248,6 +248,8 @@ class DmrPort(Port):
             talker = self._talker(src, dst)
             accepted = self.router.rx_begin(self, talker)
             rx = self.rx = RxStream(stream_id, src, dst, accepted)
+            if accepted and hasattr(self.vocoder, "new_stream"):
+                self.vocoder.new_stream("dec")
             self.spawn(self._rx_worker(rx))
         rx.last = time.time()
         if ftype == 2 and dtype == B.DT_TERMINATOR_WITH_LC:
@@ -334,6 +336,8 @@ class DmrPort(Port):
         if self.tx and not self.tx.ending:
             self.tx.ending = True
         self.tx = TxStream(talker, src, int(s["tg_tx"]), s)
+        if hasattr(self.vocoder, "new_stream"):
+            self.vocoder.new_stream("enc")
         self.tx.task = self.spawn(self._tx_loop(self.tx, prev))
         if s.get("send_dmra"):
             for i, blk in enumerate(B.talker_alias_blocks(talker.short())):

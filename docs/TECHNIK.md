@@ -11,7 +11,7 @@ n8crosslink/
   dmr/port.py     HomeBrew-Peer (UDP), RX/TX-Streams, ID-Datenbank
   dmr/burst.py    DMR-Bursts, AMBE-Extraktion, Talker Alias
   dmr/fec.py      BPTC(196,96), RS(12,9), Embedded LC, Golay(20,8), QR(16,7)
-  vocoder.py      AMBE3000-Paketprotokoll: md380-emu / USB / AMBEserver
+  vocoder.py      DroidStar-AMBE+2 per ctypes (lib/libambe2.so) · AMBE3000-Paketprotokoll: USB / AMBEserver
   db.py           SQLite: Einstellungen, Benutzer, Sitzungen, Last Heard, Ereignisse, DMR-IDs
   web/            FastAPI, WebSocket, Dashboard (HTML/CSS/JS)
 ```

@@ -77,7 +77,7 @@ fix_perms() {
   chmod 750 "$DATA_DIR"
   find "$DATA_DIR" -type f -name '*.db*' -exec chmod 640 {} +
   [[ -f "$DATA_DIR/update.log" ]] && chmod 644 "$DATA_DIR/update.log"
-  for f in n8crosslink.service n8crosslink-update.path n8crosslink-update.service md380-emu.service; do
+  for f in n8crosslink.service n8crosslink-update.path n8crosslink-update.service; do
     [[ -f "/etc/systemd/system/$f" ]] && chown root:root "/etc/systemd/system/$f" && chmod 644 "/etc/systemd/system/$f"
   done
   if id "$SVC_USER" &>/dev/null && ! id -nG "$SVC_USER" | grep -qw dialout; then
@@ -133,110 +133,70 @@ import_zello_keys() {
   rmdir "$SAFE" 2>/dev/null || true
 }
 
-# ---------------------------------------------------------------- Software-Vocoder md380-emu
-# Quelle: DVSwitch-Paketquelle (http://dvswitch.org/bookworm – Debian 12/13, Ubuntu 22.04/24.04,
-# amd64/arm64). Auf x86 läuft md380-emu (ARM-Code) über qemu-user-static.
-# Danach echter Test (Encode/Decode über UDP 2470); passt der Paket-Dienst nicht, werden
-# Startvarianten durchprobiert.
-md380_bin() {
-  local p
-  for p in "$(type -P md380-emu 2>/dev/null)" /opt/md380-emu/md380-emu /usr/local/bin/md380-emu /usr/bin/md380-emu; do
-    [[ -n "$p" && -f "$p" ]] && { echo "$p"; return 0; }
-  done
-  return 1
-}
-md380_probe() {
-  local i
-  for i in 1 2 3 4 5 6; do
-    sleep 2
-    (cd "$APP_DIR" && runuser -u "$SVC_USER" -- env N8X_DB="$DB" "$APP_DIR/venv/bin/python" -m n8crosslink.cli \
-       vocoder-test --mode md380 --host 127.0.0.1 --port 2470) 2>/dev/null | grep -q '^OK' && return 0
-  done
-  return 1
-}
-install_md380() {
-  local BIN REPO
-  . /etc/os-release 2>/dev/null || true
-  BIN=$(md380_bin || true)
-  if [[ -z "$BIN" ]]; then
-    case "${ID:-}:${VERSION_CODENAME:-}" in
-      *:bullseye) REPO=bullseye ;;
-      *:buster)   REPO=buster ;;
-      *)          REPO=bookworm ;;   # Debian 12/13, Raspberry Pi OS, Ubuntu 22.04/24.04
-    esac
-    info "Richte DVSwitch-Paketquelle ein (dvswitch.org/$REPO) …"
-    if curl -fsSL "http://dvswitch.org/$REPO" -o /tmp/dvswitch-repo; then
-      DEBIAN_FRONTEND=noninteractive bash /tmp/dvswitch-repo </dev/null >/tmp/dvswitch-repo.log 2>&1 || warn "DVSwitch-Skript meldet Fehler (siehe /tmp/dvswitch-repo.log)"
-      apt-get update -qq || true
-      apt-get install -y -qq md380-emu >/dev/null 2>&1 || warn "apt install md380-emu fehlgeschlagen"
-    else
-      warn "dvswitch.org nicht erreichbar"
-    fi
-    BIN=$(md380_bin || true)
+# ---------------------------------------------------------------- Software-Vocoder DroidStar
+# Quelle: DroidStar (Doug McLain, https://github.com/nostar/DroidStar), Verzeichnis mbe/ –
+# AMBE+2 half-rate (DMR) Encoder und Decoder, C-API ambe2.h, GPL-3.0-or-later.
+# Nicht im Repository enthalten: wird bei der Installation aus einem festen, geprüften Stand der
+# DroidStar-Quellen gebaut (nur die Codec-Dateien, ohne Qt) und läuft per ctypes direkt in der Bridge.
+DS_REPO="https://github.com/nostar/DroidStar.git"
+DS_REF="${N8X_DROIDSTAR_REF:-fc8e340a61d65f9719d1c4a0c28fdf5cc5d2b444}"
+DS_SRC="/usr/local/src/n8crosslink-droidstar"
+VOC_DIR="$APP_DIR/lib"
+VOC_LIB="$VOC_DIR/libambe2.so"
+
+voc_probe() { cli vocoder-test --mode droidstar 2>&1 | tail -1; }
+build_vocoder() {   # build_vocoder [force]
+  local force="${1:-}" tmp out
+  if [[ -z "$force" && -f "$VOC_LIB" && "$(cat "$VOC_DIR/libambe2.ref" 2>/dev/null)" == "$DS_REF" ]]; then
+    out=$(voc_probe); [[ "$out" == OK* ]] && { ok "DroidStar-Vocoder aktuell (${DS_REF:0:12}) – $out"; return 0; }
   fi
-  if [[ -z "$BIN" ]]; then
-    warn "md380-emu konnte nicht installiert werden – siehe docs/VOCODER.md (manuell installieren oder USB-Stick nutzen)"
-    return 1
+  info "Baue DroidStar-Vocoder (Stand ${DS_REF:0:12}) …"
+  command -v g++ >/dev/null && command -v git >/dev/null || apt-get install -y -qq g++ git >/dev/null \
+    || { warn "Compiler (g++) nicht installierbar"; return 1; }
+  if [[ ! -d "$DS_SRC/.git" ]]; then
+    rm -rf "$DS_SRC"; install -d -m 755 "$DS_SRC"; git -C "$DS_SRC" init -q; git -C "$DS_SRC" remote add origin "$DS_REPO"
   fi
-  chmod +x "$BIN"
-  ok "md380-emu: $BIN"
-  case "$(dpkg --print-architecture 2>/dev/null || uname -m)" in
-    arm*|aarch64) : ;;
-    *) if ! command -v qemu-arm-static >/dev/null; then
-         info "x86: installiere qemu-user-static für den ARM-Emulator …"
-         apt-get install -y -qq qemu-user-static binfmt-support >/dev/null 2>&1 || warn "qemu-user-static nicht installierbar"
-       fi ;;
-  esac
-  [[ -d /run/systemd/system ]] || { warn "kein systemd – md380-emu von Hand starten: $BIN -S 2470"; return 0; }
-  systemctl daemon-reload
+  git -C "$DS_SRC" fetch -q --depth 1 origin "$DS_REF" && git -C "$DS_SRC" checkout -q --force FETCH_HEAD \
+    || { warn "DroidStar-Quellen nicht ladbar (GitHub erreichbar?)"; return 1; }
+  chown -R root:root "$DS_SRC"
+  tmp=$(mktemp -d); echo "/* N8 Crosslink: Build ohne Qt */" > "$tmp/QtGlobal"
+  if ! g++ -O2 -fPIC -shared -std=c++17 -w -I"$tmp" -I"$DS_SRC/mbe" "$DS_SRC"/mbe/*.cc -o "$tmp/libambe2.so" 2>"$tmp/build.log"; then
+    warn "Bauen fehlgeschlagen:"; tail -5 "$tmp/build.log"; rm -rf "$tmp"; return 1
+  fi
+  install -d -m 755 -o root -g root "$VOC_DIR"
+  install -m 644 -o root -g root "$tmp/libambe2.so" "$VOC_LIB"
+  echo "$DS_REF" > "$VOC_DIR/libambe2.ref"; chmod 644 "$VOC_DIR/libambe2.ref"
+  rm -rf "$tmp"
+  out=$(voc_probe)
+  if [[ "$out" == OK* ]]; then ok "DroidStar-Vocoder gebaut und getestet – $out"; return 0; fi
+  warn "DroidStar-Vocoder gebaut, Test fehlgeschlagen: $out"; return 1
+}
+
+# md380-emu wird nicht mehr gebraucht (ersetzt durch den DroidStar-Vocoder) und wird restlos entfernt:
+# Dienst, Paket, /opt/md380-emu, sudo-Freigabe. Die DVSwitch-Paketquelle bleibt nur, wenn noch andere
+# DVSwitch-Pakete (Analog_Bridge, MMDVM_Bridge …) installiert sind.
+remove_md380() {
+  local did=0 f others
   if systemctl list-unit-files 2>/dev/null | grep -q '^md380-emu.service'; then
-    systemctl enable md380-emu >/dev/null 2>&1 || true
-    systemctl restart md380-emu >/dev/null 2>&1 || true
-    if md380_probe; then ok "md380-emu antwortet auf UDP 2470 (Dienst aus dem Paket)"; return 0; fi
-    warn "Paket-Dienst antwortet nicht auf 2470 – probiere eigene Startvarianten"
+    systemctl disable --now md380-emu >/dev/null 2>&1 || true; did=1
   fi
-  # Startvarianten (DVSwitch startet md380-emu über qemu-arm-static mit "-S 2470"):
-  #   1. mit dem qemu-arm-static, das das DVSwitch-Paket in /opt/md380-emu mitbringt
-  #      (neuere System-qemu-Versionen, z. B. qemu 10 in Debian 13, stürzen mit md380-emu ab)
-  #   2. mit dem System-qemu-arm-static   3. direkt (ARM nativ / binfmt)
-  local dir; dir=$(dirname "$BIN")
-  chown -R root:root "$dir"; chmod 755 "$dir"; find "$dir" -type f -exec chmod go-w {} +   # nicht von Benutzern änderbar
-  local variants=()
-  [[ -x "$dir/qemu-arm-static" ]] && variants+=("$dir/qemu-arm-static $BIN -S 2470")
-  local sq; sq=$(type -P qemu-arm-static || type -P qemu-arm || true)
-  [[ -n "$sq" ]] && variants+=("$sq $BIN -S 2470")
-  variants+=("$BIN -S 2470")
-  local cmd
-  for cmd in "${variants[@]}"; do
-    cat > /etc/systemd/system/md380-emu.service <<UNIT
-[Unit]
-Description=md380-emu AMBE+2 Software-Vocoder (DVSwitch) für N8 Crosslink
-After=network.target
-
-[Service]
-Type=simple
-User=$SVC_USER
-Group=$SVC_USER
-WorkingDirectory=$dir
-ExecStart=$cmd
-Restart=always
-RestartSec=3
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-PrivateTmp=true
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-    systemctl daemon-reload
-    systemctl enable md380-emu >/dev/null 2>&1 || true
-    systemctl restart md380-emu >/dev/null 2>&1 || true
-    if md380_probe; then ok "md380-emu antwortet auf UDP 2470 (ExecStart: $cmd)"; return 0; fi
-    warn "Variante „$cmd“ antwortet nicht: $(journalctl -u md380-emu -n 3 --no-pager -o cat 2>/dev/null | tail -1)"
+  if [[ -f /etc/systemd/system/md380-emu.service ]]; then rm -f /etc/systemd/system/md380-emu.service; did=1; fi
+  if dpkg -s md380-emu >/dev/null 2>&1; then
+    apt-get purge -y -qq md380-emu >/dev/null 2>&1 && did=1 || warn "apt purge md380-emu fehlgeschlagen"
+  fi
+  for f in /opt/md380-emu /usr/local/bin/md380-emu; do [[ -e "$f" ]] && { rm -rf "$f"; did=1; }; done
+  systemctl daemon-reload 2>/dev/null || true
+  others=$(dpkg-query -W -f='${Package}\n' 2>/dev/null | grep -Ei '^(analog-bridge|mmdvm-bridge|dvswitch|ambeserver|hblink|dmrgateway|ysfgateway|p25gateway|nxdngateway)' || true)
+  for f in /etc/apt/sources.list.d/*dvswitch* /etc/apt/sources.list.d/*DVSwitch*; do
+    [[ -e "$f" ]] || continue
+    if [[ -z "$others" ]]; then rm -f "$f"; did=1; info "DVSwitch-Paketquelle entfernt ($f)"
+    else info "DVSwitch-Paketquelle bleibt – noch genutzt von: $(echo $others)"; fi
   done
-  warn "md380-emu läuft, antwortet aber nicht auf UDP 2470 – journalctl -u md380-emu prüfen"
-  return 1
+  (( did )) && ok "md380-emu deinstalliert (Dienst, Paket, Programmdateien)"
+  if dpkg -s qemu-user-static >/dev/null 2>&1; then
+    info "qemu-user-static bleibt installiert (wurde ggf. nur für md380-emu gebraucht – entfernen: apt purge qemu-user-static binfmt-support)"
+  fi
+  return 0
 }
 
 # ---------------------------------------------------------------- sudo fürs Webinterface
@@ -259,16 +219,15 @@ setup_sudo() {
   echo "Defaults:$SVC_USER !requiretty" >> "$TMP"
   add_unit n8crosslink.service "N8 Crosslink" restart
   add_unit n8crosslink-update.service "Update-Dienst" start
-  systemctl list-unit-files 2>/dev/null | grep -q '^md380-emu.service' && add_unit md380-emu.service "md380-emu (Vocoder)" start stop restart enable disable
   for u in $(systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}' | grep -Ei '^(svxlink|mmdvm_bridge|analog_bridge|ambeserver|.*zello.*)\.service$' | grep -v n8crosslink); do
     add_unit "$u" "${u%.service} (alt)" start stop restart enable disable
   done
   [[ "$allow_reboot" == "true" ]] && echo "$SVC_USER ALL=(root) NOPASSWD: $SC reboot" >> "$TMP"
   echo "$SVC_USER ALL=(root) NOPASSWD: $APP_DIR/install.sh --fix-perms" >> "$TMP"
-  echo "$SVC_USER ALL=(root) NOPASSWD: $APP_DIR/install.sh --install-md380" >> "$TMP"
+  echo "$SVC_USER ALL=(root) NOPASSWD: $APP_DIR/install.sh --build-vocoder" >> "$TMP"
   if visudo -cf "$TMP" >/dev/null 2>&1; then
     install -o root -g root -m 0440 "$TMP" "$F"
-    printf '{"sudo": true, "systemctl": "%s", "reboot": %s, "fix_perms": true, "install_md380": true, "units": [%s]}\n' "$SC" "$allow_reboot" "$json" > "$DATA_DIR/system.json"
+    printf '{"sudo": true, "systemctl": "%s", "reboot": %s, "fix_perms": true, "build_vocoder": true, "units": [%s]}\n' "$SC" "$allow_reboot" "$json" > "$DATA_DIR/system.json"
     chown "$SVC_USER:$SVC_USER" "$DATA_DIR/system.json"; chmod 640 "$DATA_DIR/system.json"
     ok "sudo fürs Webinterface eingerichtet ($(grep -c NOPASSWD "$F") freigegebene Befehle, mit visudo geprüft)"
   else
@@ -291,7 +250,7 @@ if [[ "${1:-}" == "--diagnose" ]]; then
   echo "== System:  $PRETTY_NAME ($(dpkg --print-architecture)), $(python3 --version 2>&1)"
   echo "== Version: $(grep -oP '__version__ = "\K[^"]+' "$APP_DIR/n8crosslink/__init__.py" 2>/dev/null)"
   PORT=$(cli show general 2>/dev/null | grep -oP '"web_port": \K[0-9]+'); echo "== Web-Port: ${PORT:-?}"
-  for u in n8crosslink md380-emu n8crosslink-update.path; do
+  for u in n8crosslink n8crosslink-update.path; do
     echo "== Dienst $u: $(systemctl is-active $u 2>&1) / $(systemctl is-enabled $u 2>&1)"
   done
   echo "== Dienst-Rechte: $(systemctl show n8crosslink -p User -p AmbientCapabilities --value 2>/dev/null | tr '\n' ' ')"
@@ -301,20 +260,20 @@ if [[ "${1:-}" == "--diagnose" ]]; then
     systemd-run --quiet --wait --pipe -p User="$SVC_USER" -p AmbientCapabilities=CAP_NET_BIND_SERVICE \
       "$APP_DIR/venv/bin/python" -c "import socket;s=socket.socket();s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);s.bind(('0.0.0.0',$PORT));print('Port $PORT: OK')" 2>&1 || true
   fi
-  echo "== md380-emu: $(md380_bin || echo 'nicht gefunden'); ExecStart: $(systemctl show md380-emu -p ExecStart --value 2>/dev/null | grep -oP 'argv\[\]=\K[^;]+')"
+  echo "== DroidStar-Vocoder: $([[ -f "$VOC_LIB" ]] && echo "$VOC_LIB (Stand $(cut -c1-12 "$VOC_DIR/libambe2.ref" 2>/dev/null))" || echo 'nicht gebaut'); md380-emu: $(dpkg -s md380-emu >/dev/null 2>&1 || [[ -d /opt/md380-emu ]] && echo 'noch vorhanden – wird beim Update entfernt' || echo 'entfernt')"
   echo "== Vocoder-Test: $( (cd "$APP_DIR" && runuser -u "$SVC_USER" -- env N8X_DB="$DB" "$APP_DIR/venv/bin/python" -m n8crosslink.cli vocoder-test) 2>&1 | tail -1)"
   echo "== Zello-Schlüssel: $(cli zello-key-info 2>&1 | tail -1); Schlüsseldateien: $(find "$APP_DIR" -maxdepth 2 -iname 'zello*.key' 2>/dev/null | wc -l)"
   echo "== sudo-Freigaben: $(grep -c NOPASSWD /etc/sudoers.d/n8crosslink 2>/dev/null || echo 0)"
   echo "== Log n8crosslink (letzte 40):"; journalctl -u n8crosslink -n 40 --no-pager -o cat 2>/dev/null
-  echo "== Log md380-emu (letzte 15):"; journalctl -u md380-emu -n 15 --no-pager -o cat 2>/dev/null
   } 2>&1 | tee /tmp/n8crosslink-diagnose.txt
   echo; echo "(gespeichert in /tmp/n8crosslink-diagnose.txt – enthält keine Passwörter)"; exit 0
 fi
-if [[ "${1:-}" == "--install-md380" ]]; then
+if [[ "${1:-}" == "--build-vocoder" || "${1:-}" == "--install-md380" ]]; then
   [[ $EUID -eq 0 ]] || fail "Bitte als root starten"
-  echo "Software-Vocoder md380-emu installieren/prüfen …"
-  install_md380 && { setcfg vocoder vocoder_mode md380; setcfg vocoder md380_port 2470; ok "Vocoder auf md380-emu gestellt"; } || exit 1
-  # sudo-Freigaben um md380-emu ergänzen (neuer Dienst)
+  echo "DroidStar-Vocoder bauen/prüfen …"
+  build_vocoder force || exit 1
+  setcfg vocoder vocoder_mode droidstar; ok "Vocoder auf DroidStar gestellt"
+  remove_md380
   REBOOT=true; grep -q '"reboot": false' "$DATA_DIR/system.json" 2>/dev/null && REBOOT=false
   setup_sudo "$REBOOT"; exit 0
 fi
@@ -497,13 +456,13 @@ else setcfg zello enabled false; info "Zello bleibt aus."; fi
 # ---------------------------------------------------------------- 8 Vocoder
 step 8 "Vocoder für DMR (AMBE+2)"
 ask_choice VOC "Welcher Vocoder?" 1 \
-  "md380-emu (Software, ohne Hardware)" \
+  "DroidStar (Software, ohne Hardware – empfohlen)" \
   "USB-Stick (ThumbDV / DVstick 30 / DV3000)" \
   "AMBEserver im Netz" \
   "später im Adminportal festlegen"
 case "$VOC" in
-  1) setcfg vocoder vocoder_mode md380; setcfg vocoder md380_port 2470
-     install_md380 || warn "Vocoder kann später unter Admin → 🎛️ Vocoder → „md380-emu installieren“ nachgeholt werden" ;;
+  1) setcfg vocoder vocoder_mode droidstar
+     build_vocoder || warn "Vocoder kann später unter Admin → 🎛️ Vocoder → „DroidStar-Vocoder bauen“ nachgeholt werden" ;;
   2) setcfg vocoder vocoder_mode usb
      DEV=$(ls /dev/serial/by-id/* 2>/dev/null | head -1 || true); [[ -z "$DEV" ]] && DEV=$(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null | head -1 || true)
      ask V "Gerät" "${DEV:-/dev/ttyUSB0}"; setcfg vocoder usb_device "$V"
@@ -516,10 +475,12 @@ case "$VOC" in
 esac
 else
   step 4 "Einstellungen bleiben erhalten"; ok "$([[ "$MODE" == restored ]] && echo "aus dem Backup übernommen" || echo "Update-Modus")"
-  # Software-Vocoder bei Update/Wiederherstellung mitprüfen: md380 eingestellt, aber nicht installiert -> nachholen
-  if cli show vocoder | grep -q '"vocoder_mode": "md380"' && { [[ "$MODE" == "restored" ]] || ! md380_bin >/dev/null; }; then
-    install_md380 || true
+  # 1.4.0: md380-emu -> DroidStar. Alte Einstellung umstellen, Vocoder bauen (nur wenn nötig), md380-emu entfernen
+  if sqlite3 "$DB" "SELECT value FROM settings WHERE section='vocoder' AND key='vocoder_mode'" 2>/dev/null | grep -q md380; then
+    setcfg vocoder vocoder_mode droidstar; ok "Vocoder von md380-emu auf DroidStar umgestellt"
   fi
+  if cli show vocoder | grep -q '"vocoder_mode": "droidstar"'; then build_vocoder || true; fi
+  remove_md380
   step 5 "–"; step 6 "–"; step 7 "–"; step 8 "–"
 fi
 

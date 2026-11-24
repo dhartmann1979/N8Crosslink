@@ -87,7 +87,11 @@ async def main(port: int) -> None:
                             "src_id": 2620001, "tg_rx": 262, "tg_tx": 262, "userdb_url": "", "userdb_fallback_url": ""})
     db.save_section("zello", {"enabled": True, "server": f"ws://127.0.0.1:{sim.ZELLO_PORT}/ws", "channel": "N8schicht",
                               "username": "n8crosslink", "password": "pw", "auth_mode": "none"})
-    db.save_section("vocoder", {"vocoder_mode": "ambeserver", "ambeserver_port": sim.VOC_PORT})
+    from n8crosslink.vocoder import find_droidstar_lib
+    if find_droidstar_lib():   # N8X_AMBE_LIB=/pfad/libambe2.so -> echter DroidStar-Vocoder
+        db.save_section("vocoder", {"vocoder_mode": "droidstar"})
+    else:
+        db.save_section("vocoder", {"vocoder_mode": "ambeserver", "ambeserver_port": sim.VOC_PORT})
     base = f"http://127.0.0.1:{sim.ZELLO_PORT}"
     db.save_section("ids", {"subscriber_csv_url": f"{base}/ids/subscriber_ids.csv", "subscriber_json_url": "",
                             "local_json_url": f"{base}/ids/local.json", "local_csv_url": "", "user_api_url": "",
@@ -105,9 +109,8 @@ async def main(port: int) -> None:
     bridge.updater.raw_url = lambda path: f"{base}/raw/{path}"
     await bridge.updater.check()
     import json as _j
-    open(os.path.join(os.path.dirname(db.path), "system.json"), "w").write(_j.dumps({"sudo": False, "systemctl": "/usr/bin/systemctl", "reboot": True, "fix_perms": True, "units": [
+    open(os.path.join(os.path.dirname(db.path), "system.json"), "w").write(_j.dumps({"sudo": False, "systemctl": "/usr/bin/systemctl", "reboot": True, "fix_perms": True, "build_vocoder": True, "units": [
         {"unit": "n8crosslink.service", "label": "N8 Crosslink", "actions": ["restart"]},
-        {"unit": "md380-emu.service", "label": "md380-emu (Vocoder)", "actions": ["start", "stop", "restart", "enable", "disable"]},
         {"unit": "svxlink.service", "label": "svxlink (alt)", "actions": ["start", "stop", "restart", "enable", "disable"]}]}))
     server = uvicorn.Server(uvicorn.Config(create_app(bridge), host="127.0.0.1", port=port, log_level="warning"))
 

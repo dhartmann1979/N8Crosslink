@@ -2,6 +2,27 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.4.0] – 2026-11-24
+
+### Neu: DroidStar-Vocoder statt md380-emu
+- **Software-Vocoder aus [DroidStar](https://github.com/nostar/DroidStar)** (Doug McLain): AMBE+2 half-rate für DMR, Encoder und Decoder über die C-Schnittstelle `ambe2.h`. Er läuft **nativ auf x86 und ARM direkt in der Bridge** (ctypes, eigener Arbeitsthread). Es gibt kein qemu, keinen Zusatzdienst und kein UDP mehr, also auch keine verlorenen oder verschobenen Rahmen.
+- Unter 1 ms je 20-ms-Rahmen (Encode + Decode) auf x86. Encoder und Decoder werden bei jeder neuen Übertragung zurückgesetzt; der Decoder überbrückt kaputte Rahmen.
+- **Nicht im Repository enthalten:** Installer und Update laden einen festen, geprüften Stand der DroidStar-Quellen (`fc8e340a61d6`). Daraus bauen sie nur den Codec, ohne Qt: `/opt/n8crosslink/lib/libambe2.so`, root, 644. Neu gebaut wird nur, wenn sich der Stand ändert oder der Test fehlschlägt.
+- Bauen im Webinterface: **Admin → 🎛️ Vocoder → „🔨 DroidStar-Vocoder bauen / aktualisieren“**; von Hand mit `sudo /opt/n8crosslink/install.sh --build-vocoder`. Neue sudo-Freigabe statt `--install-md380`.
+- **Vocoder-Test verbessert:** 1-kHz-Ton über 25 Rahmen. Angezeigt werden Laufzeit je Rahmen und die zurückgelieferte Frequenz; beim DroidStar-Vocoder muss sie bei 1 kHz liegen.
+- `install.sh --diagnose` zeigt den Stand des DroidStar-Vocoders und ob md380-emu noch vorhanden ist.
+
+### Entfernt: md380-emu
+- Die Betriebsart md380-emu entfällt. Eine bestehende md380-Einstellung wird beim Update **automatisch auf DroidStar umgestellt**; alte `md380_*`-Einstellungen werden aus der Datenbank gelöscht.
+- **md380-emu wird deinstalliert:** Dienst stoppen und deaktivieren, Unit-Datei löschen, Paket entfernen (`apt purge md380-emu`), `/opt/md380-emu` löschen, sudo-Freigaben entfernen. Die DVSwitch-Paketquelle wird nur entfernt, wenn keine anderen DVSwitch-Pakete mehr installiert sind. `qemu-user-static` bleibt; der Installer nennt den Befehl zum Entfernen.
+- `systemd/md380-emu.service` und der md380-Watchdog-Neustart aus 1.3.1 sind entfallen. Der Watchdog öffnet jetzt jeden Vocoder bei Ausfall neu.
+- Deinstallation: entfernt auch die DroidStar-Quellen in `/usr/local/src/n8crosslink-droidstar`.
+
+### Sonstiges
+- Update-Dienst darf bis zu 30 Minuten laufen (Bauen auf langsamen Raspberry Pis).
+- Tests: `tests/test_vocoder.py` prüft den DroidStar-Vocoder (1-kHz-Ton → 997 Hz, Stille-Rahmen aus dem DMR-Burst → Stille, 30 parallele Aufrufe in Reihenfolge). Die Simulation läuft mit `N8X_SIM_VOCODER=droidstar` komplett mit dem echten Vocoder (DMR→FRN mit echtem AMBE-Ton) – 53/53.
+- Doku: `docs/VOCODER.md` neu geschrieben; Installation, Betrieb, Fehlersuche, Deinstallation, Migration, README und Vocoder-Screenshot angepasst.
+
 ## [1.3.1] – 2026-11-24
 
 ### Behoben: Vocoder instabil (md380-emu)

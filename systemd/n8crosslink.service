@@ -1,7 +1,7 @@
 [Unit]
 Description=N8 Crosslink – FRN · DMR · Zello Bridge (Die N8schicht)
 Documentation=https://github.com/dhartmann1979/N8Crosslink
-After=network-online.target md380-emu.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]

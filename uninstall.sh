@@ -79,7 +79,12 @@ else
   if [[ -d /usr/local/src/N8Crosslink ]] && ask_yn "Quellcode in /usr/local/src/N8Crosslink löschen?" j; then rm -rf /usr/local/src/N8Crosslink; fi
 fi
 
-# ---------------------------------------------------------------- 4 md380-emu
+# ---------------------------------------------------------------- 4 Vocoder
+# DroidStar-Vocoder: die gebaute Bibliothek lag in $APP_DIR/lib (oben entfernt), die Quellen hier:
+if [[ -d /usr/local/src/n8crosslink-droidstar ]]; then
+  rm -rf /usr/local/src/n8crosslink-droidstar; ok "DroidStar-Quellen (/usr/local/src/n8crosslink-droidstar) entfernt"
+fi
+# Reste von md380-emu (bis 1.3.x) – ab 1.4.0 entfernt schon das Update ihn
 if systemctl list-unit-files 2>/dev/null | grep -q '^md380-emu.service' || command -v md380-emu >/dev/null || [[ -f /opt/md380-emu/md380-emu ]]; then
   if ask_yn "Software-Vocoder md380-emu entfernen? (nein, falls DVSwitch/Analog_Bridge ihn noch nutzt)" n; then
     systemctl disable --now md380-emu >/dev/null 2>&1 || true
@@ -96,6 +101,8 @@ systemctl daemon-reload 2>/dev/null || true
 # ---------------------------------------------------------------- 5 alte Dienste
 if [[ -s "$STATE/disabled-services" ]]; then
   echo "  Diese Dienste hatte der Installer abgeschaltet:"; sed 's/^/       • /' "$STATE/disabled-services"
+  echo "  Hinweis: Eine alte DVSwitch-Kette (Analog_Bridge) braucht md380-emu – der ist ab N8 Crosslink 1.4.0 entfernt"
+  echo "           und müsste dafür neu installiert werden (apt install md380-emu)."
   if ask_yn "Wieder einschalten (SvxLink / alte Bridges)?" n; then
     while read -r s; do systemctl enable --now "$s" >/dev/null 2>&1 && ok "$s wieder aktiv"; done < "$STATE/disabled-services"
   fi

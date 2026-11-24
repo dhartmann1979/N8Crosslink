@@ -64,9 +64,13 @@ fix_perms() {
   rm -rf "$APP_DIR/.cache"
   find "$APP_DIR" -path "$DATA_DIR" -prune -o -exec chown -h root:root {} +
   find "$APP_DIR" -path "$DATA_DIR" -prune -o -type d -exec chmod 755 {} +
-  find "$APP_DIR" -path "$DATA_DIR" -prune -o -path "$APP_DIR/venv/bin" -prune -o -type f -exec chmod 644 {} +
+  find "$APP_DIR" -path "$DATA_DIR" -prune -o -path "$APP_DIR/venv/bin" -prune -o -type f \
+       ! -name '*.key' ! -name '*.pem' ! -name '*.p12' -exec chmod 644 {} +
   [[ -d "$APP_DIR/venv/bin" ]] && chmod -R go-w "$APP_DIR/venv/bin" && find "$APP_DIR/venv/bin" -type f -exec chmod 755 {} + 2>/dev/null || true
   for f in install.sh update.sh uninstall.sh; do [[ -f "$APP_DIR/$f" ]] && chmod 755 "$APP_DIR/$f"; done
+  # private Schlüssel/Zertifikate (z. B. zello.key) nur für root lesbar
+  local k; while IFS= read -r k; do chmod 600 "$k"; n=$((n + 1)); warn "Schlüsseldatei $k war lesbar – auf 600 gesetzt (wird nicht mehr gebraucht, liegt in der Datenbank)"; done \
+    < <(find "$APP_DIR" -path "$DATA_DIR" -prune -o -path "$APP_DIR/venv" -prune -o -type f \( -name '*.key' -o -name '*.pem' -o -name '*.p12' \) -perm /044 -print 2>/dev/null)
   mkdir -p "$DATA_DIR"
   local m; m=$(find "$DATA_DIR" \( ! -user "$SVC_USER" ! -name update.log \) -print 2>/dev/null | wc -l)
   chown -R "$SVC_USER:$SVC_USER" "$DATA_DIR"
@@ -325,6 +329,13 @@ step 4 "Dashboard und Superadmin"
 FREE=8080; while ss -ltn "( sport = :$FREE )" 2>/dev/null | grep -q LISTEN; do FREE=$((FREE+1)); done
 [[ $FREE -ne 8080 ]] && warn "Port 8080 ist belegt (z. B. HBlink4-Dashboard) – Vorschlag: $FREE"
 ask WEB_PORT "Web-Port für das Dashboard" "$FREE"
+if (( WEB_PORT < 1024 )); then
+  if ss -ltn "( sport = :$WEB_PORT )" 2>/dev/null | grep -q LISTEN; then
+    warn "Port $WEB_PORT ist bereits belegt (z. B. nginx/Apache) – nehme $FREE"; WEB_PORT=$FREE
+  else
+    info "Port $WEB_PORT < 1024: der Dienst erhält dafür nur das Recht CAP_NET_BIND_SERVICE (kein root)"
+  fi
+fi
 ask TITLE "Titel im Dashboard" "N8 Crosslink"
 ask SERVER_NAME "Domain / Servername" "$(hostname -f 2>/dev/null || hostname)"
 setcfg general web_port "$WEB_PORT"; setcfg general title "$TITLE"; setcfg general server_name "$SERVER_NAME"
@@ -385,7 +396,12 @@ if ask_yn "Zello anbinden?" j; then
     3) ask V "Zello-Work-Netzwerk (Name)" ""; setcfg zello server "wss://zellowork.io/ws/$V"; setcfg zello auth_mode none ;;
     2) setcfg zello server "wss://zello.io/ws"; setcfg zello auth_mode key
        ask V "Issuer" ""; setcfg zello issuer "$V"
-       ask V "Pfad zur Private-Key-Datei (PEM)" ""; [[ -f "$V" ]] && setcfg zello private_key "$(cat "$V")" || warn "Datei nicht gefunden – im Adminportal nachtragen." ;;
+       ask V "Pfad zur Private-Key-Datei (PEM)" ""
+       if [[ -f "$V" ]]; then
+         setcfg zello private_key "$(cat "$V")"; ok "Private Key in die Datenbank übernommen"
+         chmod 600 "$V"
+         ask_yn "Schlüsseldatei $V jetzt löschen? (liegt jetzt sicher in der Datenbank und im verschlüsselten Backup)" j && rm -f "$V" && ok "Schlüsseldatei gelöscht"
+       else warn "Datei nicht gefunden – im Adminportal nachtragen."; fi ;;
     *) setcfg zello server "wss://zello.io/ws"; setcfg zello auth_mode token
        ask_secret V "Entwickler-Token (developers.zello.com)" optional; [[ -n "$V" ]] && setcfg zello auth_token "$V" ;;
   esac

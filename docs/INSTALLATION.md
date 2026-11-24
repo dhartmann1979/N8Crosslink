@@ -26,7 +26,7 @@ Der Installer fragt Schritt für Schritt:
 | 2 | Dienstbenutzer `n8crosslink` (Gruppe `dialout` für den USB-Stick), Dateien nach `/opt/n8crosslink` |
 | 3 | Python-venv, Abhängigkeiten, Selbsttest von GSM- und Opus-Codec |
 | 3a | **Backup einspielen?** – bei Neuinstallation optional eine `.n8xbak`-Datei + Superadmin-Passwort; dann werden die Schritte 4–8 übersprungen |
-| 4 | Web-Port (freier Port wird vorgeschlagen), Titel, Domain; Standard-Login **n8schicht / n8schicht** (optional gleich eigenes Passwort) |
+| 4 | Web-Port (freier Port wird vorgeschlagen; Ports unter 1024 wie 80 sind möglich – der Dienst bekommt dafür nur `CAP_NET_BIND_SERVICE`, kein root), Titel, Domain; Standard-Login **n8schicht / n8schicht** (optional gleich eigenes Passwort) |
 | 5 | **FRN**: Server, Port, Backup, E-Mail, Passwort, Rufzeichen, Name, Raum, Ort, Land |
 | 6 | **DMR**: Server, Port, Passphrase, Peer-ID, Rufzeichen, Quell-ID, Zeitschlitz, RX-/TX-TG, Color Code, RPTO |
 | 7 | **Zello**: Variante (Token / Issuer+Key / Zello Work), Kanal, Benutzer, Passwort |

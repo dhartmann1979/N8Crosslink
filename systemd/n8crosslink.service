@@ -21,6 +21,8 @@ Restart=always
 RestartSec=3
 # Echtzeit-Audio: etwas höhere Priorität
 Nice=-5
+# Erlaubt Web-Ports unter 1024 (z. B. 80) ohne root-Rechte – nur dieses eine Recht
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 # NoNewPrivileges bewusst aus: das Webinterface nutzt sudo, beschränkt auf die
 # Befehle in /etc/sudoers.d/n8crosslink (Update, Neustarts, Dienste, Berechtigungen).
 ProtectSystem=full

@@ -2,6 +2,8 @@
 
 | Symptom | Ursache / Lösung |
 |---|---|
+| Dienst startet nicht, im Log `[Errno 13] … bind on address ('0.0.0.0', 80): permission denied` | Web-Port unter 1024 (z. B. 80). Ab 1.2.1 erhält der Dienst dafür `CAP_NET_BIND_SERVICE` – `sudo /opt/n8crosslink/update.sh` ausführen. Alternativ Port 8080: `cd /opt/n8crosslink && sudo -u n8crosslink venv/bin/python -m n8crosslink.cli set general web_port 8080 && sudo systemctl restart n8crosslink` |
+| Dienst startet nicht, Ursache unklar | Von Hand starten zeigt die Fehlermeldung: `sudo systemctl stop n8crosslink; cd /opt/n8crosslink && sudo -u n8crosslink env N8X_DB=/opt/n8crosslink/data/crosslink.db venv/bin/python -m n8crosslink` |
 | FRN „Login abgelehnt (WRONG)“ | E-Mail/Passwort falsch oder Konto nicht freigeschaltet. Das FRN-Passwort ist das dynamische Passwort aus der Registrierung. |
 | FRN „BLOCK“ | Konto im Raum gesperrt – Raum-Admin fragen. |
 | FRN: „keine Sendefreigabe vom Server“ | Raum war belegt oder Konto darf nicht senden (Sende-Rechte am Server prüfen). |

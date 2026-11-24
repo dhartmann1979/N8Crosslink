@@ -2,6 +2,17 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.2.1] – 2026-11-24
+
+Fehlerbehebung: Dienst startete mit Web-Port 80 nicht.
+
+### Behoben
+- **Start mit Port unter 1024:** Die Bridge läuft ohne root-Rechte und durfte deshalb Port 80 nicht öffnen (`[Errno 13] … permission denied`). Der Dienst erhält jetzt ausschließlich das Recht `CAP_NET_BIND_SERVICE` (`AmbientCapabilities`), damit funktionieren auch Ports wie 80. Der Installer erklärt das bei der Port-Abfrage und weicht auf einen freien Port aus, wenn 80 schon belegt ist (z. B. durch nginx/Apache).
+- **Schlüsseldateien nicht mehr weltlesbar:** Die Berechtigungsprüfung hat alle Dateien in `/opt/n8crosslink` auf 644 gesetzt – dadurch wurde z. B. eine dort abgelegte `zello.key` für alle Benutzer lesbar. Private Schlüssel (`*.key`, `*.pem`, `*.p12`) werden jetzt erkannt, auf 600 gesetzt und gemeldet. Der Installer bietet nach dem Import des Zello-Schlüssels an, die Datei zu löschen (der Schlüssel liegt in der Datenbank und im verschlüsselten Backup).
+
+### Doku
+- Fehlersuche: Eintrag zu `Errno 13` und Anleitung zum Start von Hand, damit die eigentliche Fehlermeldung sichtbar wird.
+
 ## [1.2.0] – 2026-11-24
 
 Mithören, verschlüsseltes Backup, geplante Deinstallation, vollständige Software-Vocoder-Installation und komplettes Site-Icon-Set.

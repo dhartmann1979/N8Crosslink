@@ -53,7 +53,7 @@ class ZelloPort(Port):
         if not self.enabled:
             self.set_state(False, "deaktiviert")
             return
-        self.spawn(self._run())
+        self.main_task = self.spawn(self._run())
         self.spawn(self._watchdog())
 
     def _auth(self) -> dict:
@@ -156,7 +156,9 @@ class ZelloPort(Port):
             self.texting = bool(m.get("texting_supported"))
             self.detail = f"Kanal {self.section['channel']} · {self.users_online} online"
             if m.get("status") != "online":
-                self.router.event("warn", f"Zello-Kanal {m.get('status')}: {m.get('error', '')}")
+                self.router.event("warn", f"Zello-Kanal {m.get('status')}: {m.get('error', '')} – neu verbinden")
+                if self.ws is not None:
+                    asyncio.create_task(self.ws.close())
             self.router.notify()
         elif cmd == "on_stream_start":
             if self.rx_stream_id is not None:

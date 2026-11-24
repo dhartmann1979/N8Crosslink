@@ -1,0 +1,8 @@
+[Unit]
+Description=N8 Crosslink – Update ausführen (ausgelöst aus dem Adminportal)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/n8crosslink/update.sh --auto
+TimeoutStartSec=900

@@ -3,8 +3,9 @@
 set -euo pipefail
 [[ $EUID -eq 0 ]] || { echo "Bitte als root starten: sudo $0"; exit 1; }
 read -r -p "N8 Crosslink wirklich entfernen? [j/N]: " a </dev/tty; [[ "$a" =~ ^[jJyY] ]] || exit 0
-systemctl disable --now n8crosslink 2>/dev/null || true
-rm -f /etc/systemd/system/n8crosslink.service
+systemctl disable --now n8crosslink n8crosslink-update.path 2>/dev/null || true
+rm -f /etc/systemd/system/n8crosslink.service /etc/systemd/system/n8crosslink-update.path /etc/systemd/system/n8crosslink-update.service
+rm -f /etc/sudoers.d/n8crosslink
 rm -f /etc/nginx/sites-enabled/n8crosslink /etc/nginx/sites-available/n8crosslink 2>/dev/null || true
 systemctl daemon-reload
 read -r -p "Datenbank (Einstellungen, Last Heard) behalten? [J/n]: " k </dev/tty

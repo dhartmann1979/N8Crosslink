@@ -22,6 +22,10 @@ DEFAULTS: dict = {
         "jitter_ms": 240,           # Vorpuffer für DMR-/Zello-Ausgang
         "announcement": "",
         "keep_days": 90,
+        "watchdog_offline_s": 120,   # Netz so lange offline -> Watchdog baut es komplett neu auf
+        "update_check": True,        # stündlich zur vollen Stunde auf GitHub prüfen
+        "update_repo": "dhartmann1979/N8Crosslink",
+        "update_branch": "main",
         "links": [
             {"name": "Auf der Nachtschicht FRN", "url": "https://frn.auf-der-nachtschicht.de"},
             {"name": "DMR Die N8schicht", "url": "https://dmr.die-n8schicht.de"},
@@ -65,9 +69,22 @@ DEFAULTS: dict = {
         "talker_alias": True,
         "send_dmra": False,         # DMRA-Pakete (nicht für HBlink4!)
         "rx_timeout_ms": 500,
-        "userdb_url": "https://freeradioid.net/api/subscriber_ids.csv",
-        "userdb_fallback_url": "https://radioid.net/static/user.csv",
         "rx_gain_db": 0.0, "tx_gain_db": 0.0,
+    },
+    "ids": {
+        # FreeRadioID.net API – https://freeradioid.net/api-index.html
+        "subscriber_csv_url": "https://freeradioid.net/api/subscriber_ids.csv",
+        "subscriber_json_url": "https://freeradioid.net/api/subscriber_ids.json",
+        "local_json_url": "https://freeradioid.net/api/local_subscriber_ids.json",
+        "local_csv_url": "https://freeradioid.net/api/local_subscriber_ids.csv",
+        "user_api_url": "https://freeradioid.net/api/dmr/user/?id={id}",
+        "radioid_fallback_url": "https://radioid.net/static/user.csv",
+        "talkgroups_url": "https://github.com/dhartmann1979/n8schicht/raw/refs/heads/main/talkgroup_ids.json",
+        "avatars": True,
+        "avatar_url": "https://freeradioid.net/api/idimg-{id}.png",
+        "only_registered": True,      # nur FreeRadioID-registrierte IDs abfragen (andere haben kein Bild)
+        "match_callsign": True,       # FRN-/Zello-Namen mit Rufzeichen -> FreeRadioID-Avatar
+        "zello_avatar_url": "",       # optional, Platzhalter {username}
     },
     "zello": {
         "enabled": False,
@@ -89,6 +106,9 @@ DEFAULTS: dict = {
         "vocoder_enc_gain_db": 0.0, "vocoder_dec_gain_db": 0.0,
     },
 }
+
+DEFAULT_USER = "n8schicht"
+DEFAULT_PASSWORD = "n8schicht"
 
 SECRET_KEYS = {("frn", "password"), ("dmr", "password"), ("zello", "password"),
                ("zello", "auth_token"), ("zello", "private_key")}
@@ -131,8 +151,14 @@ class Database:
         CREATE TABLE IF NOT EXISTS dmr_users (id INTEGER PRIMARY KEY, callsign TEXT, name TEXT, city TEXT, country TEXT);
         CREATE INDEX IF NOT EXISTS du_cs ON dmr_users(callsign);
         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+        CREATE TABLE IF NOT EXISTS frid_registered (id INTEGER PRIMARY KEY);
+        CREATE TABLE IF NOT EXISTS talkgroups (id INTEGER PRIMARY KEY, name TEXT);
+        CREATE TABLE IF NOT EXISTS avatars (key TEXT PRIMARY KEY, has INTEGER, mime TEXT, data BLOB, url TEXT, fetched_at REAL);
         """)
         self.conn.commit()
+        if not self.has_users():
+            # Standard-Login beim ersten Start – im Adminportal ändern!
+            self.set_user(DEFAULT_USER, DEFAULT_PASSWORD, "superadmin")
 
     # ------------------------------------------------------------ Einstellungen
     def load_config(self) -> dict:
@@ -255,8 +281,8 @@ class Database:
             by_src = {r[0]: {"talks": r[1], "airtime": r[2]} for r in c.execute(
                 "SELECT source, COUNT(*), COALESCE(SUM(duration),0) FROM lastheard WHERE ts_start>=? AND status!='blocked'"
                 " GROUP BY source", (since,))}
-            top = [dict(name=r[0], callsign=r[1], talks=r[2], airtime=r[3], source=r[4]) for r in c.execute(
-                "SELECT MAX(name), COALESCE(callsign,name) cs, COUNT(*), COALESCE(SUM(duration),0), MAX(source)"
+            top = [dict(name=r[0], callsign=r[1], talks=r[2], airtime=r[3], source=r[4], dmr_id=r[5]) for r in c.execute(
+                "SELECT MAX(name), COALESCE(callsign,name) cs, COUNT(*), COALESCE(SUM(duration),0), MAX(source), MAX(dmr_id)"
                 " FROM lastheard WHERE ts_start>=? AND status!='blocked' GROUP BY cs ORDER BY 4 DESC LIMIT 15", (since,))]
             hours = [0] * 24
             for r in c.execute("SELECT CAST(strftime('%H', ts_start, 'unixepoch', 'localtime') AS INT), COUNT(*)"
@@ -284,27 +310,130 @@ class Database:
         with self.lock:
             return [dict(r) for r in self.conn.execute("SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,))]
 
-    # ------------------------------------------------------------ DMR-ID-DB
+    # ------------------------------------------------------------ Meta
+    def meta_get(self, key: str) -> str | None:
+        with self.lock:
+            r = self.conn.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+        return r[0] if r else None
+
+    def meta_set(self, key: str, value: str) -> None:
+        with self.lock:
+            self.conn.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", (key, value))
+            self.conn.commit()
+
+    def default_password_active(self) -> bool:
+        with self.lock:
+            row = self.conn.execute("SELECT pw_hash FROM users WHERE username=?", (DEFAULT_USER,)).fetchone()
+        return bool(row) and verify_password(DEFAULT_PASSWORD, row["pw_hash"])
+
+    # ------------------------------------------------------------ DMR-ID-Listen
     def userdb_replace(self, rows: list[tuple]) -> None:
         with self.lock:
             self.conn.execute("DELETE FROM dmr_users")
             self.conn.executemany("INSERT OR REPLACE INTO dmr_users VALUES (?,?,?,?,?)", rows)
-            self.conn.execute("INSERT OR REPLACE INTO meta VALUES ('userdb_updated', ?)", (str(time.time()),))
+            self.conn.execute("INSERT OR REPLACE INTO meta VALUES ('users_updated', ?)", (str(time.time()),))
+            self.conn.commit()
+
+    def userdb_upsert(self, row: tuple) -> None:
+        with self.lock:
+            self.conn.execute("INSERT OR REPLACE INTO dmr_users VALUES (?,?,?,?,?)", row)
             self.conn.commit()
 
     def userdb_lookup(self, dmr_id: int) -> dict | None:
         with self.lock:
             r = self.conn.execute("SELECT * FROM dmr_users WHERE id=?", (dmr_id,)).fetchone()
-        return dict(r) if r else None
+        if not r:
+            return None
+        d = dict(r)
+        d["frid"] = self.frid_is_registered(dmr_id)
+        return d
 
     def userdb_by_callsign(self, callsign: str) -> dict | None:
+        cs = callsign.upper()
         with self.lock:
-            r = self.conn.execute("SELECT * FROM dmr_users WHERE callsign=? ORDER BY id LIMIT 1",
-                                  (callsign.upper(),)).fetchone()
+            # bevorzugt eine bei FreeRadioID registrierte ID (hat ggf. einen Avatar)
+            r = self.conn.execute("SELECT u.* FROM dmr_users u JOIN frid_registered f ON f.id=u.id "
+                                  "WHERE u.callsign=? ORDER BY u.id LIMIT 1", (cs,)).fetchone()
+            if not r:
+                r = self.conn.execute("SELECT * FROM dmr_users WHERE callsign=? ORDER BY id LIMIT 1", (cs,)).fetchone()
         return dict(r) if r else None
 
-    def userdb_info(self) -> dict:
+    def frid_replace(self, rows: list[tuple]) -> None:
         with self.lock:
-            n = self.conn.execute("SELECT COUNT(*) FROM dmr_users").fetchone()[0]
-            r = self.conn.execute("SELECT value FROM meta WHERE key='userdb_updated'").fetchone()
-        return {"count": n, "updated": float(r[0]) if r else None}
+            self.conn.execute("DELETE FROM frid_registered")
+            self.conn.executemany("INSERT OR IGNORE INTO frid_registered VALUES (?)", [(r[0],) for r in rows])
+            # registrierte Nutzer auch in die Gesamtliste übernehmen (falls dort neuer)
+            self.conn.executemany("INSERT OR REPLACE INTO dmr_users VALUES (?,?,?,?,?)", rows)
+            self.conn.execute("INSERT OR REPLACE INTO meta VALUES ('frid_updated', ?)", (str(time.time()),))
+            self.conn.commit()
+
+    def frid_add(self, dmr_id: int) -> None:
+        with self.lock:
+            self.conn.execute("INSERT OR IGNORE INTO frid_registered VALUES (?)", (dmr_id,))
+            self.conn.commit()
+
+    def frid_is_registered(self, dmr_id: int) -> bool:
+        with self.lock:
+            return self.conn.execute("SELECT 1 FROM frid_registered WHERE id=?", (dmr_id,)).fetchone() is not None
+
+    def talkgroups_replace(self, rows: list[tuple]) -> None:
+        with self.lock:
+            self.conn.execute("DELETE FROM talkgroups")
+            self.conn.executemany("INSERT OR REPLACE INTO talkgroups VALUES (?,?)", rows)
+            self.conn.execute("INSERT OR REPLACE INTO meta VALUES ('tg_updated', ?)", (str(time.time()),))
+            self.conn.commit()
+
+    def tg_name(self, tg: int) -> str:
+        with self.lock:
+            r = self.conn.execute("SELECT name FROM talkgroups WHERE id=?", (tg,)).fetchone()
+        return r[0] if r else ""
+
+    def idlists_info(self) -> dict:
+        with self.lock:
+            c = self.conn
+            n_u = c.execute("SELECT COUNT(*) FROM dmr_users").fetchone()[0]
+            n_r = c.execute("SELECT COUNT(*) FROM frid_registered").fetchone()[0]
+            n_t = c.execute("SELECT COUNT(*) FROM talkgroups").fetchone()[0]
+        f = lambda k: float(self.meta_get(k) or 0) or None  # noqa: E731
+        return {"users": n_u, "registered": n_r, "talkgroups": n_t, "users_updated": f("users_updated"),
+                "frid_updated": f("frid_updated"), "tg_updated": f("tg_updated"),
+                "users_source": self.meta_get("users_source") or ""}
+
+    # Kompatibilität (Dashboard/DMR-Karte)
+    def userdb_info(self) -> dict:
+        i = self.idlists_info()
+        return {"count": i["users"], "updated": i["users_updated"], "registered": i["registered"],
+                "talkgroups": i["talkgroups"]}
+
+    # ------------------------------------------------------------ Avatare
+    def avatar_get(self, key: str) -> dict | None:
+        with self.lock:
+            r = self.conn.execute("SELECT * FROM avatars WHERE key=?", (key,)).fetchone()
+        if not r:
+            return None
+        d = dict(r)
+        d["data"] = bytes(d["data"]) if d["data"] is not None else None
+        return d
+
+    def avatar_put(self, key: str, has: bool, mime: str | None, data: bytes | None, url: str) -> None:
+        with self.lock:
+            self.conn.execute("INSERT OR REPLACE INTO avatars VALUES (?,?,?,?,?,?)",
+                              (key, 1 if has else 0, mime, sqlite3.Binary(data) if data else None, url, time.time()))
+            self.conn.commit()
+
+    def avatar_delete(self, key: str) -> None:
+        with self.lock:
+            self.conn.execute("DELETE FROM avatars WHERE key=?", (key,))
+            self.conn.commit()
+
+    def avatar_list(self) -> list[dict]:
+        with self.lock:
+            return [dict(r) for r in self.conn.execute("SELECT key, has, url, fetched_at FROM avatars ORDER BY key")]
+
+    def avatar_stats(self) -> dict:
+        with self.lock:
+            rows = self.conn.execute("SELECT has, COUNT(*), COALESCE(SUM(LENGTH(data)),0) FROM avatars GROUP BY has").fetchall()
+        d = {r[0]: (r[1], r[2]) for r in rows}
+        last = self.meta_get("avatars_refreshed")
+        return {"with_avatar": d.get(1, (0, 0))[0], "without": d.get(0, (0, 0))[0],
+                "bytes": d.get(1, (0, 0))[1], "refreshed": float(last) if last else None}

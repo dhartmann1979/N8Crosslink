@@ -33,6 +33,12 @@ function splitName(t) {               // "DL1ABC Hans" -> ["DL1ABC", "Hans"]
   if (cs && n.toUpperCase().startsWith(cs.toUpperCase())) return [cs, n.slice(cs.length).trim()];
   return [n || cs || '?', cs && cs !== n ? cs : ''];
 }
+const AVV = Math.floor(Date.now() / 86400000);   // Avatare max. 1 Tag im Browser-Cache
+function avatarKey(src, o) { return src === 'dmr' ? (o.dmr_id || '') : (src === 'zello' ? (o.name || o.callsign || '') : (o.callsign || o.name || '')); }
+function avatar(src, key, label, cls = 'avatar', style = '') {
+  const img = key ? `<img src="/api/avatar/${src}/${encodeURIComponent(key)}?v=${AVV}" alt="" loading="lazy" onerror="this.remove()">` : '';
+  return `<span class="${cls} ${src}" ${style}><span class="av-fb">${esc(initials(label))}</span>${img}</span>`;
+}
 const badge = (k, extra = '') => `<span class="badge ${k} ${extra}">${esc(NET[k]?.label || k)}</span>`;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2800); }
 async function api(path, opts = {}) {
@@ -100,6 +106,9 @@ function renderState() {
   $('#ssVocLbl').innerHTML = '&nbsp;' + esc(v ? (v.mode === 'md380' ? 'md380-emu' : v.mode === 'usb' ? 'USB-Stick' : v.mode) + (v.online ? '' : ' offline') : 'aus');
   $('#ssInfo').textContent = st.active ? '' : 'Ruhe';
   renderOnAir(); renderNetCards(); renderRoom();
+  const up = st.update;
+  $('#updateBanner').hidden = !(S.me?.user && up?.available);
+  if (up?.available) $('#updateText').innerHTML = `Update verfügbar: <b>${esc(up.current)}</b> → <b>${esc(up.latest)}</b>`;
   if ($('#tab-nets') && !$('#tab-nets').classList.contains('hidden')) renderNetDetails();
 }
 
@@ -111,8 +120,9 @@ function renderOnAir() {
     $('#oaKicker').textContent = 'On Air';
     const last = S.lh.find(x => x.status !== 'blocked');
     $('#oaName').textContent = 'Ruhe auf allen Netzen';
+    if ($('#oaAv').dataset.k) { $('#oaAv').outerHTML = '<div class="big-av" id="oaAv"><span class="av-fb">N8</span></div>'; }
     $('#oaSub').innerHTML = last ? `Zuletzt: <b>${esc(last.name || last.callsign)}</b> ${badge(last.source)} · vor ${ago(last.ts_end || last.ts_start)}` : 'Warte auf die nächste Durchsage …';
-    $('#oaAv').textContent = 'N8'; box.style.removeProperty('--srccol');
+    box.style.removeProperty('--srccol');
     $('#oaTimer').textContent = ''; $('#oaMeter').style.width = '0';
     return;
   }
@@ -120,11 +130,13 @@ function renderOnAir() {
   box.classList.add('live');
   box.style.setProperty('--srccol', `var(--${a.source})`);
   $('#stActive').textContent = cs;
-  $('#oaAv').textContent = initials(cs);
+  const k = avatarKey(a.source, t);
+  if ($('#oaAv').dataset.k !== a.source + k) { $('#oaAv').dataset.k = a.source + k; $('#oaAv').outerHTML = avatar(a.source, k, cs, 'big-av').replace('class="big-av', 'id="oaAv" data-k="' + esc(a.source + k) + '" class="big-av'); }
   $('#oaKicker').textContent = `On Air · über ${NET[a.source].label}`;
   $('#oaName').textContent = t.name || cs;
   const tg = a.targets.length ? a.targets.map(k => badge(k)).join(' ') : '<span class="badge off">kein Ziel online</span>';
-  $('#oaSub').innerHTML = `${badge(a.source)} <span class="arrow">→</span> ${tg} · ${esc(t.detail || '')}${t.city ? ' · ' + esc(t.city) : ''}${t.dmr_id ? ' · ID ' + t.dmr_id : ''}`;
+  const frid = t.extra?.frid ? ' <span class="frid-tag" title="Registriert bei FreeRadioID.net">FRID</span>' : '';
+  $('#oaSub').innerHTML = `${badge(a.source)} <span class="arrow">→</span> ${tg} · ${esc(t.detail || '')}${t.city ? ' · ' + esc(t.city) : ''}${t.dmr_id ? ' · ID ' + t.dmr_id : ''}${frid}`;
   const lvl = S.state.ports[a.source]?.rx_level ?? -90;
   $('#oaMeter').style.width = Math.max(0, Math.min(100, (lvl + 60) / 60 * 100)) + '%';
 }
@@ -150,7 +162,8 @@ function renderNetCards() {
     else now = `<span style="color:var(--text-dim)">${esc(p.enabled ? (p.online ? 'bereit' : (p.state || 'offline')) : 'deaktiviert')}</span>`;
     const meta = [];
     if (k === 'frn') { meta.push(esc(p.server || '')); if (p.access) meta.push('Zugang ' + esc(p.access)); }
-    if (k === 'dmr') { meta.push(esc(p.server || '')); meta.push(`Peer ${esc(p.peer_id)}`); meta.push(`RX TG ${esc(p.tg_rx)} · TX TG ${esc(p.tg_tx)} · TS${esc(p.slot)}`); }
+    if (k === 'dmr') { meta.push(esc(p.server || '')); meta.push(`Peer ${esc(p.peer_id)}`); meta.push(`RX TG ${esc(p.tg_rx)}${p.tg_rx_name ? ' ' + esc(p.tg_rx_name) : ''} · TX TG ${esc(p.tg_tx)}${p.tg_tx_name ? ' ' + esc(p.tg_tx_name) : ''} · TS${esc(p.slot)}`); }
+    if (p.watchdog?.reconnects) meta.push(`🔁 ${p.watchdog.reconnects}`);
     if (k === 'zello') { meta.push(esc(p.username || '')); }
     const c = p.counters || {};
     meta.push(`⇣ ${c.rx || 0} · ⇡ ${c.tx || 0}`);
@@ -171,7 +184,7 @@ function renderRoom() {
   if (!list.length) { $('#roomList').innerHTML = '<div class="empty">Keine Stationen im Raum.</div>'; return; }
   const activeCs = S.state.active?.source === 'frn' ? S.state.active.talker.callsign : '';
   $('#roomList').innerHTML = `<table class="tbl"><thead><tr><th>Station</th><th>Ort</th><th>Band / Kanal</th><th>Typ</th></tr></thead><tbody>${
-    list.map(c => `<tr ${c.callsign === activeCs ? 'style="background:rgba(48,209,88,.12)"' : ''}><td><div class="lh-user"><span class="avatar frn">${esc(initials(c.callsign))}</span>
+    list.map(c => `<tr ${c.callsign === activeCs ? 'style="background:rgba(48,209,88,.12)"' : ''}><td><div class="lh-user">${avatar('frn', c.callsign, c.callsign)}
       <div><div class="lh-cs">${esc(c.callsign)}${c.callsign === activeCs ? ' 🎙️' : ''}${c.muted ? ' 🔇' : ''}</div><div class="lh-name">${esc(c.name)}</div></div></div></td>
       <td>${esc(c.city)}${c.country ? ' · ' + esc(c.country) : ''}</td><td>${esc(c.band)}</td><td>${esc(c.type)}</td></tr>`).join('')}</tbody></table>`;
 }
@@ -193,7 +206,7 @@ function renderLH() {
     const targets = blocked ? '<span style="color:var(--text-dim)">–</span>' : (e.targets || []).length ? e.targets.map(t => badge(t)).join('') : '<span style="color:var(--text-dim)">kein Ziel</span>';
     return `<div class="lh-row ${live ? 'live' : ''} ${blocked ? 'blocked' : ''}">
       <div class="lh-time" title="${new Date(e.ts_start * 1000).toLocaleString('de-DE')}">${fmtTime(e.ts_start)}</div>
-      <div class="lh-user"><span class="avatar ${e.source}">${esc(initials(cs))}</span><div style="min-width:0"><div class="lh-cs">${esc(cs)}</div>
+      <div class="lh-user">${avatar(e.source, avatarKey(e.source, e), cs)}<div style="min-width:0"><div class="lh-cs">${esc(cs)}</div>
         <div class="lh-name">${esc(nm)}${e.dmr_id ? ' · ' + e.dmr_id : ''}</div></div></div>
       <div>${badge(e.source)}</div>
       <div class="lh-detail">${esc(e.detail || '')}</div>
@@ -242,7 +255,7 @@ async function loadStats() {
   $('#hoursLbl').innerHTML = s.hours.map((_, i) => `<span>${i % 3 === 0 ? i : ''}</span>`).join('');
   $('#topBody').innerHTML = s.top.length ? s.top.map(t => {
     const [cs, nm] = splitName({ name: t.name, callsign: t.callsign });
-    return `<tr><td><div class="lh-user"><span class="avatar ${t.source}">${esc(initials(cs))}</span><div><div class="lh-cs">${esc(cs)}</div><div class="lh-name">${esc(nm)}</div></div></div></td>
+    return `<tr><td><div class="lh-user">${avatar(t.source, t.source === 'dmr' ? (t.dmr_id || '') : (t.source === 'zello' ? t.name : cs), cs)}<div><div class="lh-cs">${esc(cs)}</div><div class="lh-name">${esc(nm)}</div></div></div></td>
       <td>${badge(t.source)}</td><td class="num">${t.talks}</td><td class="num">${fmtDur(t.airtime)}</td></tr>`;
   }).join('') : '<tr><td colspan="4" class="empty">Keine Daten im Zeitraum.</td></tr>';
 }
@@ -253,22 +266,26 @@ function renderNetDetails() {
   const p = S.state?.ports || {}, v = S.state?.vocoder;
   const on = (x) => !x?.enabled ? '<span class="badge warn">deaktiviert</span>' : x.online ? '<span class="badge ok">online</span>' : `<span class="badge off">${esc(x.state || 'offline')}</span>`;
   const f = p.frn || {}, d = p.dmr || {}, z = p.zello || {};
+  const wd = (x) => [['Watchdog', `${x.watchdog?.reconnects || 0} Wiederverbindungen · ${x.watchdog?.wd_restarts || 0} Neuaufbauten${x.watchdog?.wd_reason ? ' (zuletzt: ' + esc(x.watchdog.wd_reason) + ')' : ''}`],
+    [x.online ? 'Online seit' : 'Offline seit', (x.online ? x.watchdog?.online_since : x.watchdog?.offline_since) ? new Date((x.online ? x.watchdog.online_since : x.watchdog.offline_since) * 1000).toLocaleString('de-DE') : '–']];
   const card = (k, title, body) => `<div><h2 class="section-header">${NET[k]?.icon || '🎛️'} ${title}</h2><div class="card">${body}</div></div>`;
   $('#netDetails').innerHTML =
     card('frn', 'FRN – FreeRadioNetwork', kv([['Status', on(f)], ['Server', esc(f.server)], ['Raum', esc(f.net)], ['Zugang', esc(f.access)],
       ['Server-Version', esc(f.server_version)], ['Stationen im Raum', (f.clients || []).length], ['Sende-Status', esc(f.tx_state)],
-      ['Info', esc(f.net_info)], ['Durchgänge', `⇣ ${f.counters?.rx || 0} empfangen · ⇡ ${f.counters?.tx || 0} gesendet`]])) +
+      ['Info', esc(f.net_info)], ['Durchgänge', `⇣ ${f.counters?.rx || 0} empfangen · ⇡ ${f.counters?.tx || 0} gesendet`], ...wd(f)])) +
     card('dmr', 'DMR – HomeBrew (HBlink4 / FreeDMR)', kv([['Status', on(d)], ['Server', esc(d.server)], ['Login-Phase', esc(d.login)],
       ['Peer-ID', esc(d.peer_id)], ['Zeitschlitz', 'TS' + esc(d.slot)], ['RX-Talkgroup', esc(d.tg_rx)], ['TX-Talkgroup', esc(d.tg_tx)],
       ['Verbunden seit', d.since ? new Date(d.since * 1000).toLocaleString('de-DE') : '–'],
       ['Ping / Pong', `${d.stats?.pings || 0} / ${d.stats?.pongs || 0}`], ['Pakete', `⇣ ${d.stats?.rx_pkts || 0} · ⇡ ${d.stats?.tx_pkts || 0}`],
-      ['ID-Datenbank', d.userdb ? `${(d.userdb.count || 0).toLocaleString('de-DE')} Einträge${d.userdb.updated ? ', Stand ' + new Date(d.userdb.updated * 1000).toLocaleString('de-DE') : ''}` : '–']])) +
+      ['RX-/TX-Talkgroup-Name', `${esc(d.tg_rx_name || '–')} / ${esc(d.tg_tx_name || '–')}`],
+      ['ID-Listen', d.userdb ? `${(d.userdb.count || 0).toLocaleString('de-DE')} DMR-IDs · ${(d.userdb.registered || 0).toLocaleString('de-DE')} FreeRadioID · ${(d.userdb.talkgroups || 0).toLocaleString('de-DE')} Talkgroups${d.userdb.updated ? ' · Stand ' + new Date(d.userdb.updated * 1000).toLocaleString('de-DE') : ''}` : '–'], ...wd(d)])) +
     card('zello', 'Zello – Channel API', kv([['Status', on(z)], ['Server', esc(z.server)], ['Kanal', esc(z.channel)], ['Konto', esc(z.username)],
       ['Kanal-Status', esc(z.channel_status)], ['Benutzer online', z.users_online ?? '–'],
-      ['Durchgänge', `⇣ ${z.counters?.rx || 0} · ⇡ ${z.counters?.tx || 0}`]])) +
+      ['Durchgänge', `⇣ ${z.counters?.rx || 0} · ⇡ ${z.counters?.tx || 0}`], ...wd(z)])) +
     card('voc', 'Vocoder (AMBE+2)', kv([['Status', v ? (v.online ? '<span class="badge ok">bereit</span>' : '<span class="badge off">offline</span>') : '<span class="badge warn">nicht gestartet</span>'],
       ['Betriebsart', esc(v?.name)], ['Gerät', esc(v?.product)], ['Version', esc(v?.version)],
-      ['Rahmen', v ? `Encode ${v.enc} · Decode ${v.dec} · Timeouts ${v.timeouts}` : '–']]));
+      ['Rahmen', v ? `Encode ${v.enc} · Decode ${v.dec} · Timeouts ${v.timeouts}` : '–'],
+      ['Watchdog', v ? `${v.reopens || 0}× neu geöffnet` : '–']]));
 }
 
 /* ---------- Login / Setup ---------- */
@@ -296,7 +313,8 @@ $('#lOk').addEventListener('click', async () => {
 $('#setupBtn').addEventListener('click', () => openLogin('setup'));
 async function loadMe() {
   S.me = await api('/api/me');
-  $('#setupBanner').hidden = !S.me.setup_required;
+  $('#setupBanner').hidden = true;
+  $('#pwBanner').hidden = !S.me.default_password;
   $('#tabAdminBtn').hidden = !S.me.user;
   $('#userArea').innerHTML = S.me.user
     ? `<button class="hdr-btn" id="logoutBtn" title="Abmelden">👤 ${esc(S.me.user)} · ⎋</button>`
@@ -320,6 +338,9 @@ const SCHEMA = {
     F('hang_time_ms', 'Sperrzeit nach Aussendung (ms)', 'number', { help: 'Schützt vor Ping-Pong zwischen den Netzen' }),
     F('jitter_ms', 'Vorpuffer DMR/Zello-Ausgang (ms)', 'number', { help: 'FRN liefert 200-ms-Blöcke – 240 ms sind ein guter Wert' }),
     F('tot_s', 'Time-Out-Timer pro Durchgang (s)', 'number'), F('keep_days', 'Last Heard aufbewahren (Tage)', 'number'),
+    F('watchdog_offline_s', 'Watchdog: Netz nach … s offline komplett neu aufbauen', 'number', { help: 'Zusätzlich zur normalen Wiederverbindung (Standard 120 s)' }),
+    F('update_check', 'Stündlich (zur vollen Stunde) auf Updates prüfen', 'bool'),
+    F('update_repo', 'GitHub-Repository für Updates'), F('update_branch', 'Branch'),
     F('announcement', 'Hinweis-Banner im Dashboard', 'text', { wide: true }),
     F('links', 'Links-Menü (JSON-Liste mit name/url)', 'json', { wide: true }),
   ] },
@@ -351,7 +372,6 @@ const SCHEMA = {
     F('rx_gain_db', 'Pegel DMR → Bridge (dB)', 'number', { step: 0.5 }), F('tx_gain_db', 'Pegel Bridge → DMR (dB)', 'number', { step: 0.5 }),
     F('rx_freq', 'RX-Frequenz (Hz)', 'number'), F('tx_freq', 'TX-Frequenz (Hz)', 'number'),
     F('latitude', 'Breite'), F('longitude', 'Länge'), F('location', 'Standort'), F('description', 'Beschreibung'), F('url', 'URL'),
-    F('userdb_url', 'ID-Datenbank (CSV-URL)', 'text', { wide: true }), F('userdb_fallback_url', 'ID-Datenbank Ersatz-URL', 'text', { wide: true }),
   ] },
   zello: { title: '💬 Zello', fields: [
     F('enabled', 'Zello aktiv', 'bool'),
@@ -368,6 +388,8 @@ const SCHEMA = {
     F('rx_gain_db', 'Pegel Zello → Bridge (dB)', 'number', { step: 0.5 }), F('tx_gain_db', 'Pegel Bridge → Zello (dB)', 'number', { step: 0.5 }),
   ] },
   vocoder: { title: '🎛️ Vocoder', custom: renderVocoder },
+  ids: { title: '🗂️ ID-Listen & Avatare', custom: renderIds },
+  update: { title: '⬆️ Updates', custom: renderUpdate },
   users: { title: '👥 Benutzer', custom: renderUsers },
   system: { title: '🛠️ System', custom: renderSystem },
 };
@@ -491,24 +513,126 @@ async function renderUsers() {
 }
 
 async function renderSystem() {
-  const ev = await api('/api/admin/events?limit=150');
-  $('#adminBody').innerHTML = `<div class="form-actions" style="justify-content:flex-start">
+  const [ev, sy] = await Promise.all([api('/api/admin/events?limit=150'), api('/api/admin/system')]);
+  const stCls = (a) => a === 'active' ? 'ok' : a === 'failed' ? 'off' : 'warn';
+  const ACT = { start: '▶️ Start', stop: '⏹️ Stopp', restart: '🔄 Neustart', enable: '✅ Autostart an', disable: '🚫 Autostart aus' };
+  const unitsHtml = sy.units.length ? `<table class="tbl"><thead><tr><th>Dienst</th><th>Status</th><th>Autostart</th><th></th></tr></thead><tbody>${
+    sy.units.map(u => `<tr><td><b>${esc(u.label)}</b><div class="lh-name">${esc(u.unit)}</div></td>
+      <td><span class="badge ${stCls(u.active)}">${esc(u.active)}</span></td><td><span class="badge ${u.enabled === 'enabled' ? 'ok' : ''}">${esc(u.enabled)}</span></td>
+      <td class="num">${u.actions.map(a => `<button class="btn secondary" style="padding:4px 10px;margin:2px" data-unit="${esc(u.unit)}" data-act="${a}" ${sy.sudo ? '' : 'disabled'}>${ACT[a] || a}</button>`).join('')}</td></tr>`).join('')}</tbody></table>`
+    : '<div class="empty">Keine Dienste freigegeben.</div>';
+  $('#adminBody').innerHTML = `<h2 class="section-header">Dienste ${sy.sudo ? '<span class="badge ok">sudo bereit</span>' : '<span class="badge warn">sudo nicht eingerichtet – einmal sudo /opt/n8crosslink/update.sh ausführen</span>'}</h2>
+    <div class="card">${unitsHtml}</div>
+    <div class="form-actions" style="justify-content:flex-start">
+      <button class="btn secondary" id="sysPerm" ${sy.sudo && sy.fix_perms ? '' : 'disabled'}>🔐 Berechtigungen prüfen &amp; korrigieren</button>
+      ${sy.reboot ? `<button class="btn danger" id="sysReboot" ${sy.sudo ? '' : 'disabled'}>⏻ Server neu starten</button>` : ''}</div>
+    <pre id="sysOut" style="font-size:11.5px;white-space:pre-wrap;color:var(--text-dim);padding:0 4px"></pre>
+    <h2 class="section-header">Bridge</h2>
+    <div class="form-actions" style="justify-content:flex-start">
       <button class="btn" id="sysRestart">🔄 Bridge neu starten</button>
       <button class="btn secondary" id="sysSvc">♻️ Dienst neu starten</button>
-      <button class="btn secondary" id="sysUdb">🗂️ DMR-ID-Datenbank aktualisieren</button>
+      <button class="btn secondary" id="sysUdb">🗂️ ID-Listen aktualisieren</button>
       <a class="btn secondary" href="/api/admin/export">⬇️ Konfiguration exportieren</a>
       <label class="btn secondary" style="cursor:pointer">⬆️ Importieren<input type="file" id="sysImp" accept=".json" hidden></label></div>
     <h2 class="section-header">Ereignisprotokoll</h2>
     <div class="ev-list">${ev.map(e => `<div class="ev-row ${e.level === 'warn' ? 'warn' : ''}"><time>${new Date(e.ts * 1000).toLocaleString('de-DE')}</time><div>${esc(e.text)}</div></div>`).join('') || '<div class="empty">Leer.</div>'}</div>`;
+  $$('[data-unit]').forEach(b => b.onclick = async () => {
+    const self = b.dataset.unit === 'n8crosslink.service';
+    if (['stop', 'disable'].includes(b.dataset.act) || self) { if (!confirm(`${b.textContent.trim()} – ${b.dataset.unit}?`)) return; }
+    const r = await api('/api/admin/system/unit', { method: 'POST', body: { unit: b.dataset.unit, action: b.dataset.act } });
+    toast((r.ok ? '✅ ' : '⚠️ ') + (r.message || '')); if (!self) setTimeout(renderSystem, 1500);
+  });
+  if ($('#sysPerm')) $('#sysPerm').onclick = async () => { $('#sysOut').textContent = 'prüfe …'; const r = await api('/api/admin/system/fix-perms', { method: 'POST' }); $('#sysOut').textContent = r.message; toast(r.ok ? '✅ Berechtigungen geprüft' : '⚠️ Fehler'); };
+  if ($('#sysReboot')) $('#sysReboot').onclick = async () => { if (!confirm('Den ganzen Server jetzt neu starten?')) return; const r = await api('/api/admin/system/reboot', { method: 'POST' }); toast(r.message); };
   $('#sysRestart').onclick = async () => { await api('/api/admin/restart', { method: 'POST' }); toast('🔄 Bridge startet neu …'); };
   $('#sysSvc').onclick = async () => { if (!confirm('Dienst komplett neu starten? Das Dashboard ist ein paar Sekunden weg.')) return; await api('/api/admin/service-restart', { method: 'POST' }); toast('♻️ Dienst startet neu …'); };
-  $('#sysUdb').onclick = async () => { toast('Lade ID-Datenbank …'); const r = await api('/api/admin/userdb', { method: 'POST' }); toast(r.ok ? `✅ ${r.count.toLocaleString('de-DE')} Einträge` : '⚠️ Download fehlgeschlagen'); };
+  $('#sysUdb').onclick = async () => { const r = await api('/api/admin/ids/update', { method: 'POST' }); toast(r.message); };
   $('#sysImp').onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
     try { await api('/api/admin/import', { method: 'POST', body: JSON.parse(await f.text()) }); toast('✅ Importiert'); $('#restartBanner').hidden = false; }
     catch (err) { toast('⚠️ ' + err.message); }
   };
 }
+
+const IDS_FIELDS = [
+  F('subscriber_csv_url', 'FreeRadioID: alle DMR-IDs (CSV)', 'text', { wide: true }),
+  F('subscriber_json_url', 'FreeRadioID: alle DMR-IDs (JSON, Ersatz)', 'text', { wide: true }),
+  F('local_json_url', 'FreeRadioID: registrierte IDs (JSON)', 'text', { wide: true }),
+  F('local_csv_url', 'FreeRadioID: registrierte IDs (CSV, Ersatz)', 'text', { wide: true }),
+  F('user_api_url', 'FreeRadioID: Einzelabfrage unbekannter IDs ({id})', 'text', { wide: true }),
+  F('radioid_fallback_url', 'Ersatzquelle RadioID.net (CSV)', 'text', { wide: true }),
+  F('talkgroups_url', 'Talkgroup-Namen (JSON)', 'text', { wide: true }),
+  F('avatars', 'Avatare anzeigen', 'bool'), F('only_registered', 'Nur FreeRadioID-registrierte IDs abfragen', 'bool'),
+  F('match_callsign', 'FRN-/Zello-Rufzeichen → FreeRadioID-Avatar', 'bool'),
+  F('avatar_url', 'Avatar-URL DMR ({id})', 'text', { wide: true }),
+  F('zello_avatar_url', 'Avatar-URL Zello ({username}, optional)', 'text', { wide: true, help: 'Die Zello Channel API liefert keine Profilbilder – hier eine eigene Quelle eintragen oder unten Bilder hochladen' }),
+];
+async function renderIds() {
+  const i = await api('/api/admin/ids'); const L = i.lists, A = i.avatars;
+  const dt = (t) => t ? new Date(t * 1000).toLocaleString('de-DE') : 'noch nie';
+  const c = S.cfg.ids;
+  $('#adminBody').innerHTML = `${kv([
+      ['DMR-IDs', `${L.users.toLocaleString('de-DE')} · Stand ${dt(L.users_updated)}`], ['Quelle', esc(L.users_source)],
+      ['Bei FreeRadioID registriert', `${L.registered.toLocaleString('de-DE')} · Stand ${dt(L.frid_updated)}`],
+      ['Talkgroup-Namen', `${L.talkgroups.toLocaleString('de-DE')} · Stand ${dt(L.tg_updated)}`],
+      ['Avatare im Cache', `${A.with_avatar} mit Bild (${(A.bytes / 1024).toFixed(0)} KB) · ${A.without} ohne · zuletzt aktualisiert ${dt(A.refreshed)}`],
+      ['Zeitplan', 'ID-Listen und Avatare 1× täglich automatisch, sofort per Knopf']])}
+    <div class="form-actions" style="justify-content:flex-start">
+      <button class="btn" id="idsUpd" ${i.busy ? 'disabled' : ''}>🗂️ ID-Listen jetzt aktualisieren</button>
+      <button class="btn secondary" id="avUpd" ${i.avatars_busy ? 'disabled' : ''}>🖼️ Avatare jetzt aktualisieren</button></div>
+    <h2 class="section-header">Zello-Avatare (eigene Bilder)</h2>
+    <div class="form"><div class="field"><label>Zello-Benutzername</label><input type="text" id="zaUser"></div>
+      <div class="field"><label>Bild (PNG/JPEG/WebP/GIF)</label><input type="file" id="zaFile" accept="image/*"></div></div>
+    <div class="form-actions" style="justify-content:flex-start"><button class="btn" id="zaBtn">⬆️ Hochladen</button></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;padding:4px">${i.uploads.map(u => `<span class="badge zello" style="padding:4px 4px 4px 4px;gap:6px">${avatar('zello', u, u)} ${esc(u)} <button class="btn secondary" style="padding:2px 8px" data-zdel="${esc(u)}">✕</button></span>`).join('') || '<span style="color:var(--text-dim);font-size:13px">Noch keine eigenen Bilder.</span>'}</div>
+    <h2 class="section-header">Quellen</h2>
+    <div class="form">${IDS_FIELDS.map(f => fieldHtml('ids', f, c[f.key])).join('')}</div>
+    <div class="form-actions"><button class="btn" id="saveBtn">💾 Speichern</button></div>`;
+  $('#idsUpd').onclick = async () => { toast((await api('/api/admin/ids/update', { method: 'POST' })).message); setTimeout(renderIds, 1500); };
+  $('#avUpd').onclick = async () => { toast((await api('/api/admin/avatars/refresh', { method: 'POST' })).message); setTimeout(renderIds, 1500); };
+  $('#saveBtn').onclick = () => saveSection('ids', IDS_FIELDS);
+  $('#zaBtn').onclick = async () => {
+    const f = $('#zaFile').files[0], user = $('#zaUser').value.trim();
+    if (!f || !user) return toast('Benutzername und Bild angeben');
+    const b64 = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
+    try { await api('/api/admin/avatars/upload', { method: 'POST', body: { username: user, image: b64 } }); toast('✅ Avatar gespeichert'); renderIds(); }
+    catch (e) { toast('⚠️ ' + e.message); }
+  };
+  $$('[data-zdel]').forEach(b => b.onclick = async () => { await api('/api/admin/avatars/upload/' + encodeURIComponent(b.dataset.zdel), { method: 'DELETE' }); renderIds(); });
+}
+
+async function renderUpdate() {
+  const u = await api('/api/admin/update');
+  const md = (t) => esc(t).replace(/^### (.*)$/gm, '<b>$1</b>').replace(/^## (.*)$/gm, '<h3 style="margin:8px 0 4px">$1</h3>').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\n/g, '<br>');
+  $('#adminBody').innerHTML = `${kv([
+      ['Installiert', `<b>${esc(u.current)}</b>`],
+      ['Auf GitHub', u.latest ? `<b>${esc(u.latest)}</b> ${u.available ? '<span class="badge ok">Update verfügbar</span>' : '<span class="badge">aktuell</span>'}` : '–'],
+      ['Zuletzt geprüft', u.checked ? new Date(u.checked * 1000).toLocaleString('de-DE') : '–'],
+      ['Automatische Prüfung', S.cfg.general.update_check ? 'stündlich zur vollen Stunde' : 'aus'],
+      ['Update-Dienst', u.systemd ? '<span class="badge ok">eingerichtet</span>' : '<span class="badge warn">fehlt – einmal sudo /opt/n8crosslink/update.sh ausführen</span>'],
+      ...(u.error ? [['Fehler', esc(u.error)]] : [])])}
+    <div class="form-actions" style="justify-content:flex-start">
+      <button class="btn secondary" id="upCheck">🔍 Jetzt prüfen</button>
+      <button class="btn" id="upNow" ${u.available && u.systemd ? '' : 'disabled'}>⬆️ Update jetzt installieren</button></div>
+    ${u.notes ? `<h2 class="section-header">Änderungen</h2><div class="card" style="font-size:13px;line-height:1.5;padding:12px">${md(u.notes)}</div>` : ''}
+    ${u.log ? `<h2 class="section-header">Update-Protokoll</h2><pre style="font-size:11.5px;white-space:pre-wrap;color:var(--text-dim);padding:8px 4px">${esc(u.log)}</pre>` : ''}`;
+  $('#upCheck').onclick = async () => { toast('Prüfe …'); await api('/api/admin/update/check', { method: 'POST' }); renderUpdate(); };
+  $('#upNow').onclick = () => startUpdate();
+}
+async function startUpdate() {
+  if (!confirm('Update jetzt installieren? Der Dienst startet dabei neu (ca. 1 Minute).')) return;
+  const r = await api('/api/admin/update/now', { method: 'POST' }); toast(r.message);
+  if (!r.ok) return;
+  const old = S.me.version; let tries = 0;
+  const poll = setInterval(async () => {
+    tries++;
+    try { const m = await api('/api/me'); if (m.version !== old) { clearInterval(poll); toast('✅ Aktualisiert auf ' + m.version); setTimeout(() => location.reload(), 1200); } } catch { /* Neustart */ }
+    if (tries > 90) { clearInterval(poll); toast('Update dauert ungewöhnlich lange – Admin → Updates → Protokoll'); }
+  }, 3000);
+}
+$('#updateNowBtn')?.addEventListener('click', () => startUpdate());
+$('#updateInfoBtn')?.addEventListener('click', () => { S.adminSec = 'update'; showTab('admin'); });
+$('#pwChangeBtn')?.addEventListener('click', () => { S.adminSec = 'users'; showTab('admin'); });
 
 /* ---------- Start ---------- */
 (async () => {

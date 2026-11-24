@@ -44,8 +44,14 @@ with sync_playwright() as p:
     page.fill("#lPass", "demo12345")
     page.click("#lOk")
     time.sleep(1.5)
+    page.click("button[data-tab=live]")
+    time.sleep(1)
+    page.screenshot(path=f"{OUT}/banner-update-passwort.png", clip={"x": 0, "y": 0, "width": 1440, "height": 330})
+    page.click("button[data-tab=admin]")
+    time.sleep(0.8)
     for sec, name in [("vocoder", "admin-vocoder"), ("routes", "admin-routing"), ("dmr", "admin-dmr"),
-                      ("frn", "admin-frn"), ("zello", "admin-zello"), ("system", "admin-system")]:
+                      ("frn", "admin-frn"), ("zello", "admin-zello"), ("ids", "admin-idlisten-avatare"),
+                      ("update", "admin-updates"), ("system", "admin-system")]:
         page.click(f"#adminNav button[data-s={sec}]")
         time.sleep(0.8)
         page.screenshot(path=f"{OUT}/{name}.png", full_page=True)

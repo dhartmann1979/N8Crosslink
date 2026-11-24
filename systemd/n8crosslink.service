@@ -5,7 +5,11 @@ After=network-online.target md380-emu.service
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=main
+# systemd-Watchdog: meldet sich die Bridge 60 s nicht (Event-Loop hängt), wird sie neu gestartet
+WatchdogSec=60
+TimeoutStartSec=90
 User=n8crosslink
 Group=n8crosslink
 SupplementaryGroups=dialout
@@ -17,7 +21,8 @@ Restart=always
 RestartSec=3
 # Echtzeit-Audio: etwas höhere Priorität
 Nice=-5
-NoNewPrivileges=true
+# NoNewPrivileges bewusst aus: das Webinterface nutzt sudo, beschränkt auf die
+# Befehle in /etc/sudoers.d/n8crosslink (Update, Neustarts, Dienste, Berechtigungen).
 ProtectSystem=full
 ProtectHome=true
 PrivateTmp=true

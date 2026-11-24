@@ -71,7 +71,7 @@ class FrnPort(Port):
         if not self.enabled:
             self.set_state(False, "deaktiviert")
             return
-        self.spawn(self._run())
+        self.main_task = self.spawn(self._run())
         self.spawn(self._watchdog())
 
     async def _run(self) -> None:
@@ -84,11 +84,17 @@ class FrnPort(Port):
             try:
                 self.set_state(False, "verbinde", f"{host}:{port}")
                 reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), 15)
+                sock = writer.get_extra_info("socket")
+                if sock is not None:
+                    import socket as _s
+                    sock.setsockopt(_s.SOL_SOCKET, _s.SO_KEEPALIVE, 1)
                 self.writer = writer
                 await self._session(reader)
                 delay = 5
+            except asyncio.IncompleteReadError:
+                self.router.event("warn", f"FRN: Server {host}:{port} hat die Verbindung getrennt")
             except (OSError, asyncio.TimeoutError, ConnectionError) as e:
-                self.router.event("warn", f"FRN: Verbindung zu {host}:{port} fehlgeschlagen ({e})")
+                self.router.event("warn", f"FRN: Verbindung zu {host}:{port} fehlgeschlagen ({e or type(e).__name__})")
             except asyncio.CancelledError:
                 raise
             except Exception as e:  # noqa: BLE001

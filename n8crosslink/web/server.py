@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import glob
 import json
 import os
@@ -58,7 +59,9 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
 
     @app.get("/api/me")
     async def me(request: Request) -> dict:
-        return {"user": current_user(request), "setup_required": not db.has_users(), "version": __version__}
+        u = current_user(request)
+        return {"user": u, "setup_required": not db.has_users(), "version": __version__,
+                "default_password": bool(u) and db.default_password_active()}
 
     @app.post("/api/setup")
     async def setup(data: dict = Body(...)) -> JSONResponse:
@@ -110,6 +113,16 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         return {"title": g.get("title"), "server_name": g.get("server_name"), "announcement": g.get("announcement"),
                 "links": g.get("links", []), "version": __version__, "routes": bridge.cfg["routes"]}
 
+    @app.get("/api/avatar/{source}/{key}")
+    async def avatar(source: str, key: str) -> Response:
+        if source not in ("dmr", "frn", "zello"):
+            raise HTTPException(404)
+        res = await bridge.avatars.get(source, key)
+        if not res:
+            return Response(status_code=404, headers={"Cache-Control": "public, max-age=3600"})
+        mime, data = res
+        return Response(data, media_type=mime or "image/png", headers={"Cache-Control": "public, max-age=3600"})
+
     @app.get("/api/events")
     async def public_events(limit: int = 20) -> list:
         return db.events(min(max(limit, 1), 30))
@@ -156,17 +169,90 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
 
     @app.post("/api/admin/service-restart")
     async def service_restart(_: str = Depends(require_admin)) -> dict:
-        async def _exit() -> None:
+        async def _go() -> None:
             await asyncio.sleep(0.5)
-            os._exit(3)  # systemd startet den Dienst neu (Restart=always)
-        asyncio.create_task(_exit())
+            if await bridge.system.sudo_ok():
+                ok, _out = await bridge.system.unit_action("n8crosslink.service", "restart")
+                if ok:
+                    return
+            os._exit(3)  # Fallback: systemd startet den Dienst neu (Restart=always)
+        asyncio.create_task(_go())
         return {"ok": True}
 
-    @app.post("/api/admin/userdb")
-    async def userdb(_: str = Depends(require_admin)) -> dict:
-        dmr = bridge.router.ports.get("dmr")
-        n = await dmr.update_userdb() if dmr else 0
-        return {"ok": n > 0, "count": n}
+    # ---- Systemsteuerung (sudo, nur freigegebene Befehle)
+    @app.get("/api/admin/system")
+    async def system_status(_: str = Depends(require_admin)) -> dict:
+        return await bridge.system.status()
+
+    @app.post("/api/admin/system/unit")
+    async def system_unit(data: dict = Body(...), user: str = Depends(require_admin)) -> dict:
+        unit, action = str(data.get("unit", "")), str(data.get("action", ""))
+        ok, out = await bridge.system.unit_action(unit, action)
+        bridge.router.event("info" if ok else "warn", f"System: {action} {unit} durch {user} – {'ok' if ok else out[:120]}")
+        return {"ok": ok, "message": out[:500]}
+
+    @app.post("/api/admin/system/reboot")
+    async def system_reboot(user: str = Depends(require_admin)) -> dict:
+        bridge.router.event("warn", f"System-Neustart angefordert von {user}")
+        ok, out = await bridge.system.reboot()
+        return {"ok": ok, "message": out[:300]}
+
+    @app.post("/api/admin/system/fix-perms")
+    async def system_fix_perms(user: str = Depends(require_admin)) -> dict:
+        ok, out = await bridge.system.fix_perms()
+        bridge.router.event("info" if ok else "warn", f"Berechtigungsprüfung durch {user}: {'ok' if ok else 'Fehler'}")
+        return {"ok": ok, "message": out}
+
+    # ---- ID-Listen & Avatare
+    @app.get("/api/admin/ids")
+    async def ids_info(_: str = Depends(require_admin)) -> dict:
+        return {"lists": db.idlists_info(), "avatars": db.avatar_stats(),
+                "uploads": [r["key"].split(":", 2)[2] for r in db.avatar_list() if r["key"].startswith("upload:zello:")],
+                "busy": bridge.idlists.lock.locked(), "avatars_busy": bridge.avatars.lock.locked()}
+
+    @app.post("/api/admin/ids/update")
+    async def ids_update(_: str = Depends(require_admin)) -> dict:
+        if bridge.idlists.lock.locked():
+            return {"ok": False, "message": "Aktualisierung läuft bereits"}
+        asyncio.create_task(bridge.idlists.update_all())
+        return {"ok": True, "message": "ID-Listen werden geladen …"}
+
+    @app.post("/api/admin/avatars/refresh")
+    async def avatars_refresh(_: str = Depends(require_admin)) -> dict:
+        if bridge.avatars.lock.locked():
+            return {"ok": False, "message": "Aktualisierung läuft bereits"}
+        asyncio.create_task(bridge.avatars.refresh_all())
+        return {"ok": True, "message": "Avatare werden neu geladen …"}
+
+    @app.post("/api/admin/avatars/upload")
+    async def avatar_upload(data: dict = Body(...), _: str = Depends(require_admin)) -> dict:
+        user = str(data.get("username", "")).strip()
+        try:
+            raw = base64.b64decode(str(data.get("image", "")).split(",")[-1])
+        except ValueError:
+            raw = b""
+        if not user or len(raw) > 5 * 1024 * 1024 or not bridge.avatars.upload("zello", user, raw):
+            raise HTTPException(400, "Bitte Zello-Benutzername und ein PNG/JPEG/WebP/GIF (max. 5 MB) angeben")
+        return {"ok": True}
+
+    @app.delete("/api/admin/avatars/upload/{user}")
+    async def avatar_upload_delete(user: str, _: str = Depends(require_admin)) -> dict:
+        db.avatar_delete(f"upload:zello:{user.lower()}")
+        return {"ok": True}
+
+    # ---- Updates
+    @app.get("/api/admin/update")
+    async def update_state(_: str = Depends(require_admin)) -> dict:
+        return {**bridge.updater.state, "systemd": bridge.updater.systemd_ready() or await bridge.system.sudo_ok(),
+                "log": bridge.updater.log_tail()}
+
+    @app.post("/api/admin/update/check")
+    async def update_check(_: str = Depends(require_admin)) -> dict:
+        return await bridge.updater.check()
+
+    @app.post("/api/admin/update/now")
+    async def update_now(user: str = Depends(require_admin)) -> dict:
+        return await bridge.updater.request_update(user, bridge.system)
 
     @app.post("/api/admin/vocoder-test")
     async def vocoder_test(_: str = Depends(require_admin)) -> dict:

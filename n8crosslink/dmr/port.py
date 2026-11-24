@@ -6,9 +6,7 @@ Login: RPTL -> RPTACK+Salt -> RPTK sha256(salt+passwort) -> RPTACK -> RPTC (Conf
 from __future__ import annotations
 
 import asyncio
-import csv
 import hashlib
-import io
 import logging
 import random
 import socket
@@ -104,11 +102,10 @@ class DmrPort(Port):
 
     # ------------------------------------------------------------ Lebenszyklus
     async def start(self) -> None:
-        self.spawn(self._userdb_loop())
         if not self.enabled:
             self.set_state(False, "deaktiviert")
             return
-        self.spawn(self._run())
+        self.main_task = self.spawn(self._run())
         self.spawn(self._watchdog())
 
     async def stop(self) -> None:
@@ -218,7 +215,7 @@ class DmrPort(Port):
         self.last_pong = time.time()
         self.connected_since = time.time()
         s = self.section
-        self.set_state(True, "online", f"TG {s['tg_rx']} · TS{s['slot']}")
+        self.set_state(True, "online", f"{self.tg_label(int(s['tg_rx'] or 0))} · TS{s['slot']}")
         self.router.event("info", f"DMR verbunden mit {s['host']} als {s['peer_id']} (TG {s['tg_rx']}, TS{s['slot']})")
 
     # ------------------------------------------------------------ Empfang
@@ -275,14 +272,23 @@ class DmrPort(Port):
         elif n == 5:
             rx.frags.clear()
 
+    def tg_label(self, tg: int) -> str:
+        name = self.router.db.tg_name(tg)
+        return f"TG {tg} {name}".strip()
+
     def _talker(self, src: int, dst: int) -> Talker:
-        u = self.router.db.userdb_lookup(src)
+        db = self.router.db
+        detail = f"{self.tg_label(dst)} · TS{self.section['slot']}"
+        u = db.userdb_lookup(src)
         if u:
             name = f"{u['callsign']} {u['name']}".strip()
             return Talker(source="dmr", name=name, callsign=u["callsign"], dmr_id=src, city=u.get("city") or "",
-                          detail=f"TG {dst} · TS{self.section['slot']}")
-        return Talker(source="dmr", name=str(src), callsign=str(src), dmr_id=src,
-                      detail=f"TG {dst} · TS{self.section['slot']}")
+                          detail=detail, extra={"frid": u.get("frid", False), "tg": dst})
+        ids = getattr(self.router, "idlists", None)
+        if ids is not None:
+            ids.lookup_later(src)       # unbekannt -> FreeRadioID-Einzelabfrage
+        return Talker(source="dmr", name=str(src), callsign=str(src), dmr_id=src, detail=detail,
+                      extra={"frid": False, "tg": dst})
 
     async def _rx_worker(self, rx: RxStream) -> None:
         g = float(self.section.get("rx_gain_db", 0))
@@ -419,77 +425,18 @@ class DmrPort(Port):
                 self.tx = None
                 self.router.finished_tx(self)
 
-    # ------------------------------------------------------------ ID-Datenbank
-    async def _userdb_loop(self) -> None:
-        await asyncio.sleep(3)
-        while True:
-            info = self.router.db.userdb_info()
-            age = time.time() - (info["updated"] or 0)
-            if info["count"] == 0 or age > 86400:
-                await self.update_userdb()
-            await asyncio.sleep(3600)
-
-    async def update_userdb(self) -> int:
-        import aiohttp
-        for url in (self.section.get("userdb_url"), self.section.get("userdb_fallback_url")):
-            if not url:
-                continue
-            try:
-                timeout = aiohttp.ClientTimeout(total=120)
-                async with aiohttp.ClientSession(timeout=timeout) as sess:
-                    async with sess.get(url, headers={"User-Agent": "N8-Crosslink"}) as r:
-                        r.raise_for_status()
-                        text = await r.text(errors="replace")
-                rows = await asyncio.to_thread(_parse_userdb, text)
-                if rows:
-                    await asyncio.to_thread(self.router.db.userdb_replace, rows)
-                    self.router.event("info", f"DMR-ID-Datenbank aktualisiert: {len(rows):,} Einträge".replace(",", "."))
-                    return len(rows)
-            except Exception as e:  # noqa: BLE001
-                self.router.event("warn", f"DMR-ID-Datenbank von {url} nicht ladbar: {e}")
-        return 0
+    def on_lookup_result(self, dmr_id: int, name: str, callsign: str, city: str) -> None:
+        """Ergebnis der FreeRadioID-Einzelabfrage für eine bis dahin unbekannte ID."""
+        rx = self.rx
+        if rx and rx.src == dmr_id and not rx.ta_text and name:
+            self.router.rx_update_talker(self, name=name, callsign=callsign, city=city)
 
     def extra_info(self) -> dict:
         s = self.section
         return {"server": f"{s.get('host')}:{s.get('port')}", "peer_id": s.get("peer_id"), "slot": s.get("slot"),
                 "tg_rx": s.get("tg_rx"), "tg_tx": s.get("tg_tx"), "login": self.login_state,
                 "since": self.connected_since if self.login_state == "connected" else None,
+                "tg_rx_name": self.router.db.tg_name(int(s.get("tg_rx") or 0)),
+                "tg_tx_name": self.router.db.tg_name(int(s.get("tg_tx") or 0)),
                 "stats": self.stats, "userdb": self.router.db.userdb_info()}
 
-
-def _parse_userdb(text: str) -> list[tuple]:
-    rdr = csv.reader(io.StringIO(text))
-    header = next(rdr, [])
-    h = [c.strip().lower() for c in header]
-
-    def col(*names: str) -> int | None:
-        for n in names:
-            for i, c in enumerate(h):
-                if c == n:
-                    return i
-        for n in names:
-            for i, c in enumerate(h):
-                if n in c:
-                    return i
-        return None
-
-    i_id = col("radio_id", "id", "dmr_id")
-    i_cs = col("callsign", "call")
-    i_fn = col("first_name", "fname", "firstname", "name")
-    i_city = col("city")
-    i_cty = col("country")
-    if i_id is None or i_cs is None:
-        # Kein Header: radioid-Format annehmen
-        rdr = csv.reader(io.StringIO(text))
-        i_id, i_cs, i_fn, i_city, i_cty = 0, 1, 2, 4, 6
-    rows = []
-    for r in rdr:
-        try:
-            rid = int(r[i_id])
-        except (ValueError, IndexError):
-            continue
-
-        def g(i):  # noqa: ANN001, ANN202
-            return r[i].strip() if i is not None and i < len(r) else ""
-        rows.append((rid, g(i_cs).upper(), g(i_fn), g(i_city), g(i_cty)))
-    return rows

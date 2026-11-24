@@ -96,8 +96,9 @@ class Vocoder:
         self.online = False
         self.product = ""
         self.version = ""
-        self.stats = {"enc": 0, "dec": 0, "timeouts": 0, "errors": 0}
+        self.stats = {"enc": 0, "dec": 0, "timeouts": 0, "errors": 0, "reopens": 0}
         self.last_rx = 0.0
+        self.offline_since: float | None = time.time()
         self._lock = asyncio.Lock()
         self.enc_gain = float(cfg.get("vocoder_enc_gain_db", 0.0))
         self.dec_gain = float(cfg.get("vocoder_dec_gain_db", 0.0))
@@ -294,6 +295,15 @@ class Vocoder:
         self.stats["enc"] += 1
         self.online = True
         return ambe
+
+    async def reopen(self) -> None:
+        """Vocoder komplett neu öffnen (Watchdog), z. B. nachdem der USB-Stick neu eingesteckt wurde."""
+        await self.stop()
+        self.transport = None
+        self.serial = None
+        self.write_q.clear()
+        self.stats["reopens"] = self.stats.get("reopens", 0) + 1
+        await self.start()
 
     def status(self) -> dict:
         names = {"md380": "md380-emu (Software)", "usb": "USB-Stick (AMBE3000)",

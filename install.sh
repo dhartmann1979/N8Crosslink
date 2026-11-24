@@ -49,8 +49,95 @@ ask_choice() { # ask_choice VAR "Frage" "Vorgabe" opt1 opt2 ...
   local a; read -r -p "  ${B}?${R} $q ${D}[$def]${R}: " a </dev/tty || true
   printf -v "$__v" '%s' "${a:-$def}"
 }
-cli() { runuser -u "$SVC_USER" -- env N8X_DB="$DB" "$APP_DIR/venv/bin/python" -m n8crosslink.cli "$@"; }
+# ---------------------------------------------------------------- Berechtigungen
+# Programm, Skripte und venv gehören root (schreibgeschützt für den Dienst), nur data/ gehört dem Dienst.
+# Wichtig: update.sh läuft über n8crosslink-update.service als root und darf deshalb NICHT
+# vom Dienstbenutzer veränderbar sein.
+fix_perms() {
+  local n=0 f dev="" mode=""
+  [[ -d "$APP_DIR" ]] || return 0
+  if [[ -f "$DB" ]]; then   # vor der Rechtekorrektur lesen (sqlite legt ggf. WAL-Dateien an)
+    dev=$(sqlite3 "$DB" "SELECT value FROM settings WHERE section='vocoder' AND key='usb_device'" 2>/dev/null | tr -d '"')
+    mode=$(sqlite3 "$DB" "SELECT value FROM settings WHERE section='vocoder' AND key='vocoder_mode'" 2>/dev/null | tr -d '"')
+  fi
+  n=$(find "$APP_DIR" -path "$DATA_DIR" -prune -o ! -type l \( ! -user root -o ! -group root -o -perm /022 \) -print 2>/dev/null | wc -l)
+  rm -rf "$APP_DIR/.cache"
+  find "$APP_DIR" -path "$DATA_DIR" -prune -o -exec chown -h root:root {} +
+  find "$APP_DIR" -path "$DATA_DIR" -prune -o -type d -exec chmod 755 {} +
+  find "$APP_DIR" -path "$DATA_DIR" -prune -o -path "$APP_DIR/venv/bin" -prune -o -type f -exec chmod 644 {} +
+  [[ -d "$APP_DIR/venv/bin" ]] && chmod -R go-w "$APP_DIR/venv/bin" && find "$APP_DIR/venv/bin" -type f -exec chmod 755 {} + 2>/dev/null || true
+  for f in install.sh update.sh uninstall.sh; do [[ -f "$APP_DIR/$f" ]] && chmod 755 "$APP_DIR/$f"; done
+  mkdir -p "$DATA_DIR"
+  local m; m=$(find "$DATA_DIR" \( ! -user "$SVC_USER" ! -name update.log \) -print 2>/dev/null | wc -l)
+  chown -R "$SVC_USER:$SVC_USER" "$DATA_DIR"
+  chmod 750 "$DATA_DIR"
+  find "$DATA_DIR" -type f -name '*.db*' -exec chmod 640 {} +
+  [[ -f "$DATA_DIR/update.log" ]] && chmod 644 "$DATA_DIR/update.log"
+  for f in n8crosslink.service n8crosslink-update.path n8crosslink-update.service md380-emu.service; do
+    [[ -f "/etc/systemd/system/$f" ]] && chown root:root "/etc/systemd/system/$f" && chmod 644 "/etc/systemd/system/$f"
+  done
+  if id "$SVC_USER" &>/dev/null && ! id -nG "$SVC_USER" | grep -qw dialout; then
+    usermod -a -G dialout "$SVC_USER" && warn "Dienstbenutzer war nicht in der Gruppe dialout – korrigiert"
+  fi
+  if [[ -f "$DB" ]]; then
+    if [[ "$mode" == "usb" && -n "$dev" ]]; then
+      if [[ -e "$dev" ]]; then
+        local grp; grp=$(stat -c %G "$(readlink -f "$dev")")
+        id -nG "$SVC_USER" | grep -qw "$grp" || { usermod -a -G "$grp" "$SVC_USER"; warn "Zugriff auf $dev (Gruppe $grp) ergänzt"; }
+        ok "USB-Stick $dev erreichbar (Gruppe $grp)"
+      else
+        warn "USB-Stick $dev ist gerade nicht angeschlossen"
+      fi
+    fi
+  fi
+  [[ -f "$APP_DIR/.source" ]] && { local src; src=$(cat "$APP_DIR/.source"); [[ -d "$src" ]] && chown -R root:root "$src" 2>/dev/null; } || true
+  if (( n + m > 0 )); then ok "Berechtigungen geprüft – $((n + m)) Einträge korrigiert"; else ok "Berechtigungen geprüft – alles in Ordnung"; fi
+}
+
+# ---------------------------------------------------------------- sudo fürs Webinterface
+# Nur exakt aufgezählte Befehle, geprüft mit visudo. Die Bridge selbst bleibt ohne root-Rechte.
+setup_sudo() {
+  local SC; SC=$(type -P systemctl || echo /usr/bin/systemctl)
+  local allow_reboot="${1:-true}" units=() u acts line json="" sep=""
+  local F=/etc/sudoers.d/n8crosslink TMP; TMP=$(mktemp)
+  command -v sudo >/dev/null || apt-get install -y -qq sudo >/dev/null
+  add_unit() {  # add_unit unit "label" "aktionen…"
+    local unit="$1" label="$2"; shift 2
+    for a in "$@"; do
+      case "$a" in start|restart) echo "$SVC_USER ALL=(root) NOPASSWD: $SC --no-block $a $unit" >> "$TMP" ;;
+                   *)             echo "$SVC_USER ALL=(root) NOPASSWD: $SC $a $unit" >> "$TMP" ;; esac
+    done
+    local al; al=$(printf '"%s",' "$@"); al="[${al%,}]"
+    json+="${sep}{\"unit\": \"$unit\", \"label\": \"$label\", \"actions\": $al}"; sep=", "
+  }
+  echo "# N8 Crosslink – vom Installer erzeugt, nicht von Hand ändern (wird bei jedem Update neu geschrieben)" > "$TMP"
+  echo "Defaults:$SVC_USER !requiretty" >> "$TMP"
+  add_unit n8crosslink.service "N8 Crosslink" restart
+  add_unit n8crosslink-update.service "Update-Dienst" start
+  systemctl list-unit-files 2>/dev/null | grep -q '^md380-emu.service' && add_unit md380-emu.service "md380-emu (Vocoder)" start stop restart enable disable
+  for u in $(systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}' | grep -Ei '^(svxlink|mmdvm_bridge|analog_bridge|ambeserver|.*zello.*)\.service$' | grep -v n8crosslink); do
+    add_unit "$u" "${u%.service} (alt)" start stop restart enable disable
+  done
+  [[ "$allow_reboot" == "true" ]] && echo "$SVC_USER ALL=(root) NOPASSWD: $SC reboot" >> "$TMP"
+  echo "$SVC_USER ALL=(root) NOPASSWD: $APP_DIR/install.sh --fix-perms" >> "$TMP"
+  if visudo -cf "$TMP" >/dev/null 2>&1; then
+    install -o root -g root -m 0440 "$TMP" "$F"
+    printf '{"sudo": true, "systemctl": "%s", "reboot": %s, "fix_perms": true, "units": [%s]}\n' "$SC" "$allow_reboot" "$json" > "$DATA_DIR/system.json"
+    chown "$SVC_USER:$SVC_USER" "$DATA_DIR/system.json"; chmod 640 "$DATA_DIR/system.json"
+    ok "sudo fürs Webinterface eingerichtet ($(grep -c NOPASSWD "$F") freigegebene Befehle, mit visudo geprüft)"
+  else
+    warn "sudoers-Datei ungültig – nicht übernommen"; visudo -cf "$TMP" || true
+  fi
+  rm -f "$TMP"
+}
+
+cli() { (cd "$APP_DIR" && runuser -u "$SVC_USER" -- env N8X_DB="$DB" "$APP_DIR/venv/bin/python" -m n8crosslink.cli "$@"); }
 setcfg() { cli set "$1" "$2" "$3" >/dev/null; }
+
+if [[ "${1:-}" == "--fix-perms" ]]; then
+  [[ $EUID -eq 0 ]] || fail "Bitte als root starten"
+  echo "Berechtigungen prüfen (N8 Crosslink) …"; fix_perms; exit 0
+fi
 
 clear || true
 cat <<BANNER
@@ -86,8 +173,10 @@ fi
 step 1 "Systempakete installieren"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq python3 python3-venv python3-pip libgsm1 libopus0 sqlite3 curl git ca-certificates iproute2 >/dev/null
+apt-get install -y -qq python3 python3-venv python3-pip libgsm1 libopus0 sqlite3 curl git ca-certificates iproute2 sudo >/dev/null
 ok "python3, libgsm (FRN), libopus (Zello), sqlite3"
+# Update-Modus: vor dem Kopieren auch alte, falsch gesetzte Rechte erkennen
+[[ "$MODE" == "update" ]] && fix_perms
 
 # ---------------------------------------------------------------- 2 Benutzer + Dateien
 step 2 "Dienstbenutzer und Programmdateien"
@@ -100,15 +189,18 @@ mkdir -p "$APP_DIR" "$DATA_DIR"
 cp -r "$SRC_DIR/n8crosslink" "$SRC_DIR/requirements.txt" "$APP_DIR/"
 cp "$SRC_DIR/install.sh" "$SRC_DIR/update.sh" "$SRC_DIR/uninstall.sh" "$APP_DIR/" 2>/dev/null || true
 [[ -d "$SRC_DIR/.git" ]] && echo "$SRC_DIR" > "$APP_DIR/.source"
-chown -R "$SVC_USER:$SVC_USER" "$APP_DIR"
+rm -rf "$APP_DIR/n8crosslink/__pycache__"
 ok "Dateien nach $APP_DIR kopiert"
+fix_perms
 
 # ---------------------------------------------------------------- 3 Python-Umgebung
 step 3 "Python-Umgebung (venv)"
-[[ -d "$APP_DIR/venv" ]] || runuser -u "$SVC_USER" -- python3 -m venv "$APP_DIR/venv"
-runuser -u "$SVC_USER" -- "$APP_DIR/venv/bin/pip" install -q --upgrade pip
-runuser -u "$SVC_USER" -- "$APP_DIR/venv/bin/pip" install -q -r "$APP_DIR/requirements.txt"
-runuser -u "$SVC_USER" -- "$APP_DIR/venv/bin/python" -c "from n8crosslink.audio import gsm, opus; gsm.GsmEncoder(); opus.OpusEncoder()" \
+[[ -d "$APP_DIR/venv" ]] || python3 -m venv "$APP_DIR/venv"
+"$APP_DIR/venv/bin/pip" install -q --upgrade pip
+"$APP_DIR/venv/bin/pip" install -q -r "$APP_DIR/requirements.txt"
+"$APP_DIR/venv/bin/python" -m compileall -q "$APP_DIR/n8crosslink" >/dev/null || true
+fix_perms
+runuser -u "$SVC_USER" -- "$APP_DIR/venv/bin/python" -c "import sys; sys.path.insert(0, '$APP_DIR'); from n8crosslink.audio import gsm, opus; gsm.GsmEncoder(); opus.OpusEncoder()" \
   || fail "libgsm/libopus konnten nicht geladen werden"
 ok "Abhängigkeiten installiert, GSM- und Opus-Codec geprüft"
 
@@ -122,14 +214,17 @@ ask TITLE "Titel im Dashboard" "N8 Crosslink"
 ask SERVER_NAME "Domain / Servername" "$(hostname -f 2>/dev/null || hostname)"
 setcfg general web_port "$WEB_PORT"; setcfg general title "$TITLE"; setcfg general server_name "$SERVER_NAME"
 echo
-info "${B}Superadmin${R} für das Adminportal (Passwort wird als PBKDF2-Hash gespeichert)"
-ask ADMIN_USER "Benutzername" "admin"
-while true; do
-  ask_secret P1 "Passwort (min. 8 Zeichen)"; ask_secret P2 "Passwort wiederholen"
-  [[ "$P1" == "$P2" && ${#P1} -ge 8 ]] && break; warn "Passwörter ungleich oder zu kurz."
-done
-printf '%s\n' "$P1" | cli admin "$ADMIN_USER" >/dev/null && ok "Superadmin „$ADMIN_USER“ angelegt"
-unset P1 P2
+info "${B}Adminportal${R}: Standard-Login ist ${B}n8schicht / n8schicht${R} (Superadmin)."
+if ask_yn "Jetzt ein eigenes Passwort für n8schicht setzen? (sonst später im Adminportal)" n; then
+  while true; do
+    ask_secret P1 "Neues Passwort (min. 8 Zeichen)"; ask_secret P2 "Passwort wiederholen"
+    [[ "$P1" == "$P2" && ${#P1} -ge 8 ]] && break; warn "Passwörter ungleich oder zu kurz."
+  done
+  printf '%s\n' "$P1" | cli admin n8schicht >/dev/null && ok "Passwort für n8schicht gesetzt"
+  unset P1 P2
+else
+  cli users >/dev/null; ok "Standard-Login n8schicht / n8schicht aktiv – das Dashboard erinnert ans Ändern"
+fi
 
 # ---------------------------------------------------------------- 5 FRN
 step 5 "FRN – FreeRadioNetwork"
@@ -226,8 +321,9 @@ else
 fi
 
 # ---------------------------------------------------------------- 9 Dienst
-step 9 "Dienst einrichten und alte Bridges ablösen"
+step 9 "Berechtigungen, Dienst und alte Bridges"
 if [[ ! -d /run/systemd/system ]]; then
+  fix_perms
   warn "Kein systemd gefunden (Container?). Start von Hand:"
   echo "       runuser -u $SVC_USER -- env N8X_DB=$DB $APP_DIR/venv/bin/python -m n8crosslink"
   exit 0
@@ -240,9 +336,16 @@ if [[ -n "$OLD" ]]; then
     for s in $OLD; do systemctl disable --now "$s" >/dev/null 2>&1 && ok "$s gestoppt und deaktiviert"; done
   else info "Alte Dienste bleiben aktiv – Achtung: nicht beide Bridges gleichzeitig im selben Raum/derselben TG betreiben."; fi
 fi
-cp "$SRC_DIR/systemd/n8crosslink.service" /etc/systemd/system/n8crosslink.service
+cp "$SRC_DIR/systemd/n8crosslink.service" "$SRC_DIR/systemd/n8crosslink-update.path" \
+   "$SRC_DIR/systemd/n8crosslink-update.service" /etc/systemd/system/
+REBOOT=true
+if [[ -f "$DATA_DIR/system.json" ]]; then grep -q '"reboot": false' "$DATA_DIR/system.json" && REBOOT=false
+elif ! ask_yn "Server-Neustart (Reboot) über das Webinterface erlauben?" j; then REBOOT=false; fi
 systemctl daemon-reload
+setup_sudo "$REBOOT"
+fix_perms
 systemctl enable n8crosslink >/dev/null 2>&1
+systemctl enable --now n8crosslink-update.path >/dev/null 2>&1 && ok "„Update jetzt“ aus dem Adminportal eingerichtet"
 systemctl restart n8crosslink
 sleep 3
 systemctl is-active --quiet n8crosslink && ok "Dienst n8crosslink läuft" || { warn "Dienst läuft nicht – Log:"; journalctl -u n8crosslink -n 25 --no-pager; }
@@ -266,7 +369,9 @@ echo
 echo "${G}${B}  ✔ N8 Crosslink ${APP_VERSION} ist installiert.${R}"
 echo
 echo "    Dashboard:   ${B}http://${IP:-<ip>}:${PORT}${R}"
-echo "    Admin:       oben rechts 🔐 Login"
+echo "    Admin:       oben rechts 🔐 Login – Standard: n8schicht / n8schicht"
+echo "    Watchdog:    Netze, Vocoder und Dienst werden automatisch überwacht"
+echo "    Updates:     stündlich geprüft, Installation per Knopf im Adminportal"
 echo "    Logs:        journalctl -u n8crosslink -f"
 echo "    Update:      sudo $APP_DIR/update.sh"
 echo "    Doku:        https://github.com/dhartmann1979/N8Crosslink"

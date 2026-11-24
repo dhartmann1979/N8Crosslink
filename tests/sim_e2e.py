@@ -185,8 +185,14 @@ class FakeFRN:
         self.sent_list = False
         self.dec = None
 
+    def drop(self) -> None:
+        if self.writer:
+            self.writer.close()
+        self.sent_list = False
+
     async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         self.writer = writer
+        self.connects = getattr(self, "connects", 0) + 1
         self.login = (await reader.readline()).decode()
         writer.write(b"2014003\r\n<SV>2014x</SV><AL>OK</AL><MT>Testraum</MT>\r\n")
         try:
@@ -281,6 +287,52 @@ class FakeZello:
         await self.ws.send_str(json.dumps({"command": "on_stream_stop", "stream_id": 9001}))
 
 
+# ---------------------------------------------------------------------------- Fake-Web (ID-Listen, Avatare, GitHub)
+def _png(color: tuple) -> bytes:
+    from PIL import Image
+    import io
+    b = io.BytesIO()
+    Image.new("RGB", (500, 500), color).save(b, "PNG")
+    return b.getvalue()
+
+
+def add_fake_web(app) -> None:  # noqa: ANN001
+    from aiohttp import web
+    users = "\n".join(["100001,JIGEN,Antonio,Avellino,8,Italy", "2621234,DO1TEST,Tobias,Minden,NRW,Germany",
+                       "2625001,DL1ABC,Hans,Minden,NRW,Germany"] + [f"{3000000 + i},X{i}AA,N,C,S,Land" for i in range(1200)])
+    local = {"count": 2, "results": [{"id": 2621234, "callsign": "DO1TEST", "fname": "Tobias", "city": "Minden", "country": "Germany"},
+                                     {"id": 2625001, "callsign": "DL1ABC", "fname": "Hans", "city": "Minden", "country": "Germany"}]}
+    tgs = {"results": [{"TG-id": "262", "callsign": "Deutschland", "id": "262"}, {"TG-id": "26299", "callsign": "N8 Crosslink Test", "id": "26299"},
+                       {"TG-id": "3", "callsign": "N/A", "id": "3"}]}
+    ph, red, blue = _png((128, 128, 128)), _png((200, 30, 30)), _png((30, 30, 200))
+    FakeWeb.hits = {}
+
+    async def h(request):  # noqa: ANN001, ANN202
+        p = request.path
+        FakeWeb.hits[p] = FakeWeb.hits.get(p, 0) + 1
+        if p == "/ids/subscriber_ids.csv":
+            return web.Response(text=users)
+        if p == "/ids/local.json":
+            return web.json_response(local)
+        if p == "/ids/tg.json":
+            return web.json_response(tgs)
+        if p.startswith("/ids/idimg-"):
+            rid = p.split("-")[1].split(".")[0]
+            return web.Response(body={"2621234": red, "2625001": blue}.get(rid, ph), content_type="image/png")
+        if p == "/raw/n8crosslink/__init__.py":
+            return web.Response(text=f'__version__ = "{FakeWeb.version}"\n')
+        if p == "/raw/CHANGELOG.md":
+            return web.Response(text=f"# Changelog\n\n## [{FakeWeb.version}] – 2026-12-01\n### Neu\n- **Testfunktion** für die Simulation\n- Watchdog-Verbesserungen\n\n## [1.0.0] – alt\n- alt\n")
+        return web.Response(status=404)
+    app.router.add_get("/ids/{x}", h)
+    app.router.add_get("/raw/{p:.*}", h)
+
+
+class FakeWeb:
+    hits: dict = {}
+    version = "9.9.9"
+
+
 # ---------------------------------------------------------------------------- Ablauf
 async def main() -> int:
     from aiohttp import web
@@ -294,6 +346,7 @@ async def main() -> int:
     zel = FakeZello()
     app = web.Application()
     app.router.add_get("/ws", zel.handler)
+    add_fake_web(app)
     runner = web.AppRunner(app)
     await runner.setup()
     await web.TCPSite(runner, "127.0.0.1", ZELLO_PORT).start()
@@ -308,10 +361,17 @@ async def main() -> int:
     db.save_section("zello", {"enabled": True, "server": f"ws://127.0.0.1:{ZELLO_PORT}/ws", "channel": "N8test",
                               "username": "n8bridge", "password": "pw", "auth_mode": "none"})
     db.save_section("vocoder", {"vocoder_mode": "ambeserver", "ambeserver_port": VOC_PORT})
-    db.save_section("general", {"hang_time_ms": 400})
+    db.save_section("general", {"hang_time_ms": 400, "watchdog_offline_s": 4})
+    web_base = f"http://127.0.0.1:{ZELLO_PORT}/ids"
+    db.save_section("ids", {"subscriber_csv_url": f"{web_base}/subscriber_ids.csv", "subscriber_json_url": "",
+                            "local_json_url": f"{web_base}/local.json", "local_csv_url": "", "user_api_url": "",
+                            "radioid_fallback_url": "", "talkgroups_url": f"{web_base}/tg.json",
+                            "avatar_url": f"{web_base}/idimg-{{id}}.png"})
     bridge = Bridge(db)
     await bridge.start()
     r = bridge.router
+    bridge.wd_interval = 1.0
+    wd_task = asyncio.create_task(bridge.watchdog())
 
     print("\n▶ Verbindungsaufbau")
     for _ in range(60):
@@ -328,6 +388,15 @@ async def main() -> int:
     await asyncio.sleep(0.5)
     check("FRN-Raumliste gelesen", len(r.ports["frn"].clients) == 2,
           ", ".join(c["callsign"] + " " + c["name"] for c in r.ports["frn"].clients))
+
+    # ---------------- ID-Listen & Avatare
+    print("\n▶ ID-Listen (FreeRadioID-Format) und Talkgroups")
+    res = await bridge.idlists.update_all()
+    info = db.idlists_info()
+    check("DMR-IDs geladen (CSV ohne Kopfzeile)", info["users"] == 1203 and db.userdb_lookup(2621234)["country"] == "Germany",
+          f"{info['users']} IDs, 2621234 = {db.userdb_lookup(2621234)}")
+    check("FreeRadioID-Registrierungen", info["registered"] == 2 and db.frid_is_registered(2621234), f"{info['registered']}")
+    check("Talkgroup-Namen (N/A ausgelassen)", info["talkgroups"] == 2 and db.tg_name(262) == "Deutschland", f"262 = {db.tg_name(262)!r}")
 
     # ---------------- A: FRN -> DMR + Zello
     print("\n▶ A: FRN (DL1ABC Hans) spricht 2 s")
@@ -417,10 +486,71 @@ async def main() -> int:
           ", ".join(f"{x['packets']} Pakete" for x in new))
     check("Bridge danach frei (E)", r.active is None and all(p.tx_talker is None for p in r.ports.values()))
 
+    # ---------------- Avatare
+    print("\n▶ Avatare (SQLite-Cache)")
+    a1 = await bridge.avatars.get("dmr", "2621234")
+    check("DMR-Avatar geladen & verkleinert", a1 is not None and a1[0] == "image/webp" and len(a1[1]) < 20000,
+          f"{a1[0] if a1 else None}, {len(a1[1]) if a1 else 0} Byte")
+    hits = FakeWeb.hits.get("/ids/idimg-2621234.png", 0)
+    await bridge.avatars.get("dmr", "2621234")
+    check("Zweiter Abruf aus SQLite (kein Download)", FakeWeb.hits.get("/ids/idimg-2621234.png", 0) == hits)
+    check("Unregistrierte ID wird nicht angefragt", await bridge.avatars.get("dmr", "3000005") is None
+          and "/ids/idimg-3000005.png" not in FakeWeb.hits)
+    a2 = await bridge.avatars.get("frn", "DL1ABC")
+    check("FRN-Rufzeichen -> FreeRadioID-Avatar", a2 is not None)
+    a3 = await bridge.avatars.get("zello", "do1test_tobias")
+    check("Zello-Name mit Rufzeichen -> Avatar", a3 is not None)
+    ok_up = bridge.avatars.upload("zello", "dj_zello", _png((10, 200, 10)))
+    a4 = await bridge.avatars.get("zello", "DJ_Zello")
+    check("Zello-Upload hat Vorrang", ok_up and a4 is not None)
+    before = FakeWeb.hits.get("/ids/idimg-2621234.png", 0)
+    rr = await bridge.avatars.refresh_all()
+    check("Tages-Refresh lädt neu", FakeWeb.hits.get("/ids/idimg-2621234.png", 0) == before + 1 and rr["with_avatar"] >= 2, str(rr))
+
+    # ---------------- Watchdog
+    print("\n▶ Watchdog: FRN-Server trennt die Verbindung")
+    c0, rc0 = frn.connects, r.ports["frn"].reconnects
+    frn.drop()
+    for _ in range(150):
+        if r.ports["frn"].online and frn.connects > c0:
+            break
+        await asyncio.sleep(0.1)
+    check("FRN wieder verbunden", r.ports["frn"].online and frn.connects > c0 and r.ports["frn"].reconnects == rc0 + 1,
+          f"{r.ports['frn'].reconnects} Wiederverbindungen")
+    print("▶ Watchdog: Verbindungsschleife von DMR stirbt")
+    r.ports["dmr"].main_task.cancel()
+    await asyncio.sleep(3)
+    check("DMR-Port vom Watchdog neu aufgebaut", r.ports["dmr"].wd_restarts >= 1 and r.ports["dmr"].online,
+          f"Neuaufbauten {r.ports['dmr'].wd_restarts}, Grund: {r.ports['dmr'].last_wd_reason}")
+    print("▶ Watchdog: Zello-Server weg -> nach Limit kompletter Neuaufbau")
+    zr0 = r.ports["zello"].reconnects
+    await zel.ws.close()
+    for _ in range(50):
+        if not r.ports["zello"].online:
+            break
+        await asyncio.sleep(0.1)
+    went_off = not r.ports["zello"].online
+    for _ in range(150):
+        if r.ports["zello"].online:
+            break
+        await asyncio.sleep(0.1)
+    check("Zello: Abbruch erkannt und wieder verbunden", went_off and r.ports["zello"].online and r.ports["zello"].reconnects == zr0 + 1,
+          f"{r.ports['zello'].reconnects} Wiederverbindungen")
+
+    # ---------------- Updateprüfung
+    print("\n▶ Updateprüfung")
+    bridge.updater.raw_url = lambda path: f"http://127.0.0.1:{ZELLO_PORT}/raw/{path}"
+    st_u = await bridge.updater.check()
+    check("Neue Version erkannt + Änderungen gelesen", st_u["available"] and st_u["latest"] == "9.9.9" and "Testfunktion" in st_u["notes"]
+          and "1.0.0" not in st_u["notes"], f"{st_u['current']} → {st_u['latest']}")
+    rq = await bridge.updater.request_update("test", bridge.system)
+    check("Update jetzt ohne systemd-Unit sauber abgelehnt", not rq["ok"], rq["message"][:50])
+
     # ---------------- Statistik
     st = db.stats(0)
     check("Statistik", st["talks"] >= 6 and st["blocked"] >= 1, f"{st['talks']} Durchgänge, {st['blocked']} blockiert, {st['airtime']:.1f} s")
 
+    wd_task.cancel()
     await bridge.stop()
     await runner.cleanup()
     bad = [x for x in RESULTS if not x[1]]

@@ -9,14 +9,33 @@ import signal
 import sys
 
 from . import __version__
+from .avatars import AvatarStore
 from .core import Router
 from .db import Database
 from .dmr.port import DmrPort
 from .frn import FrnPort
+from .idlists import IdLists
+from .system import System
+from .updater import Updater
 from .vocoder import Vocoder
 from .zello import ZelloPort
 
 log = logging.getLogger("app")
+
+
+def sd_notify(msg: str) -> None:
+    """systemd-Benachrichtigung (READY=1, WATCHDOG=1, STATUS=…) ohne Zusatzpaket."""
+    addr = os.environ.get("NOTIFY_SOCKET")
+    if not addr:
+        return
+    import socket
+    if addr.startswith("@"):
+        addr = "\0" + addr[1:]
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as s:
+            s.sendto(msg.encode(), addr)
+    except OSError:
+        pass
 
 
 class Bridge:
@@ -27,6 +46,17 @@ class Bridge:
         self.vocoder: Vocoder | None = None
         self.pub_task: asyncio.Task | None = None
         self.lock = asyncio.Lock()
+        data_dir = os.path.dirname(os.path.abspath(db.path))
+        self.idlists = IdLists(self.router)
+        self.avatars = AvatarStore(self.router)
+        self.updater = Updater(self.router, data_dir)
+        self.system = System(data_dir)
+        self.router.idlists = self.idlists
+        self.router.avatars = self.avatars
+        self.router.updater = self.updater
+        self.voc_offline_since: float | None = None
+        self.wd_interval = 10.0
+        self.bg_tasks: list[asyncio.Task] = []
 
     async def start(self) -> None:
         async with self.lock:
@@ -73,6 +103,57 @@ class Bridge:
             await asyncio.sleep(0.5)
             await self._start()
 
+    async def restart_port(self, key: str, reason: str) -> None:
+        p = self.router.ports.get(key)
+        if p is None:
+            return
+        p.wd_restarts += 1
+        p.last_wd_reason = reason
+        self.router.event("warn", f"Watchdog: {p.label} wird neu aufgebaut ({reason})")
+        if self.router.active and (self.router.active.source is p):
+            self.router._finish(self.router.active, status="watchdog")
+        await p.stop()
+        p.offline_since = __import__("time").time()
+        await p.start()
+
+    async def watchdog(self) -> None:
+        """Überwacht alle Verbindungen, den Vocoder und meldet sich beim systemd-Watchdog."""
+        import time as _t
+        while True:
+            await asyncio.sleep(self.wd_interval)
+            sd_notify("WATCHDOG=1")
+            if self.lock.locked():
+                continue
+            limit = float(self.cfg["general"].get("watchdog_offline_s", 120))
+            try:
+                for key, p in list(self.router.ports.items()):
+                    if not p.enabled:
+                        continue
+                    t = p.main_task
+                    if t is not None and t.done():
+                        exc = None if t.cancelled() else t.exception()
+                        await self.restart_port(key, f"Verbindungsschleife beendet: {exc!r}" if exc else "Verbindungsschleife beendet")
+                    elif not p.online and p.offline_since and _t.time() - p.offline_since > limit:
+                        await self.restart_port(key, f"seit {int(_t.time() - p.offline_since)} s offline")
+                v = self.vocoder
+                if v is not None and v.running is not None and self.cfg["dmr"].get("enabled") and v.mode != "none":
+                    if v.online:
+                        self.voc_offline_since = None
+                    elif self.voc_offline_since is None:
+                        self.voc_offline_since = _t.time()
+                    elif _t.time() - self.voc_offline_since > 60:
+                        self.router.event("warn", f"Watchdog: Vocoder ({v.mode}) antwortet nicht – wird neu geöffnet")
+                        self.voc_offline_since = _t.time()
+                        await v.reopen()
+                online = [p.label for p in self.router.ports.values() if p.enabled and p.online]
+                sd_notify("STATUS=" + (", ".join(online) + " online" if online else "keine Verbindung"))
+            except Exception as e:  # noqa: BLE001
+                log.exception("Watchdog: %s", e)
+
+    def start_background(self) -> None:
+        for coro in (self.housekeeping(), self.watchdog(), self.idlists.loop(), self.avatars.loop(), self.updater.loop()):
+            self.bg_tasks.append(asyncio.create_task(coro))
+
     async def housekeeping(self) -> None:
         while True:
             try:
@@ -109,12 +190,20 @@ def main() -> None:
 
     async def runner() -> None:
         await bridge.start()
-        hk = asyncio.create_task(bridge.housekeeping())
+        bridge.start_background()
         log.info("N8 Crosslink %s – Dashboard auf http://%s:%s", __version__, host, port)
+
+        async def ready() -> None:
+            while not server.started:
+                await asyncio.sleep(0.2)
+            sd_notify("READY=1")
+        asyncio.create_task(ready())
         try:
             await server.serve()
         finally:
-            hk.cancel()
+            sd_notify("STOPPING=1")
+            for t in bridge.bg_tasks:
+                t.cancel()
             await bridge.stop()
 
     loop = asyncio.new_event_loop()

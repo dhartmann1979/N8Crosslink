@@ -69,6 +69,14 @@ class Port:
         self.tx_talker: Talker | None = None
         self.counters = {"rx": 0, "tx": 0, "rx_s": 0.0, "tx_s": 0.0}
         self._tasks: list[asyncio.Task] = []
+        self.main_task: asyncio.Task | None = None
+        # Watchdog-Daten
+        self.offline_since: float | None = time.time()
+        self.online_since: float | None = None
+        self.was_online = False
+        self.reconnects = 0
+        self.wd_restarts = 0
+        self.last_wd_reason = ""
 
     @property
     def enabled(self) -> bool:
@@ -86,7 +94,11 @@ class Port:
             except BaseException:  # noqa: BLE001
                 pass
         self._tasks.clear()
+        self.main_task = None
+        if self.online:
+            self.offline_since = time.time()
         self.online = False
+        self.online_since = None
         self.state = "gestoppt"
 
     def spawn(self, coro) -> asyncio.Task:  # noqa: ANN001
@@ -112,16 +124,32 @@ class Port:
                 "state": self.state, "detail": self.detail, "rx": self.rx_active, "tx": self.tx_active,
                 "rx_level": round(self.rx_level, 1), "tx_level": round(self.tx_level, 1),
                 "tx_talker": self.tx_talker.to_dict() if self.tx_talker else None,
-                "counters": self.counters, **self.extra_info()}
+                "counters": self.counters, "watchdog": self.watchdog_info(), **self.extra_info()}
 
     def extra_info(self) -> dict:
         return {}
 
     def set_state(self, online: bool, state: str, detail: str = "") -> None:
         changed = (online, state, detail) != (self.online, self.state, self.detail)
+        if online and not self.online:
+            if self.was_online:
+                self.reconnects += 1
+                self.router.event("info", f"{self.label}: Verbindung wiederhergestellt"
+                                  + (f" nach {int(time.time() - self.offline_since)} s" if self.offline_since else ""))
+            self.was_online = True
+            self.online_since = time.time()
+            self.offline_since = None
+        elif not online and self.online:
+            self.offline_since = time.time()
+            self.online_since = None
+            self.router.event("warn", f"{self.label}: Verbindung verloren ({state}{' – ' + detail if detail else ''}) – Watchdog baut sie neu auf")
         self.online, self.state, self.detail = online, state, detail
         if changed:
             self.router.notify()
+
+    def watchdog_info(self) -> dict:
+        return {"reconnects": self.reconnects, "wd_restarts": self.wd_restarts, "wd_reason": self.last_wd_reason,
+                "online_since": self.online_since, "offline_since": self.offline_since}
 
 
 @dataclass
@@ -186,6 +214,8 @@ class Router:
                 "targets": [t.key for t in s.targets],
             },
             "routes": self.cfg["routes"],
+            "update": {k: v for k, v in getattr(self, "updater").state.items() if k != "notes"}
+                      if getattr(self, "updater", None) else None,
         }
 
     async def publisher(self) -> None:

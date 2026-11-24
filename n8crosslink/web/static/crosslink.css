@@ -169,6 +169,9 @@ h1 { font-size: 21px; font-weight: 700; white-space: nowrap;
 .lh-user { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .avatar { width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center; font-weight: 800; font-size: 11px; flex: none;
   background: linear-gradient(135deg, var(--col, #5ac8fa), rgba(255,255,255,.08)); }
+.avatar, .big-av { position: relative; overflow: hidden; }
+.avatar img, .big-av img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.frid-tag { font-size: 9.5px; font-weight: 800; letter-spacing: .05em; padding: 1px 6px; border-radius: 6px; color: #8af5ab; background: rgba(48,209,88,.16); border: 1px solid rgba(48,209,88,.45); }
 .avatar.frn { --col: var(--frn); } .avatar.dmr { --col: var(--dmr); } .avatar.zello { --col: var(--zello); }
 .lh-cs { font-weight: 750; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lh-name { color: var(--text-dim); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

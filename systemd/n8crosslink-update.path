@@ -1,0 +1,9 @@
+[Unit]
+Description=N8 Crosslink – wartet auf "Update jetzt" aus dem Adminportal
+
+[Path]
+PathExists=/opt/n8crosslink/data/update.request
+Unit=n8crosslink-update.service
+
+[Install]
+WantedBy=multi-user.target

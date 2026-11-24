@@ -12,6 +12,10 @@
 | Zello „not authorized“ | Token abgelaufen (Entwickler-Token gilt 30 Tage) → neuen Token eintragen oder Issuer + Private Key verwenden. |
 | Zello-Kanal „offline“ | Konto ist nicht Mitglied des Kanals oder der Kanal erlaubt keine API-Clients. |
 | Durchsagen werden „blockiert“ | Gleichzeitig wurde auf einem anderen Netz gesprochen – gewollter Schleifenschutz. Sperrzeit ggf. verkleinern. |
+| „sudo nicht eingerichtet“ im Adminportal | Einmal `sudo /opt/n8crosslink/update.sh` ausführen (legt sudo-Freigaben und Update-Dienst an). |
+| „Update jetzt“ passiert nichts | Admin → ⬆️ Updates → Protokoll; sonst `journalctl -u n8crosslink-update -n 50`. |
+| Login n8schicht geht nicht | Es gibt schon andere Benutzer (der Standard-Login wird nur beim allerersten Start angelegt). Passwort neu setzen: `echo 'neu12345' \| sudo -u n8crosslink /opt/n8crosslink/venv/bin/python -m n8crosslink.cli admin n8schicht` |
+| Keine Avatare | ID-Listen noch nicht geladen (Admin → ID-Listen & Avatare), Station nicht bei FreeRadioID registriert oder ohne Profilbild. |
 | Dashboard ohne Live-Daten hinter nginx | WebSocket-Weiterleitung fehlt (`Upgrade`/`Connection`-Header, siehe `systemd/nginx-n8crosslink.conf`). |
 
 Mehr Details im Log: in `/etc/systemd/system/n8crosslink.service` an `ExecStart` ein ` --debug` anhängen, `systemctl daemon-reload && systemctl restart n8crosslink`.

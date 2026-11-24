@@ -33,6 +33,31 @@ FRN_ROOM = [
 ]
 
 
+COLORS = {"2621234": ((10, 132, 255), (94, 92, 230)), "2625001": ((48, 209, 88), (10, 132, 255)),
+          "2625101": ((255, 159, 10), (191, 90, 242)), "dj_nachtfalke": ((255, 159, 10), (255, 69, 58))}
+
+
+async def demo_avatar(request):  # noqa: ANN001, ANN201
+    """Generierte Beispiel-Avatare (keine echten Fotos) für Demo und Screenshots."""
+    from aiohttp import web
+    from PIL import Image, ImageDraw
+    import io
+    name = request.match_info["name"].split(".")[0]
+    if name not in COLORS:
+        return web.Response(status=404)
+    c1, c2 = COLORS[name]
+    im = Image.new("RGB", (256, 256))
+    d = ImageDraw.Draw(im)
+    for y in range(256):
+        t = y / 255
+        d.line([(0, y), (256, y)], fill=tuple(int(c1[i] * (1 - t) + c2[i] * t) for i in range(3)))
+    d.ellipse((88, 48, 168, 128), fill=(245, 247, 251))
+    d.pieslice((48, 136, 208, 296), 180, 360, fill=(245, 247, 251))
+    b = io.BytesIO()
+    im.save(b, "PNG")
+    return web.Response(body=b.getvalue(), content_type="image/png")
+
+
 async def main(port: int) -> None:
     from aiohttp import web
     loop = asyncio.get_running_loop()
@@ -46,6 +71,8 @@ async def main(port: int) -> None:
     zel = sim.FakeZello()
     app = web.Application()
     app.router.add_get("/ws", zel.handler)
+    app.router.add_get("/demo-av/{name}", demo_avatar)
+    sim.add_fake_web(app)
     r = web.AppRunner(app)
     await r.setup()
     await web.TCPSite(r, "127.0.0.1", sim.ZELLO_PORT).start()
@@ -58,10 +85,27 @@ async def main(port: int) -> None:
     db.save_section("zello", {"enabled": True, "server": f"ws://127.0.0.1:{sim.ZELLO_PORT}/ws", "channel": "N8schicht",
                               "username": "n8crosslink", "password": "pw", "auth_mode": "none"})
     db.save_section("vocoder", {"vocoder_mode": "ambeserver", "ambeserver_port": sim.VOC_PORT})
-    db.userdb_replace([(2621234, "DO1TEST", "Tobias", "Minden", "Germany"), (2625001, "DL9NS", "Sven", "Herford", "Germany")])
+    base = f"http://127.0.0.1:{sim.ZELLO_PORT}"
+    db.save_section("ids", {"subscriber_csv_url": f"{base}/ids/subscriber_ids.csv", "subscriber_json_url": "",
+                            "local_json_url": f"{base}/ids/local.json", "local_csv_url": "", "user_api_url": "",
+                            "radioid_fallback_url": "", "talkgroups_url": f"{base}/ids/tg.json",
+                            "avatar_url": f"{base}/demo-av/{{id}}", "only_registered": False,
+                            "zello_avatar_url": f"{base}/demo-av/{{username}}"})
     db.set_user("demo", "demo12345", "superadmin")
     bridge = Bridge(db)
     await bridge.start()
+    await bridge.idlists.update_all()
+    db.userdb_upsert((2625001, "DL9NS", "Sven", "Herford", "Germany"))
+    db.userdb_upsert((2625101, "DB4NN", "Nina", "Hannover", "Germany"))
+    db.frid_add(2625001); db.frid_add(2625101)
+    sim.FakeWeb.version = "1.2.0"
+    bridge.updater.raw_url = lambda path: f"{base}/raw/{path}"
+    await bridge.updater.check()
+    import json as _j
+    open(os.path.join(os.path.dirname(db.path), "system.json"), "w").write(_j.dumps({"sudo": False, "systemctl": "/usr/bin/systemctl", "reboot": True, "fix_perms": True, "units": [
+        {"unit": "n8crosslink.service", "label": "N8 Crosslink", "actions": ["restart"]},
+        {"unit": "md380-emu.service", "label": "md380-emu (Vocoder)", "actions": ["start", "stop", "restart", "enable", "disable"]},
+        {"unit": "svxlink.service", "label": "svxlink (alt)", "actions": ["start", "stop", "restart", "enable", "disable"]}]}))
     server = uvicorn.Server(uvicorn.Config(create_app(bridge), host="127.0.0.1", port=port, log_level="warning"))
 
     async def scenario() -> None:

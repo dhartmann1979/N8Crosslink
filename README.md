@@ -30,7 +30,12 @@ Alles läuft in **einem** Python-Dienst mit Live-Dashboard und Adminportal – i
 | 🎛️ **Vocoder wählbar** | Im Adminportal: **md380-emu** (Software) oder **USB-Stick** (ThumbDV, DVstick 30, DV3000) – zusätzlich AMBEserver im Netz |
 | 📊 **Dashboard** | On-Air-Anzeige mit Pegel und Zeit, Netzkarten mit RX/TX, Last Heard, FRN-Raumliste, Ereignisse, Statistik (Heute … 90 Tage) |
 | ⚙️ **Adminportal** | Alle Einstellungen in SQLite, Benutzerverwaltung, Bridge-/Dienst-Neustart, ID-Datenbank-Update, Export/Import |
-| 🧭 **Geführter Installer** | Fragt alles Schritt für Schritt ab, legt den Superadmin an, löst auf Wunsch SvxLink & alte Zello-Bridge ab |
+| 🐕 **Watchdogs** | Jede Verbindung (FRN, DMR, Zello) baut sich nach einem Abbruch selbst neu auf; zusätzlich baut ein Watchdog ein Netz komplett neu auf, wenn es zu lange offline bleibt oder seine Verbindungsschleife stirbt. Der Vocoder wird bei Ausfall neu geöffnet, und der systemd-Watchdog startet den Dienst neu, falls er hängt |
+| 🗂️ **ID-Listen** | Alle Listen der FreeRadioID.net-API (alle DMR-IDs, registrierte IDs, Einzelabfrage unbekannter IDs) plus Talkgroup-Namen aus `n8schicht/talkgroup_ids.json` – 1× täglich und per Knopf |
+| 🖼️ **Avatare** | In SQLite zwischengespeichert (192 px WebP), 1× täglich oder per Knopf aktualisiert: FreeRadioID-Bilder für DMR, Rufzeichen-Zuordnung für FRN und Zello, eigene Zello-Bilder per Upload |
+| ⬆️ **Updates** | Prüfung stündlich zur vollen Stunde, Banner mit Änderungen, **„Update jetzt“** direkt im Webinterface |
+| 🛠️ **Alles im Webinterface** | Dank eng begrenztem `sudo`: Dienst-Neustart, md380-emu und alte Dienste (Start/Stopp/Autostart), Berechtigungen prüfen, Server-Neustart |
+| 🧭 **Geführter Installer** | Fragt alles Schritt für Schritt ab, prüft und korrigiert bei jeder Installation und jedem Update die Berechtigungen, richtet sudo ein, löst auf Wunsch SvxLink & alte Zello-Bridge ab |
 
 ## Schnellstart
 
@@ -40,7 +45,7 @@ cd N8Crosslink
 sudo ./install.sh
 ```
 
-Der Installer führt durch 9 Schritte (Pakete → venv → Superadmin → FRN → DMR → Zello → Vocoder → Dienst). Danach ist das Dashboard unter `http://<server>:8080` erreichbar (ist 8080 schon belegt, z. B. vom HBlink4-Dashboard, schlägt der Installer den nächsten freien Port vor).
+Der Installer führt durch 9 Schritte (Pakete → venv → Login → FRN → DMR → Zello → Vocoder → Berechtigungen/sudo/Dienst). **Standard-Login: `n8schicht` / `n8schicht`** – das Dashboard erinnert daran, es zu ändern. Danach ist das Dashboard unter `http://<server>:8080` erreichbar (ist 8080 schon belegt, z. B. vom HBlink4-Dashboard, schlägt der Installer den nächsten freien Port vor).
 
 ➡️ Ausführlich: **[docs/INSTALLATION.md](docs/INSTALLATION.md)** · Umstieg von SvxLink/Zello-Bridge: **[docs/MIGRATION.md](docs/MIGRATION.md)**
 
@@ -74,9 +79,17 @@ Senden in die Netze:
 |---|---|
 | ![Vocoder](docs/screenshots/admin-vocoder.png) | ![Routing](docs/screenshots/admin-routing.png) |
 
-| Admin – DMR | Mobil |
+| Admin – ID-Listen & Avatare | Admin – Updates |
 |---|---|
-| ![DMR](docs/screenshots/admin-dmr.png) | <img src="docs/screenshots/mobil.png" width="300"> |
+| ![ID-Listen](docs/screenshots/admin-idlisten-avatare.png) | ![Updates](docs/screenshots/admin-updates.png) |
+
+| Admin – System (Dienste über sudo, Demo ohne systemd) | Admin – DMR |
+|---|---|
+| ![System](docs/screenshots/admin-system.png) | ![DMR](docs/screenshots/admin-dmr.png) |
+
+| Hinweise: Update & Standard-Login | Mobil |
+|---|---|
+| ![Banner](docs/screenshots/banner-update-passwort.png) | <img src="docs/screenshots/mobil.png" width="300"> |
 
 ## Dokumentation
 
@@ -85,6 +98,7 @@ Senden in die Netze:
 * [Vocoder: md380-emu oder USB-Stick](docs/VOCODER.md)
 * [Umstieg von SvxLink und der alten Zello-Bridge](docs/MIGRATION.md)
 * [Technik & Protokolle](docs/TECHNIK.md)
+* [Betrieb: Watchdogs, Updates, sudo & Berechtigungen](docs/BETRIEB.md)
 * [Fehlersuche](docs/FEHLERSUCHE.md)
 * [Changelog](CHANGELOG.md)
 
@@ -94,7 +108,7 @@ Senden in die Netze:
 python3 tests/sim_e2e.py
 ```
 
-Startet einen simulierten FRN-Server, einen simulierten HBlink-Master, einen simulierten Zello-Server und einen simulierten AMBE3000 und prüft alle Richtungen, Talker Alias, Textnachrichten, Start/Stop-Erkennung und den Schleifenschutz (aktuell 28/28 Prüfungen, inkl. zwei Durchsagen direkt hintereinander). `tests/test_fec.py` vergleicht die DMR-FEC bitgenau mit dmr_utils3. `tests/demo_server.py` startet dieselbe Simulation mit echtem Dashboard (Login `demo` / `demo12345`).
+Startet einen simulierten FRN-Server, einen simulierten HBlink-Master, einen simulierten Zello-Server und einen simulierten AMBE3000 und prüft alle Richtungen, Talker Alias, Textnachrichten, Start/Stop-Erkennung und den Schleifenschutz (aktuell 43/43 Prüfungen: alle Richtungen, zwei Durchsagen direkt hintereinander, ID-Listen, Avatare, Verbindungsabbrüche mit Watchdog, Updateprüfung). `tests/test_fec.py` vergleicht die DMR-FEC bitgenau mit dmr_utils3. `tests/demo_server.py` startet dieselbe Simulation mit echtem Dashboard (Login `demo` / `demo12345`).
 
 ## Lizenz & Danksagung
 

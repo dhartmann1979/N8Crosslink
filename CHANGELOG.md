@@ -2,6 +2,9 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [Doku] – 2026-11-24
+- Fehlersuche und Konfiguration: „Von DMR kommt alles an, nach DMR geht nichts“. Bei HBlink4-FreeRadioID mit Secure Login wird die Bridge mit der lokalen Passphrase zum FreeRadioID-Gast und darf nur in die Gast-Talkgroups senden. Mit Log-Befehl und drei Lösungen.
+
 ## [1.5.0] – 2026-11-24
 
 ### Neu: FRN-Operator-Wechsel (Standard aus)

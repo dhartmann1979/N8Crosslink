@@ -63,6 +63,7 @@ Pro Minute ist eine Anforderung möglich.
 | Feld | Bedeutung |
 |---|---|
 | Peer-ID / Passwort | Zugang am HBlink4/FreeDMR |
+| Peer-ID / Passwort bei HBlink4-FreeRadioID | Ist am Server der FreeRadioID-Secure-Login aktiv, macht die lokale Passphrase die Bridge zum **Gast**: Empfang geht, Senden nur in die Gast-Talkgroups. Für Senden in andere TGs das persönliche FreeRadioID-Passwort der Peer-ID verwenden oder das Muster der Bridge am Server von FreeRadioID ausnehmen (siehe [Fehlersuche](FEHLERSUCHE.md)) |
 | Quell-ID | DMR-ID, mit der Durchsagen aus FRN/Zello gesendet werden |
 | Rufzeichen → eigene DMR-ID | Wenn das Rufzeichen des Sprechers in der ID-Datenbank steht, wird dessen ID als Quelle benutzt (aus = immer Quell-ID) |
 | Empfangs-/Sende-TG, Zeitschlitz | 0 als Empfangs-TG = alle Gruppenrufe auf dem Zeitschlitz |

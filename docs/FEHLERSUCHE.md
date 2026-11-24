@@ -1,0 +1,17 @@
+# Fehlersuche
+
+| Symptom | Ursache / Lösung |
+|---|---|
+| FRN „Login abgelehnt (WRONG)“ | E-Mail/Passwort falsch oder Konto nicht freigeschaltet. Das FRN-Passwort ist das dynamische Passwort aus der Registrierung. |
+| FRN „BLOCK“ | Konto im Raum gesperrt – Raum-Admin fragen. |
+| FRN: „keine Sendefreigabe vom Server“ | Raum war belegt oder Konto darf nicht senden (Sende-Rechte am Server prüfen). |
+| DMR bleibt in „Login“ | Server/Port falsch oder UDP gesperrt. `journalctl -u n8crosslink -f` |
+| DMR „MSTNAK“ | Peer-ID am Server nicht erlaubt, Passwort falsch oder die ID ist bereits durch eine andere Bridge (MMDVM_Bridge) belegt. |
+| DMR-Audio stumm | Vocoder offline (Statusleiste). Admin → Vocoder → 🧪 Testen. |
+| DMR-Audio abgehackt | Vorpuffer (Allgemein) auf 300–400 ms erhöhen; bei md380-emu auf x86 CPU-Last prüfen. |
+| Zello „not authorized“ | Token abgelaufen (Entwickler-Token gilt 30 Tage) → neuen Token eintragen oder Issuer + Private Key verwenden. |
+| Zello-Kanal „offline“ | Konto ist nicht Mitglied des Kanals oder der Kanal erlaubt keine API-Clients. |
+| Durchsagen werden „blockiert“ | Gleichzeitig wurde auf einem anderen Netz gesprochen – gewollter Schleifenschutz. Sperrzeit ggf. verkleinern. |
+| Dashboard ohne Live-Daten hinter nginx | WebSocket-Weiterleitung fehlt (`Upgrade`/`Connection`-Header, siehe `systemd/nginx-n8crosslink.conf`). |
+
+Mehr Details im Log: in `/etc/systemd/system/n8crosslink.service` an `ExecStart` ein ` --debug` anhängen, `systemctl daemon-reload && systemctl restart n8crosslink`.

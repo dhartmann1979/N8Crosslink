@@ -1,0 +1,103 @@
+<p align="center">
+  <img src="docs/logo.png" width="160" alt="N8 Crosslink Logo">
+</p>
+
+<h1 align="center">N8 Crosslink</h1>
+<p align="center"><b>FRN · DMR · Zello – eine Bridge, ein Dashboard, im Die-N8schicht-Design.</b><br>
+Reines Python, ohne SvxLink, ohne MMDVM_Bridge, ohne Analog_Bridge.</p>
+
+<p align="center">
+  <img src="docs/screenshots/dashboard-live-frn.png" width="900" alt="Dashboard – FRN-Station spricht, wird nach DMR und Zello übertragen">
+</p>
+
+N8 Crosslink verbindet einen **FreeRadioNetwork-Raum (FRN)**, eine **DMR-Talkgroup** (HBlink4 / FreeDMR über das HomeBrew-Protokoll) und einen **Zello-Kanal** in alle Richtungen. Es löst damit zwei bisherige Lösungen ab:
+
+* die **SvxLink-FRN↔DMR-Kette** (SvxLink + MMDVM_Bridge + Analog_Bridge) und
+* die **bisherige Zello-Bridge**.
+
+Alles läuft in **einem** Python-Dienst mit Live-Dashboard und Adminportal – im gleichen Look wie [dmr.die-n8schicht.de](https://dmr.die-n8schicht.de) und [frn.auf-der-nachtschicht.de](https://frn.auf-der-nachtschicht.de).
+
+---
+
+## Funktionen
+
+| | |
+|---|---|
+| 🔀 **3-Wege-Routing** | FRN ↔ DMR ↔ Zello, jede der 6 Richtungen einzeln schaltbar (wirkt sofort) |
+| 🎙️ **Sendeerkennung ohne VOX** | Beginn und Ende jeder Durchsage kommen aus dem jeweiligen Protokoll – nicht aus dem Audiopegel (Details unten) |
+| 🛡️ **Schleifenschutz** | Immer nur eine aktive Quelle; alles andere wird gesperrt und als „blockiert“ protokolliert, plus Sperrzeit nach jeder Aussendung |
+| 🏷️ **Stationsnamen überall** | FRN-Sprecher (aus der Raumliste), DMR-Rufzeichen (ID-Datenbank + empfangener Talker Alias) und Zello-Benutzer erscheinen im Dashboard, im Last Heard, als **DMR Talker Alias** (Embedded LC, 7-Bit) und als **Zello-Textnachricht** |
+| 🎛️ **Vocoder wählbar** | Im Adminportal: **md380-emu** (Software) oder **USB-Stick** (ThumbDV, DVstick 30, DV3000) – zusätzlich AMBEserver im Netz |
+| 📊 **Dashboard** | On-Air-Anzeige mit Pegel und Zeit, Netzkarten mit RX/TX, Last Heard, FRN-Raumliste, Ereignisse, Statistik (Heute … 90 Tage) |
+| ⚙️ **Adminportal** | Alle Einstellungen in SQLite, Benutzerverwaltung, Bridge-/Dienst-Neustart, ID-Datenbank-Update, Export/Import |
+| 🧭 **Geführter Installer** | Fragt alles Schritt für Schritt ab, legt den Superadmin an, löst auf Wunsch SvxLink & alte Zello-Bridge ab |
+
+## Schnellstart
+
+```bash
+git clone https://github.com/dhartmann1979/N8Crosslink.git
+cd N8Crosslink
+sudo ./install.sh
+```
+
+Der Installer führt durch 9 Schritte (Pakete → venv → Superadmin → FRN → DMR → Zello → Vocoder → Dienst). Danach ist das Dashboard unter `http://<server>:8080` erreichbar (ist 8080 schon belegt, z. B. vom HBlink4-Dashboard, schlägt der Installer den nächsten freien Port vor).
+
+➡️ Ausführlich: **[docs/INSTALLATION.md](docs/INSTALLATION.md)** · Umstieg von SvxLink/Zello-Bridge: **[docs/MIGRATION.md](docs/MIGRATION.md)**
+
+## Wie die Sendeerkennung funktioniert (kein VOX)
+
+| Netz | Durchsage beginnt | Durchsage endet |
+|---|---|---|
+| **FRN** | erstes Sprachpaket (`DT_VOICE_BUFFER`) mit Client-Index | kein Sprachpaket mehr für 1000 ms (wie SvxLink, einstellbar) |
+| **DMR** | neue Stream-ID bzw. Voice-LC-Header | Terminator-with-LC (Fallback: 500 ms ohne Paket) |
+| **Zello** | `on_stream_start` | `on_stream_stop` |
+
+Der Audiopegel wird **nur angezeigt**, nie zum Schalten benutzt. Dadurch gibt es kein Abschneiden von Silben und kein Hängenbleiben bei Rauschen.
+
+Senden in die Netze:
+
+* **FRN:** `TX0` → Freigabe `DT_DO_TX` abwarten → je 200 ms `TX1` + 325 Byte GSM (WAV49) → `RX0`. Kommt keine Freigabe (Raum belegt), wird verworfen und gemeldet.
+* **DMR:** 3× Voice-LC-Header, dann Sprach-Superframes im festen 60-ms-Takt (Vorpuffer einstellbar, Lücken werden mit AMBE-Stille gefüllt, damit Funkgeräte nicht abbrechen), Embedded LC und Talker Alias abwechselnd, Terminator-with-LC.
+* **Zello:** optional Textnachricht mit dem Sprechernamen, `start_stream` (Opus 16 kHz, 60 ms) → Pakete im Takt → `stop_stream`.
+
+## Screenshots
+
+| Live (DMR-Station) | Live (Zello-Station) |
+|---|---|
+| ![DMR](docs/screenshots/dashboard-live-dmr.png) | ![Zello](docs/screenshots/dashboard-live-zello.png) |
+
+| Statistik | Netze |
+|---|---|
+| ![Statistik](docs/screenshots/statistik.png) | ![Netze](docs/screenshots/netze.png) |
+
+| Admin – Vocoder (md380-emu / USB-Stick) | Admin – Routing |
+|---|---|
+| ![Vocoder](docs/screenshots/admin-vocoder.png) | ![Routing](docs/screenshots/admin-routing.png) |
+
+| Admin – DMR | Mobil |
+|---|---|
+| ![DMR](docs/screenshots/admin-dmr.png) | <img src="docs/screenshots/mobil.png" width="300"> |
+
+## Dokumentation
+
+* [Installation & Update](docs/INSTALLATION.md)
+* [Konfiguration / Adminportal](docs/KONFIGURATION.md)
+* [Vocoder: md380-emu oder USB-Stick](docs/VOCODER.md)
+* [Umstieg von SvxLink und der alten Zello-Bridge](docs/MIGRATION.md)
+* [Technik & Protokolle](docs/TECHNIK.md)
+* [Fehlersuche](docs/FEHLERSUCHE.md)
+* [Changelog](CHANGELOG.md)
+
+## Tests
+
+```bash
+python3 tests/sim_e2e.py
+```
+
+Startet einen simulierten FRN-Server, einen simulierten HBlink-Master, einen simulierten Zello-Server und einen simulierten AMBE3000 und prüft alle Richtungen, Talker Alias, Textnachrichten, Start/Stop-Erkennung und den Schleifenschutz (aktuell 28/28 Prüfungen, inkl. zwei Durchsagen direkt hintereinander). `tests/test_fec.py` vergleicht die DMR-FEC bitgenau mit dmr_utils3. `tests/demo_server.py` startet dieselbe Simulation mit echtem Dashboard (Login `demo` / `demo12345`).
+
+## Lizenz & Danksagung
+
+GPL-2.0 (siehe [LICENSE](LICENSE)). Die DMR-Fehlerschutzroutinen (BPTC, RS(12,9), Golay, QR, Embedded LC, Talker Alias) sind ein Python-Port aus [MMDVMHost](https://github.com/g4klx/MMDVMHost) von G4KLX; das FRN-Protokoll folgt dem FRN-Modul von [SvxLink](https://github.com/sm0svx/svxlink). md380-emu stammt aus dem DVSwitch-Projekt und ist **nicht** Teil dieses Repositorys.
+
+© Die N8schicht

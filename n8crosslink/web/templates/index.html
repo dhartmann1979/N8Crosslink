@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>{{ title }}</title>
+  <link rel="icon" type="image/svg+xml" href="/static/n8crosslink-icon.svg">
+  <link rel="alternate icon" type="image/png" href="/static/n8crosslink-icon-192.png">
+  <link rel="apple-touch-icon" href="/static/n8crosslink-icon-192.png">
+  <meta name="theme-color" content="#070b17">
+  <link rel="stylesheet" href="/static/crosslink.css?v={{ version }}">
+</head>
+<body>
+<div class="container">
+  <div class="topbar">
+    <header>
+      <div class="header-branding">
+        <img src="/static/n8crosslink-icon.svg" alt="{{ title }}" class="logo">
+        <div>
+          <h1 id="title">{{ title }}</h1>
+          <div class="subtitle" id="serverName">FRN · DMR · Zello · {{ server_name }}</div>
+        </div>
+      </div>
+      <nav class="main-tabs" id="mainTabs" role="tablist">
+        <button type="button" data-tab="live" class="active">🎙️ <span class="t-long">Live</span><span class="t-short">Live</span></button>
+        <button type="button" data-tab="stats">📈 <span class="t-long">Statistik</span><span class="t-short">Stats</span></button>
+        <button type="button" data-tab="nets">🔗 <span class="t-long">Netze</span><span class="t-short">Netze</span></button>
+        <button type="button" data-tab="admin" id="tabAdminBtn" hidden>⚙️ <span class="t-long">Admin</span><span class="t-short">Admin</span></button>
+      </nav>
+      <div class="hdr-right">
+        <div class="links-menu" id="linksMenu">
+          <button type="button" class="links-btn" id="linksBtn"><span class="links-label">🔗 Links</span> ▾</button>
+          <div class="links-pop" id="linksPop"></div>
+        </div>
+        <div id="userArea"><button class="hdr-btn login" id="loginBtn">🔐 Login</button></div>
+      </div>
+    </header>
+    <div class="status-strip" role="status">
+      <span class="ss" id="ssLive">Live<span class="hdr-lbl">&nbsp;Daten</span></span>
+      <span class="ss" id="ssFrn">FRN<span class="hdr-lbl" id="ssFrnLbl"></span></span>
+      <span class="ss" id="ssDmr">DMR<span class="hdr-lbl" id="ssDmrLbl"></span></span>
+      <span class="ss" id="ssZello">Zello<span class="hdr-lbl" id="ssZelloLbl"></span></span>
+      <span class="ss" id="ssVoc">Vocoder<span class="hdr-lbl" id="ssVocLbl"></span></span>
+      <span class="ss-spacer"></span>
+      <span class="ss-info" id="ssInfo" style="color:var(--text-dim)"></span>
+    </div>
+  </div>
+
+  <div class="banner" id="setupBanner" hidden>🧭 <span class="grow">Noch kein Superadmin angelegt – jetzt einrichten, um das Adminportal zu nutzen.</span>
+    <button class="btn" id="setupBtn">Superadmin anlegen</button></div>
+  <div class="banner warn" id="restartBanner" hidden>⚙️ <span class="grow">Einstellungen gespeichert. Für FRN/DMR/Zello/Vocoder ist ein Neustart der Bridge nötig.</span>
+    <button class="btn" id="restartNowBtn">Jetzt neu starten</button></div>
+  <div class="banner" id="announceBanner" hidden>📢 <span class="grow" id="announceText"></span></div>
+
+  <!-- ============================== LIVE ============================== -->
+  <section class="tab-pane" id="tab-live">
+    <div class="stats-bar">
+      <div class="stat-card"><div class="stat-label">🔌 Netze online</div><div class="stat-value" id="stNets">–</div></div>
+      <div class="stat-card hl"><div class="stat-label">🎙️ Gerade aktiv</div><div class="stat-value" id="stActive">–</div></div>
+      <div class="stat-card"><div class="stat-label">📞 Durchgänge heute</div><div class="stat-value" id="stTalks">–</div></div>
+      <div class="stat-card"><div class="stat-label">⏱️ Sendezeit heute</div><div class="stat-value" id="stAir">–</div></div>
+      <div class="stat-card"><div class="stat-label">👥 Stationen heute</div><div class="stat-value" id="stStations">–</div></div>
+      <div class="stat-card"><div class="stat-label">🚫 Blockiert heute</div><div class="stat-value" id="stBlocked">–</div></div>
+    </div>
+
+    <div class="onair" id="onair">
+      <div class="big-av" id="oaAv">N8</div>
+      <div class="oa-main">
+        <div class="oa-kicker"><span class="onair-dot"></span><span id="oaKicker">On Air</span></div>
+        <div class="oa-name" id="oaName">Ruhe auf allen Netzen</div>
+        <div class="oa-sub" id="oaSub">Warte auf die nächste Durchsage …</div>
+      </div>
+      <div><div class="meter"><i id="oaMeter"></i></div></div>
+      <div class="oa-timer" id="oaTimer"></div>
+    </div>
+
+    <div class="net-grid" id="netGrid"></div>
+
+    <h2 class="section-header collapsible" data-section="lh"><span class="collapse-caret">▾</span>Last Heard <span class="count" id="lhCount"></span><span class="grow"></span></h2>
+    <div class="card" data-body="lh">
+      <div class="lh-row lh-head"><div>Zeit</div><div>Station</div><div>Quelle</div><div class="lh-detail">Raum / TG / Kanal</div><div class="lh-targets">Übertragen nach</div><div class="lh-dur">Dauer</div><div class="lh-status">Status</div></div>
+      <div id="lhList"><div class="empty">Noch nichts gehört.</div></div>
+      <button class="btn secondary show-more" id="lhMore">Mehr anzeigen ▾</button>
+    </div>
+
+    <h2 class="section-header collapsible" data-section="room"><span class="collapse-caret">▾</span>FRN-Raum <span class="count" id="roomCount"></span></h2>
+    <div class="card" data-body="room"><div id="roomList"><div class="empty">Keine FRN-Verbindung.</div></div></div>
+
+    <h2 class="section-header collapsible" data-section="ev"><span class="collapse-caret">▾</span>Ereignisse</h2>
+    <div class="card" data-body="ev"><div class="ev-list" id="evList"><div class="empty">Noch keine Ereignisse.</div></div></div>
+  </section>
+
+  <!-- ============================== STATISTIK ============================== -->
+  <section class="tab-pane hidden" id="tab-stats">
+    <div style="display:flex;justify-content:center;margin:2px 0 12px"><div class="seg" id="rangeSeg">
+      <button data-r="today" class="active">Heute</button><button data-r="24h">24 h</button><button data-r="7d">7 Tage</button>
+      <button data-r="30d">30 Tage</button><button data-r="90d">90 Tage</button></div></div>
+    <div class="stats-bar" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+      <div class="stat-card"><div class="stat-label">📞 Durchgänge</div><div class="stat-value" id="s2Talks">–</div></div>
+      <div class="stat-card"><div class="stat-label">⏱️ Sendezeit</div><div class="stat-value" id="s2Air">–</div></div>
+      <div class="stat-card"><div class="stat-label">👥 Stationen</div><div class="stat-value" id="s2Stations">–</div></div>
+      <div class="stat-card"><div class="stat-label">🚫 Blockiert</div><div class="stat-value" id="s2Blocked">–</div></div>
+    </div>
+    <div class="two-col">
+      <div>
+        <h2 class="section-header">Aktivität pro Netz</h2>
+        <div class="card"><div class="bars" id="srcBars"></div></div>
+        <h2 class="section-header">Wann wird gesprochen</h2>
+        <div class="card"><div class="hours" id="hours"></div><div class="hours-lbl" id="hoursLbl"></div></div>
+      </div>
+      <div>
+        <h2 class="section-header">Aktivste Stationen</h2>
+        <div class="card"><table class="tbl"><thead><tr><th>Station</th><th>Meist über</th><th class="num">Durchg.</th><th class="num">Sendezeit</th></tr></thead><tbody id="topBody"></tbody></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== NETZE ============================== -->
+  <section class="tab-pane hidden" id="tab-nets">
+    <div class="two-col" id="netDetails"></div>
+  </section>
+
+  <!-- ============================== ADMIN ============================== -->
+  <section class="tab-pane hidden" id="tab-admin">
+    <div class="admin-nav" id="adminNav"></div>
+    <div class="card" id="adminBody"></div>
+  </section>
+
+  <footer>© Die N8schicht · N8 Crosslink {{ version }} · FRN · DMR · Zello ·
+    <a href="https://github.com/dhartmann1979/N8Crosslink" target="_blank" rel="noopener">GitHub</a></footer>
+</div>
+
+<div class="modal-overlay" id="loginModal">
+  <div class="modal-content">
+    <h2 id="loginTitle">🔐 Anmelden</h2>
+    <p id="loginHint">Adminbereich der N8 Crosslink.</p>
+    <div class="field"><label>Benutzername</label><input type="text" id="lUser" autocomplete="username"></div>
+    <div class="field"><label>Passwort</label><input type="password" id="lPass" autocomplete="current-password"></div>
+    <div class="field" id="lPass2Wrap" hidden><label>Passwort wiederholen</label><input type="password" id="lPass2" autocomplete="new-password"></div>
+    <div class="err" id="lErr"></div>
+    <div class="form-actions"><button class="btn secondary" id="lCancel">Abbrechen</button><button class="btn" id="lOk">Anmelden</button></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script src="/static/crosslink.js?v={{ version }}"></script>
+</body>
+</html>

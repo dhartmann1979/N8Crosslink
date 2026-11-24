@@ -1,0 +1,27 @@
+[Unit]
+Description=N8 Crosslink – FRN · DMR · Zello Bridge (Die N8schicht)
+Documentation=https://github.com/dhartmann1979/N8Crosslink
+After=network-online.target md380-emu.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=n8crosslink
+Group=n8crosslink
+SupplementaryGroups=dialout
+WorkingDirectory=/opt/n8crosslink
+Environment=N8X_DB=/opt/n8crosslink/data/crosslink.db
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/n8crosslink/venv/bin/python -m n8crosslink
+Restart=always
+RestartSec=3
+# Echtzeit-Audio: etwas höhere Priorität
+Nice=-5
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/n8crosslink/data
+
+[Install]
+WantedBy=multi-user.target

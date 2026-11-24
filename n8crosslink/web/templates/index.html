@@ -48,6 +48,14 @@
         <button type="button" data-tab="admin" id="tabAdminBtn" hidden>⚙️ <span class="t-long">Admin</span><span class="t-short">Admin</span></button>
       </nav>
       <div class="hdr-right">
+        <div class="listen-menu" id="listenMenu" hidden>
+          <button type="button" class="hdr-btn listen-btn" id="listenBtn" title="Mithören (nur für angemeldete Admins)">🎧<span class="links-label" id="listenLbl"> Mithören</span></button><button type="button" class="hdr-btn listen-caret" id="listenCaret" title="Lautstärke" aria-label="Lautstärke">▾</button>
+          <div class="listen-pop" id="listenPop">
+            <div class="lp-head">🔊 Lautstärke <b id="listenVolVal">100 %</b></div>
+            <input type="range" id="listenVol" min="0" max="200" value="100" aria-label="Lautstärke Mithören">
+            <div class="lp-scale"><span>0</span><span>100 %</span><span>200 %</span></div>
+          </div>
+        </div>
         <div class="links-menu" id="linksMenu">
           <button type="button" class="links-btn" id="linksBtn"><span class="links-label">🔗 Links</span> ▾</button>
           <div class="links-pop" id="linksPop"></div>
@@ -63,7 +71,7 @@
       <span class="ss" id="ssVoc">Vocoder<span class="hdr-lbl" id="ssVocLbl"></span></span>
       <span class="ss on" id="ssListen" hidden>🎧<span class="hdr-lbl">&nbsp;Mithören</span></span>
       <span class="ss-spacer"></span>
-      <span class="ss-info" id="ssInfo" style="color:var(--text-dim)"></span>
+      <span class="ss-talk" id="ssTalk"><span class="ss-talker" id="ssTalker">Ruhe</span><span class="seg-meter" id="ssMeter" title="Pegel der sprechenden Station" aria-hidden="true"></span><span class="seg-db" id="ssMeterDb"></span></span>
     </div>
   </div>
 
@@ -95,11 +103,6 @@
         <div class="oa-name" id="oaName">Ruhe auf allen Netzen</div>
         <div class="oa-sub" id="oaSub">Warte auf die nächste Durchsage …</div>
       </div>
-      <div class="oa-side"><div class="meter"><i id="oaMeter"></i></div>
-        <div class="listen" id="listenBox" hidden>
-          <button class="btn secondary" id="listenBtn" title="Mithören (nur für angemeldete Admins)">🎧 Mithören</button>
-          <input type="range" id="listenVol" min="0" max="200" value="100" title="Lautstärke">
-        </div></div>
       <div class="oa-timer" id="oaTimer"></div>
     </div>
 
@@ -176,6 +179,22 @@
     <h2 id="spTitle">Bitte warten …</h2>
     <p id="spText"></p>
     <div class="form-actions" style="justify-content:center"><button class="btn" id="spOk" hidden>OK</button></div>
+  </div>
+</div>
+<div class="modal-overlay" id="vocModal">
+  <div class="modal-content voc-pop">
+    <div class="vp-head"><h2>🎚️ N8schicht-Vocoder · Klang</h2><button class="btn secondary" id="vpClose">✕</button></div>
+    <p id="vpInfo">Änderungen wirken sofort im laufenden Betrieb.</p>
+    <div class="vp-profiles" id="vpProfiles"></div>
+    <div id="vpBody"></div>
+    <h3 class="vp-sec">🎧 Probehören (Eingang → DMR → Ausgang)</h3>
+    <div class="vp-prev">
+      <input id="vpText" placeholder="Eigener Testsatz (leer = Standardsatz)">
+      <label class="btn secondary vp-file">📂 WAV-Datei<input type="file" id="vpWav" accept=".wav,audio/wav" hidden></label>
+      <button class="btn" id="vpRun">▶ Testen</button>
+    </div>
+    <div id="vpResult"></div>
+    <div class="form-actions"><button class="btn secondary" id="vpReset">↺ Eigene Werte löschen</button><button class="btn" id="vpSave">💾 Übernehmen</button></div>
   </div>
 </div>
 <div class="toast" id="toast"></div>

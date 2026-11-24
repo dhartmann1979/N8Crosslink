@@ -59,10 +59,7 @@ DEFAULTS: dict = {
         "version": "2014003",
         "rx_timeout_ms": 1000,
         "text_messages": False,     # experimentell: Sprechername als FRN-Textnachricht
-        "id_override": False,       # Operator (ON) je Durchgang per Neuanmeldung auf die Station setzen
-        "id_override_desc": True,   # dabei auch die Beschreibung (DS) setzen
-        "id_desc_template": "via {quelle} {detail}",
-        "id_restore_s": 10,         # so lange nach dem Durchgang warten, dann eigener Operator
+        "text_targets": "",         # leer = Text öffentlich an alle; sonst nur privat an diese Rufzeichen (Komma-Liste)
         "sysman_server": "sysman.freeradionetwork.eu",   # System Manager für „Passwort anfordern“
         "sysman_port": 10025,
         "rx_gain_db": 0.0, "tx_gain_db": 0.0,
@@ -114,8 +111,10 @@ DEFAULTS: dict = {
         "rx_gain_db": 0.0, "tx_gain_db": 0.0,
     },
     "vocoder": {
-        "vocoder_mode": "droidstar",   # droidstar | usb | ambeserver | none
-        "droidstar_lib": "",           # leer = automatisch (/opt/n8crosslink/lib/libambe2.so)
+        "vocoder_mode": "n8vocoder",   # n8vocoder | usb | ambeserver | none
+        "n8vocoder_lib": "",           # leer = automatisch (/opt/n8crosslink/lib/libn8vocoder.so)
+        "n8vocoder_profile": "n8schicht",   # n8schicht | droidstar (Grundabstimmung)
+        "n8vocoder_options": {"enc": {}, "dec": {}, "post": {}},   # eigene Werte aus den Reglern
         "usb_device": "/dev/ttyUSB0", "usb_baud": 460800, "usb_send_init": True,
         "ambeserver_host": "127.0.0.1", "ambeserver_port": 2460, "ambeserver_send_init": True,
         "vocoder_enc_gain_db": 0.0, "vocoder_dec_gain_db": 0.0,
@@ -186,22 +185,24 @@ class Database:
                         cfg[row["section"]][row["key"]] = json.loads(row["value"])
                     except json.JSONDecodeError:
                         pass
-        # 1.4.0: md380-emu entfällt – alte Einstellungen auf den DroidStar-Vocoder umstellen
+        # md380-emu (bis 1.3) und „droidstar“ (1.4–1.5) -> N8schicht-Vocoder
         v = cfg["vocoder"]
-        for k in [k for k in v if k.startswith("md380_")]:
+        for k in [k for k in v if k.startswith("md380_") or k == "droidstar_lib"]:
             del v[k]
-        if v.get("vocoder_mode") == "md380":
-            v["vocoder_mode"] = "droidstar"
+        if v.get("vocoder_mode") in ("md380", "droidstar"):
+            v["vocoder_mode"] = "n8vocoder"
         return cfg
 
     def migrate_vocoder(self) -> bool:
-        """Entfernt md380-emu-Einstellungen aus der Datenbank. True, wenn umgestellt wurde."""
+        """Alte Vocoder-Einstellungen (md380-emu, „droidstar“) auf den N8schicht-Vocoder umstellen.
+        True, wenn umgestellt wurde."""
         with self.lock:
             row = self.conn.execute("SELECT value FROM settings WHERE section='vocoder' AND key='vocoder_mode'").fetchone()
-            changed = bool(row and json.loads(row["value"]) == "md380")
+            changed = bool(row and json.loads(row["value"]) in ("md380", "droidstar"))
             if changed:
                 self.conn.execute("UPDATE settings SET value=? WHERE section='vocoder' AND key='vocoder_mode'",
-                                  (json.dumps("droidstar"),))
+                                  (json.dumps("n8vocoder"),))
+            self.conn.execute("DELETE FROM settings WHERE section='vocoder' AND key='droidstar_lib'")
             self.conn.execute("DELETE FROM settings WHERE section='vocoder' AND key LIKE 'md380\\_%' ESCAPE '\\'")
             self.conn.commit()
         return changed

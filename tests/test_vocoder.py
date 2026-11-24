@@ -68,32 +68,77 @@ async def main() -> int:
         print("FEHLER: zu viele Ausfälle trotz Wiederholung")
         return 1
     print("OK (AMBEserver)")
-    return await droidstar()
+    return await n8vocoder()
 
 
-async def droidstar() -> int:
-    """DroidStar-Vocoder (falls gebaut, z. B. N8X_AMBE_LIB=…/libambe2.so)."""
+async def n8vocoder() -> int:
+    """N8schicht-Vocoder (falls gebaut, z. B. N8X_AMBE_LIB=…/libn8vocoder.so)."""
     from n8crosslink.dmr.burst import AMBE_SILENCE
-    from n8crosslink.vocoder import find_droidstar_lib, tone_test
-    if not find_droidstar_lib():
-        print("DroidStar-Vocoder nicht gebaut – Test übersprungen")
+    from n8crosslink.vocoder import effective_options, find_n8vocoder_lib, tone_test
+    if not find_n8vocoder_lib():
+        print("N8schicht-Vocoder nicht gebaut – Test übersprungen")
         return 0
-    v = Vocoder({"vocoder_mode": "droidstar"})
+    fails = []
+    v = Vocoder({"vocoder_mode": "n8vocoder"})
     await v.start()
-    assert v.online, "DroidStar-Vocoder nicht online"
+    if not v.online:
+        print("FEHLER: N8schicht-Vocoder nicht online")
+        return 1
     r = await tone_test(v, 50)
+    if not r["ok"]:
+        fails.append(f"Tontest {r}")
     # Stille-Rahmen aus dem DMR-Burst muss Stille ergeben (Bitreihenfolge stimmt)
     v.new_stream("dec")
     pcm = [await v.decode(AMBE_SILENCE) for _ in range(5)]
     rms = float(np.sqrt(np.mean(np.frombuffer(pcm[-1], dtype="<i2").astype(float) ** 2)))
-    # parallele Aufrufe bleiben in Reihenfolge
+    if rms > 50:
+        fails.append(f"Stille-RMS {rms:.0f}")
+    # parallele Aufrufe bleiben in Reihenfolge und gehen nicht verloren
     outs = await asyncio.gather(*[v.encode(bytes(320)) for _ in range(30)])
+    if not all(outs):
+        fails.append("parallele Aufrufe")
+    # Bitfehler (schwaches Funksignal): kein Absturz, Pegel bleibt begrenzt
+    rng = np.random.default_rng(1)
+    worst = 0
+    for _ in range(300):
+        f = bytes(rng.integers(0, 256, 9, dtype=np.uint8))
+        p = await v.decode(f)
+        if p is None:
+            fails.append("Bitfehler: keine Ausgabe"); break
+        worst = max(worst, int(np.abs(np.frombuffer(p, dtype="<i2")).max()))
+    if worst >= 32767:
+        fails.append(f"Bitfehler: Übersteuerung {worst}")
+    # Optionen live setzen: halbe Ausgangsverstärkung -> deutlich leiser
+    async def level() -> float:
+        v.new_stream("both")
+        t = (np.sin(2 * np.pi * 440 * np.arange(160 * 40) / 8000) * 9000).astype("<i2")
+        ys = []
+        for i in range(40):
+            a = await v.encode(t[i * 160:(i + 1) * 160].tobytes())
+            ys.append(np.frombuffer(await v.decode(a), dtype="<i2").astype(float))
+        y = np.concatenate(ys[10:])
+        return float(np.sqrt(np.mean(y ** 2)))
+    l1 = await level()
+    o = effective_options({"n8vocoder_options": {"dec": {"output_gain": 1.0}}})
+    bad = await v.set_options(o)
+    l2 = await level()
+    if bad or not l2 < l1 * 0.7:
+        fails.append(f"Optionen live: {l1:.0f} -> {l2:.0f} {bad}")
+    # Absturz des Vocoder-Prozesses: Bridge läuft weiter, Prozess startet neu
+    v.codec.proc.kill()
+    await asyncio.sleep(0.2)
+    first = await v.encode(bytes(320))          # darf None sein (Absturz bemerkt)
+    again = await v.encode(bytes(320))
+    if again is None or v.codec.restarts < 1:
+        fails.append(f"Neustart nach Absturz: {first is not None}/{again is not None}, restarts={v.codec.restarts}")
+    st = v.status()
     await v.stop()
-    print(f"DroidStar: {r}, Stille-RMS {rms:.0f}, {sum(o is not None for o in outs)}/30 parallel")
-    if not r["ok"] or rms > 50 or not all(outs):
-        print("FEHLER DroidStar")
+    print(f"N8schicht-Vocoder {st['version']}: {r}, Stille-RMS {rms:.0f}, Bitfehler-Spitze {worst}, "
+          f"Pegel {l1:.0f}->{l2:.0f}, Neustarts {st['restarts']}, Fehlrahmen {st['erasures']}")
+    if fails:
+        print("FEHLER N8schicht-Vocoder:", "; ".join(fails))
         return 1
-    print("OK (DroidStar)")
+    print("OK (N8schicht-Vocoder)")
     return 0
 
 

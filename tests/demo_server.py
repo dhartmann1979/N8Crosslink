@@ -87,9 +87,9 @@ async def main(port: int) -> None:
                             "src_id": 2620001, "tg_rx": 262, "tg_tx": 262, "userdb_url": "", "userdb_fallback_url": ""})
     db.save_section("zello", {"enabled": True, "server": f"ws://127.0.0.1:{sim.ZELLO_PORT}/ws", "channel": "N8schicht",
                               "username": "n8crosslink", "password": "pw", "auth_mode": "none"})
-    from n8crosslink.vocoder import find_droidstar_lib
-    if find_droidstar_lib():   # N8X_AMBE_LIB=/pfad/libambe2.so -> echter DroidStar-Vocoder
-        db.save_section("vocoder", {"vocoder_mode": "droidstar"})
+    from n8crosslink.vocoder import find_n8vocoder_lib
+    if find_n8vocoder_lib():   # N8X_AMBE_LIB=/pfad/libn8vocoder.so -> echter N8schicht-Vocoder
+        db.save_section("vocoder", {"vocoder_mode": "n8vocoder"})
     else:
         db.save_section("vocoder", {"vocoder_mode": "ambeserver", "ambeserver_port": sim.VOC_PORT})
     base = f"http://127.0.0.1:{sim.ZELLO_PORT}"

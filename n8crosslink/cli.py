@@ -35,7 +35,7 @@ def main() -> int:
     ik.add_argument("--issuer", default=None)
     sub.add_parser("zello-key-info")
     vt = sub.add_parser("vocoder-test")
-    vt.add_argument("--mode", default=None, help="droidstar | usb | ambeserver (Standard: aus der Konfiguration)")
+    vt.add_argument("--mode", default=None, help="n8vocoder | usb | ambeserver (Standard: aus der Konfiguration)")
     vt.add_argument("--host", default=None)
     vt.add_argument("--port", type=int, default=None)
     b = sub.add_parser("backup")

@@ -31,7 +31,7 @@ n8crosslink ALL=(root) NOPASSWD: /opt/n8crosslink/install.sh --build-vocoder
 n8crosslink ALL=(root) NOPASSWD: /opt/n8crosslink/install.sh --fix-perms
 ```
 
-Freigegeben werden: Neustart der Bridge, Bauen des DroidStar-Vocoders (`install.sh --build-vocoder`), Update-Dienst und die bei der Installation erkannten alten Dienste (Start/Stopp/Neustart/Autostart), Berechtigungsprüfung und – nur wenn bei der Installation bestätigt – `systemctl reboot`. Die Datei wird vor dem Einspielen mit `visudo` geprüft und bei jedem Update neu erzeugt. Alles andere (Shell, andere Dienste) ist verboten.
+Freigegeben werden: Neustart der Bridge, Bauen des N8schicht-Vocoders (`install.sh --build-vocoder`), Update-Dienst und die bei der Installation erkannten alten Dienste (Start/Stopp/Neustart/Autostart), Berechtigungsprüfung und – nur wenn bei der Installation bestätigt – `systemctl reboot`. Die Datei wird vor dem Einspielen mit `visudo` geprüft und bei jedem Update neu erzeugt. Alles andere (Shell, andere Dienste) ist verboten.
 
 ## Berechtigungen
 

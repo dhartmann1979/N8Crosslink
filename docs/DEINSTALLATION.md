@@ -19,7 +19,7 @@ Das Zurücksetzen im Webinterface verlangt das Superadmin-Passwort zur Bestätig
 3. **Dienste entfernen:** `n8crosslink`, Update-Auslöser (`n8crosslink-update.path/.service`) und sudo-Freigaben (`/etc/sudoers.d/n8crosslink`).
 4. **nginx-Konfiguration** entfernen, optional auch das Let's-Encrypt-Zertifikat.
 5. **Programm** entfernen. Bei „alles“ zusätzlich Daten, Dienstbenutzer `n8crosslink` und optional den Quellcode in `/usr/local/src/N8Crosslink`.
-6. **DroidStar-Vocoder**: die gebaute Bibliothek liegt im Programmordner und geht mit ihm; die Quellen in `/usr/local/src/n8crosslink-droidstar` werden gelöscht. Reste von **md380-emu** (Installationen vor 1.4.0) werden auf Nachfrage entfernt, optional auch die DVSwitch-Paketquelle.
+6. **N8schicht-Vocoder**: Quellen und gebaute Bibliothek liegen im Programmordner und gehen mit ihm (Reste aus 1.4/1.5 in `/usr/local/src/n8crosslink-droidstar` werden gelöscht). Reste von **md380-emu** (Installationen vor 1.4.0) werden auf Nachfrage entfernt, optional auch die DVSwitch-Paketquelle.
 7. **Alte Dienste wieder einschalten:** SvxLink, MMDVM_Bridge, Analog_Bridge und die Zello-Bridge, die der Installer abgeschaltet hatte. Er hat sie sich in `/var/lib/n8crosslink/disabled-services` gemerkt.
 
 Ohne Rückfragen:
@@ -38,4 +38,4 @@ sudo ./install.sh
 ```
 
 * Wurden die Daten behalten, erkennt der Installer die vorhandene Datenbank und fragt: aktualisieren oder neu einrichten.
-* Nach einem kompletten Entfernen fragt der Installer gleich zu Beginn nach einem **Backup (.n8xbak)**. Mit dem Superadmin-Passwort von damals wird alles wiederhergestellt (Einstellungen, Zugangsdaten, Benutzer, Last Heard, Avatare). Der DroidStar-Vocoder wird dabei automatisch neu gebaut; eine alte md380-Einstellung wird auf DroidStar umgestellt.
+* Nach einem kompletten Entfernen fragt der Installer gleich zu Beginn nach einem **Backup (.n8xbak)**. Mit dem Superadmin-Passwort von damals wird alles wiederhergestellt (Einstellungen, Zugangsdaten, Benutzer, Last Heard, Avatare). Der N8schicht-Vocoder wird dabei automatisch neu gebaut; alte Einstellungen (md380-emu, DroidStar) werden auf ihn umgestellt, eigene Klang-Einstellungen bleiben erhalten.

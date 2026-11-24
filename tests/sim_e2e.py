@@ -127,7 +127,7 @@ class FakeHB(asyncio.DatagramProtocol):
         t_end = time.time() + seconds
         k = 0
         while time.time() < t_end:
-            if self.tone:      # echte AMBE+2-Rahmen (1-kHz-Ton, mit DroidStar kodiert)
+            if self.tone:      # echte AMBE+2-Rahmen (1-kHz-Ton, mit dem N8schicht-Vocoder kodiert)
                 amb = tuple(self.tone[(k + i) % len(self.tone)] for i in range(3)); k += 3
             else:
                 amb = (B.AMBE_SILENCE,) * 3
@@ -393,17 +393,17 @@ async def main() -> int:
                             "userdb_url": "", "userdb_fallback_url": ""})
     db.save_section("zello", {"enabled": True, "server": f"ws://127.0.0.1:{ZELLO_PORT}/ws", "channel": "N8test",
                               "username": "n8bridge", "password": "pw", "auth_mode": "none"})
-    # N8X_SIM_VOCODER=droidstar: echter DroidStar-Vocoder statt Fake-AMBEserver
-    use_ds = os.environ.get("N8X_SIM_VOCODER") == "droidstar"
+    # N8X_SIM_VOCODER=n8vocoder: echter N8schicht-Vocoder statt Fake-AMBEserver
+    use_ds = os.environ.get("N8X_SIM_VOCODER") in ("n8vocoder", "droidstar")
     if use_ds:
-        from n8crosslink.vocoder import DroidStarCodec, find_droidstar_lib
-        lib = find_droidstar_lib()
-        assert lib, "N8X_AMBE_LIB nicht gesetzt / DroidStar-Vocoder nicht gebaut"
-        c = DroidStarCodec(lib)
+        from n8crosslink.ambe_worker import Codec
+        from n8crosslink.vocoder import find_n8vocoder_lib
+        lib = find_n8vocoder_lib()
+        assert lib, "N8X_AMBE_LIB nicht gesetzt / N8schicht-Vocoder nicht gebaut"
+        c = Codec(lib)
         t = (np.sin(2 * np.pi * 1000 * np.arange(160 * 50) / 8000) * 9000).astype("<i2")
         FakeHB.tone = [c.encode(t[i * 160:(i + 1) * 160].tobytes()) for i in range(50)][5:]
-        c.close()
-        db.save_section("vocoder", {"vocoder_mode": "droidstar"})
+        db.save_section("vocoder", {"vocoder_mode": "n8vocoder"})
     else:
         db.save_section("vocoder", {"vocoder_mode": "ambeserver", "ambeserver_port": VOC_PORT})
     db.save_section("general", {"hang_time_ms": 400, "watchdog_offline_s": 4})
@@ -426,7 +426,7 @@ async def main() -> int:
     for k, p in r.ports.items():
         check(f"{k} online", p.online, f"{p.state} {p.detail}")
     v = bridge.vocoder.status()
-    check("Vocoder bereit (" + ("DroidStar" if use_ds else "AMBEserver-Protokoll") + ")", v["online"], f"{v['product']} {v['version'][:20]}")
+    check("Vocoder bereit (" + ("N8schicht-Vocoder" if use_ds else "AMBEserver-Protokoll") + ")", v["online"], f"{v['product']} {v['version'][:20]}")
     check("FRN-Login als Crosslink (CL=0, BC=Crosslink)", "<CL>0</CL>" in frn.login and "<BC>Crosslink</BC>" in frn.login)
     check("DMR RPTC 302 Byte + RPTO", getattr(hb, "cfg_len", 0) == 302 and hb.options == b"TS2=262",
           f"{getattr(hb, 'cfg_len', 0)} Byte, RPTO={hb.options!r}")
@@ -460,7 +460,7 @@ async def main() -> int:
     a = analyse_dmr(hb.rx)
     check("DMR: Voice-Header + Terminator", a["headers"] >= 1 and a["terms"] == 1 and a["lc_ok"],
           f"{a['headers']} Header, {a['terms']} Terminator, LC-Prüfsumme ok={a['lc_ok']}")
-    check("DMR: Sprachrahmen ≈ Dauer", 28 <= a["voice"] <= 45, f"{a['voice']} Bursts à 60 ms")
+    check("DMR: Sprachrahmen ≈ Dauer", 28 <= a["voice"] <= 50, f"{a['voice']} Bursts à 60 ms")
     check("DMR: Quelle/Ziel/TS", a["src"] == {2620099} and a["dst"] == {26299} and a["slot"] == {2},
           f"src {a['src']} dst {a['dst']} TS {a['slot']}")
     check("DMR: Talker Alias = Stationsname", a["ta"] == "DL1ABC Hans", repr(a["ta"]))
@@ -600,42 +600,24 @@ async def main() -> int:
     check("Update jetzt ohne systemd-Unit sauber abgelehnt", not rq["ok"], rq["message"][:50])
 
     # ---------------- FRN: Passwort anfordern
-    # ---------------- Operator-Wechsel per Neuanmeldung
-    print("\n▶ FRN: Operator-Wechsel (Neuanmeldung mit Stationsname)")
+    # ---------------- FRN-Text privat statt öffentlich
+    print("\n▶ FRN: Textnachricht nur an ausgewählte Stationen")
     fp = r.ports["frn"]
-    fp.section.update({"id_override": True, "id_restore_s": 1.5})
-    ev0 = len(db.events(1000))
-    n_login = len(frn.logins)
+    fp.section.update({"text_messages": True, "text_targets": "dl1abc"})
+    t0 = len(frn.texts)
     await asyncio.sleep(1.0)
-    await hb.send_stream(2621234, 262, 1.5, "DO1TEST Test")
+    await hb.send_stream(2621234, 262, 1.0, "DO1TEST Test")
     await asyncio.sleep(1.5)
-    new = [parse_tags(x) for x in frn.logins[n_login:]]
-    ons = [x.get("ON") for x in new]
-    check("Neuanmeldung mit Operator der DMR-Station", len(ons) >= 1 and ons[0] != "N8XLINK, Crosslink" and "," in ons[0],
-          f"ON={ons[0] if ons else '-'} · DS={new[0].get('DS') if new else '-'}")
-    check("Beschreibung zeigt Quelle", bool(new) and new[0].get("DS", "").startswith("via DMR"), new[0].get("DS", "") if new else "")
-    check("Ton unter fremdem Operator gesendet (gepuffert)", frn.tx_by_on.get(ons[0] if ons else "", 0) >= 6,
-          f"{frn.tx_by_on.get(ons[0] if ons else '', 0)} Pakete")
-    await asyncio.sleep(2.5)
-    check("Danach zurück zum eigenen Operator", parse_tags(frn.logins[-1]).get("ON") == "N8XLINK, Crosslink" and fp.identity is None
-          and fp.online, f"{len(frn.logins) - n_login} Anmeldungen")
-    lost = [e for e in db.events(1000)[: len(db.events(1000)) - ev0] if "Verbindung verloren" in e.get("message", "")]
-    check("Kein „Verbindung verloren“ beim Wechsel", not lost, lost[0]["message"] if lost else "")
-    # Server lehnt fremden Operator ab -> Rückfall, Ton trotzdem raus
-    frn.reject_foreign = True
-    own0 = frn.tx_by_on.get("N8XLINK, Crosslink", 0)
-    await hb.send_stream(2621234, 262, 1.5, "DO1TEST Test")
-    await asyncio.sleep(2.5)
-    check("Abgelehnt -> Rückfall auf eigenen Operator, Option aus", fp.override_blocked and fp.online and fp.identity is None)
-    check("Ton trotzdem gesendet (eigener Operator)", frn.tx_by_on.get("N8XLINK, Crosslink", 0) - own0 >= 6,
-          f"{frn.tx_by_on.get('N8XLINK, Crosslink', 0) - own0} Pakete")
-    ok_t, title_t, _ = await fp.test_identity()
-    check("Testknopf: Ablehnung erkannt", not ok_t and fp.online and fp.identity is None, title_t)
-    frn.reject_foreign = False
-    ok_t, title_t, _ = await fp.test_identity()
-    check("Testknopf: Annahme erkannt + zurück", ok_t and fp.online and fp.identity is None
-          and parse_tags(frn.logins[-1]).get("ON") == "N8XLINK, Crosslink", title_t)
-    fp.section["id_override"] = False
+    new = frn.texts[t0:]
+    check("Text privat an DL1ABC (Client-ID 11), nicht öffentlich", bool(new) and all("<ID>11</ID>" in t for t in new),
+          new[0] if new else "")
+    fp.section["text_targets"] = ""
+    t0 = len(frn.texts)
+    await asyncio.sleep(1.0)
+    await hb.send_stream(2621234, 262, 1.0, "DO1TEST Test")
+    await asyncio.sleep(1.5)
+    new = frn.texts[t0:]
+    check("Ohne Liste: öffentlich an alle (leere ID)", bool(new) and "<ID></ID>" in new[0], new[0] if new else "")
 
     # ---------------- Sprachansage
     print("\n▶ Sprachansage des Rufzeichens")

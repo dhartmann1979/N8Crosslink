@@ -211,9 +211,8 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         new = db.load_config()
         # Routing, Texte und Pegel greifen sofort, der Rest nach Neustart
         bridge.cfg["routes"].update(new["routes"])
-        bridge.cfg["general"].update({k: new["general"][k] for k in
-                                      ("hang_time_ms", "tot_s", "jitter_ms", "announcement", "links", "title",
-                                       "server_name", "keep_days")})
+        # Allgemein wirkt komplett sofort (auch Sprachansage) – nur Web-Adresse/-Port brauchen einen Dienst-Neustart
+        bridge.cfg["general"].update({k: v for k, v in new["general"].items() if k not in ("web_host", "web_port")})
         bridge.router.notify()
         restart = any(s in data for s in ("frn", "dmr", "zello", "vocoder"))
         return {"ok": True, "restart_required": restart}
@@ -368,15 +367,6 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         bridge.router.event("info" if ok else "warn", f"FRN-Passwort angefordert von {user} für {v.get('callsign')}: {title}")
         return {"ok": ok, "title": title, "message": msg}
 
-    @app.post("/api/admin/frn/identity-test")
-    async def frn_identity_test(user: str = Depends(require_admin)) -> dict:
-        p = bridge.router.ports.get("frn")
-        if p is None or not getattr(p, "enabled", False):
-            return {"ok": False, "title": "FRN aus", "message": "FRN ist nicht aktiviert."}
-        ok, title, msg = await p.test_identity()
-        bridge.router.event("info" if ok else "warn", f"FRN Operator-Wechsel getestet von {user}: {title}")
-        return {"ok": ok, "title": title, "message": msg}
-
     @app.post("/api/admin/announce/preview")
     async def announce_preview(data: dict = Body(...), _: str = Depends(require_admin)) -> Response:
         from .. import announce
@@ -396,11 +386,46 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
             w.setnchannels(1); w.setsampwidth(2); w.setframerate(8000); w.writeframes(pcm)  # noqa: E702
         return Response(buf.getvalue(), media_type="audio/wav", headers={"Cache-Control": "no-store"})
 
+    # ---- N8schicht-Vocoder: Klang-Einstellungen (live) und Probehören
+    @app.get("/api/admin/vocoder/params")
+    async def vocoder_params(_: str = Depends(require_admin)) -> dict:
+        from ..vocoder import PROFILES, effective_options, params_for_ui
+        c = db.load_config()["vocoder"]
+        v = bridge.vocoder
+        return {"mode": c.get("vocoder_mode"), "profile": c.get("n8vocoder_profile", "n8schicht"),
+                "profiles": list(PROFILES), "params": params_for_ui(c), "effective": effective_options(c),
+                "active": bool(v and v.mode == "n8vocoder" and v.online),
+                "bad": getattr(getattr(v, "codec", None), "bad_options", [])}
+
+    @app.post("/api/admin/vocoder/options")
+    async def vocoder_options(data: dict = Body(...), user: str = Depends(require_admin)) -> dict:
+        from ..vocoder import PROFILES, effective_options
+        prof = str(data.get("profile") or "n8schicht")
+        if prof not in PROFILES:
+            raise HTTPException(400, "Unbekanntes Profil")
+        own = data.get("options") or {}
+        own = {side: {str(k): float(val) for k, val in (own.get(side) or {}).items()} for side in ("enc", "dec", "post")}
+        db.save_section("vocoder", {"n8vocoder_profile": prof, "n8vocoder_options": own})
+        bridge.cfg["vocoder"].update({"n8vocoder_profile": prof, "n8vocoder_options": own})
+        eff = effective_options(bridge.cfg["vocoder"])
+        v = bridge.vocoder
+        bad = await v.set_options(eff) if v and v.mode == "n8vocoder" else []
+        bridge.router.event("info", f"Vocoder-Klang geändert von {user} (Profil {prof})")
+        return {"ok": not bad, "bad": bad, "live": bool(v and v.mode == "n8vocoder"), "effective": eff}
+
+    @app.post("/api/admin/vocoder/preview")
+    async def vocoder_preview(data: dict = Body(...), _: str = Depends(require_admin)) -> dict:
+        from .. import preview
+        try:
+            return await preview.run(data, bridge.cfg["vocoder"])
+        except preview.PreviewError as e:
+            raise HTTPException(400, str(e)) from e
+
     # ---- Software-Vocoder
     @app.post("/api/admin/vocoder/build")
     async def vocoder_build(user: str = Depends(require_admin)) -> dict:
         ok, out = await bridge.system.build_vocoder()
-        bridge.router.event("info" if ok else "warn", f"DroidStar-Vocoder gebaut durch {user}: {'ok' if ok else 'Fehler'}")
+        bridge.router.event("info" if ok else "warn", f"N8schicht-Vocoder gebaut durch {user}: {'ok' if ok else 'Fehler'}")
         return {"ok": ok, "message": out}
 
     # ---- Updates
@@ -488,6 +513,8 @@ def _coerce(section: str, values: dict) -> dict:
                 out[k] = float(v) if v not in ("", None) else d
             elif isinstance(d, list):
                 out[k] = v if isinstance(v, list) else json.loads(v)
+            elif isinstance(d, dict):
+                out[k] = v if isinstance(v, dict) else json.loads(v)
             else:
                 out[k] = "" if v is None else str(v)
         except (ValueError, TypeError, json.JSONDecodeError):

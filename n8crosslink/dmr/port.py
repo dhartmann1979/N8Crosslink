@@ -353,8 +353,14 @@ class DmrPort(Port):
         tx.frames.append(asyncio.ensure_future(self.vocoder.encode(pcm)))
 
     def tx_end(self) -> None:
-        if self.tx:
-            self.tx.ending = True
+        tx = self.tx
+        if tx and not tx.ending:
+            # Software-Vocoder gibt 2 Rahmen verzögert aus: mit Stille nachschieben,
+            # damit das Ende des Durchgangs nicht abgeschnitten wird
+            for _ in range(getattr(self.vocoder, "encoder_delay_frames", 0)):
+                tx.frames.append(asyncio.ensure_future(self.vocoder.encode(bytes(320))))
+        if tx:
+            tx.ending = True
 
     def _dmrd(self, tx: TxStream, bits: int, payload: bytes) -> None:
         s = self.section

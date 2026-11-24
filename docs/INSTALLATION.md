@@ -6,7 +6,7 @@
 |---|---|
 | Betriebssystem | Debian 12/13, Ubuntu 22.04/24.04, Raspberry Pi OS, DietPi |
 | Architektur | amd64, arm64, armhf |
-| Hardware | ab Raspberry Pi 3 oder jeder x86-Server; der DroidStar-Vocoder läuft auf beiden nativ |
+| Hardware | ab Raspberry Pi 3 oder jeder x86-Server; der N8schicht-Vocoder läuft auf beiden nativ (auch 32-Bit-ARM) |
 | Netz | ausgehend: FRN-Server (TCP 10024), DMR-Server (UDP 62031), Zello (wss/443) |
 | Zugangsdaten | FRN-Konto (E-Mail + Passwort), Peer-ID + Passwort am HBlink4/FreeDMR, Zello-Konto (+ Token) |
 
@@ -30,7 +30,7 @@ Der Installer fragt Schritt für Schritt:
 | 5 | **FRN**: Server, Port, Backup, E-Mail, Passwort, Rufzeichen, Name, Raum, Ort, Land |
 | 6 | **DMR**: Server, Port, Passphrase, Peer-ID, Rufzeichen, Quell-ID, Zeitschlitz, RX-/TX-TG, Color Code, RPTO |
 | 7 | **Zello**: Variante (Token / Issuer+Key / Zello Work), Kanal, Benutzer, Passwort |
-| 8 | **Vocoder**: DroidStar (Software – wird aus den DroidStar-Quellen gebaut und getestet, siehe [VOCODER.md](VOCODER.md)), USB-Stick, AMBEserver oder später |
+| 8 | **Vocoder**: N8schicht-Vocoder (Software – wird aus den mitgelieferten Quellen gebaut und getestet, siehe [VOCODER.md](VOCODER.md)), USB-Stick, AMBEserver oder später |
 | 9 | Erkennung alter Dienste (`svxlink`, `mmdvm_bridge`, `analog_bridge`, `*zello*`) mit Rückfrage zum Abschalten, **sudo fürs Webinterface**, **Berechtigungen prüfen & korrigieren**, systemd-Dienst mit Watchdog, Update-Auslöser, optional nginx + Let's Encrypt |
 
 Alle Einstellungen liegen danach in `/opt/n8crosslink/data/crosslink.db` und sind im Adminportal änderbar.

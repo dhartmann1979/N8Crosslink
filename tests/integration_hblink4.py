@@ -43,7 +43,7 @@ async def main():
                             "tg_rx": 262, "tg_tx": 262, "slot": 2, "options": os.environ.get("RPTO", ""),
                             "userdb_url": "", "userdb_fallback_url": ""})
     db.save_section("zello", {"enabled": False})
-    db.save_section("vocoder", {"vocoder_mode": "droidstar"})
+    db.save_section("vocoder", {"vocoder_mode": "n8vocoder"})
     db.save_section("ids", {k: "" for k in ("subscriber_csv_url","subscriber_json_url","local_json_url","local_csv_url","user_api_url","radioid_fallback_url","talkgroups_url")})
     br = Bridge(db); await br.start()
     peer = Peer(262000202)

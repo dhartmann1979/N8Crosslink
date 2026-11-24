@@ -180,7 +180,7 @@ def main() -> None:
                         format="%(asctime)s %(levelname)-7s %(name)-8s %(message)s", stream=sys.stdout)
     db = Database(args.db)
     if db.migrate_vocoder():
-        log.info("Vocoder von md380-emu auf DroidStar umgestellt")
+        log.info("Vocoder auf den N8schicht-Vocoder umgestellt")
     cfg = db.load_config()
     host = args.host or cfg["general"].get("web_host", "0.0.0.0")
     port = args.port or int(cfg["general"].get("web_port", 8080))

@@ -76,3 +76,43 @@ class FrameBuffer:
 
     def __len__(self) -> int:
         return len(self.buf)
+
+
+class BandwidthExtender:
+    """Ergänzt das Band oberhalb der AMBE+2-Grenze (≈ 3,65 kHz) bis 4 kHz.
+
+    AMBE+2 überträgt Obertöne nur bis ca. 3,65–3,7 kHz. Für mehr „Luft“ bei Zischlauten
+    wird das Band 3,65–4 kHz mit Rauschen gefüllt, dessen Hüllkurve dem Band 3,0–3,65 kHz
+    folgt (``level_db`` relativ dazu, ausblendend zur Obergrenze). Arbeitet rahmenweise
+    (160 Samples) mit 50 % Überlappung (Wurzel-Hann), Latenz 20 ms."""
+
+    N = 320
+    H = 160
+
+    def __init__(self, level_db: float = -6.0, seed: int = 0) -> None:
+        self.g = 10 ** (level_db / 20)
+        n = np.arange(self.N)
+        self.win = np.sqrt(0.5 - 0.5 * np.cos(2 * np.pi * n / self.N))     # periodisch, Summe² = 1
+        f = np.fft.rfftfreq(self.N, 1 / 8000)
+        self.src = (f >= 3000) & (f < 3650)
+        self.dst = (f >= 3650) & (f < 4000)
+        self.fade = np.linspace(1.0, 0.35, int(self.dst.sum()))   # fällt zur Obergrenze wie natürliche Sprache
+        self.rng = np.random.default_rng(seed)
+        self.inbuf = np.zeros(self.N)
+        self.ola = np.zeros(self.N)
+
+    def reset(self) -> None:
+        self.inbuf[:] = 0
+        self.ola[:] = 0
+
+    def process(self, pcm: bytes) -> bytes:
+        x = np.frombuffer(pcm, dtype="<i2").astype(np.float64)
+        self.inbuf = np.concatenate([self.inbuf[self.H:], x])
+        X = np.fft.rfft(self.inbuf * self.win)
+        e = np.sqrt(np.mean(np.abs(X[self.src]) ** 2))
+        ph = np.exp(1j * self.rng.uniform(0, 2 * np.pi, int(self.dst.sum())))
+        X[self.dst] = X[self.dst] + self.g * e * self.fade * ph
+        y = np.fft.irfft(X, self.N) * self.win
+        self.ola = np.concatenate([self.ola[self.H:], np.zeros(self.H)]) + y
+        out = self.ola[:self.H]
+        return np.clip(out, -32767, 32767).astype("<i2").tobytes()

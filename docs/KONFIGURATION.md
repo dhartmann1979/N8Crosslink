@@ -34,17 +34,15 @@ Wichtig: Der ganze Durchgang läuft um die Länge der Ansage verzögert (Buchsta
 Matrix mit allen sechs Richtungen. Wirkt sofort, ohne Neustart.
 
 ## 📻 FRN
-Server, Backup-Server, Konto, Rufzeichen/Name (erscheint im FRN-Raum als „Rufzeichen, Name“), Client-Typ (0 = Crosslink, 1 = Gateway, 2 = PC Only), Band/Kanal, Raum. *Ende-Erkennung RX* ist die Zeit ohne Sprachpaket, nach der ein Durchgang als beendet gilt. Die FRN-Textnachricht mit dem Sprechernamen ist experimentell (nicht jeder FRN-Server/Client zeigt sie an).
+Server, Backup-Server, Konto, Rufzeichen/Name (erscheint im FRN-Raum als „Rufzeichen, Name“), Client-Typ (0 = Crosslink, 1 = Gateway, 2 = PC Only), Band/Kanal, Raum. *Ende-Erkennung RX* ist die Zeit ohne Sprachpaket, nach der ein Durchgang als beendet gilt. 
 
-### 🔁 Operator-Wechsel (Standard: aus)
-FRN überträgt Operator (`<ON>Rufzeichen, Name</ON>`) und Beschreibung (`<DS>`) **nur bei der Anmeldung** – während der Verbindung lassen sie sich nicht ändern. Mit dieser Option meldet sich die Bridge bei jedem Durchgang aus DMR/Zello **neu an**, mit Rufzeichen und Name der sprechenden Station, z. B. `DO1TEST, Tobias` und Beschreibung `via DMR TG 262 Deutschland · TS2`. Der Ton wird währenddessen gepuffert und danach vollständig gesendet. Nach *Zurück zum eigenen Operator nach … s Ruhe* (Standard 10 s) meldet sie sich wieder mit dem eigenen Operator an; spricht dieselbe Station vorher erneut, bleibt die Anmeldung bestehen.
+### 💬 Sprechername als Textnachricht
+Ist *Sprechername als FRN-Textnachricht* an, schickt die Bridge vor jedem Durchgang aus DMR/Zello eine Textnachricht wie „DO1TEST Tobias (DMR)“.
 
-* **Vorher testen:** **„🧪 Operator-Wechsel testen“** meldet einmal als `DL0TEST, N8 Crosslink Test` an und danach wieder normal; das Popup zeigt, ob der Server das mit deinem Konto annimmt.
-* **Automatischer Rückfall:** Lehnt der Server die Anmeldung mit fremdem Operator ab, meldet sich die Bridge sofort wieder mit dem eigenen Operator an, sendet den gepufferten Ton und schaltet den Operator-Wechsel bis zum nächsten Neustart ab (Ereignis im Log).
-* **Nachteile:** 1–2 s Verzögerung am Anfang des Durchgangs; im Raum erscheint die Bridge bei jedem Wechsel als gehend/kommend (Statistik, Benachrichtigungen der Clients).
-![FRN – Operator-Wechsel](screenshots/admin-frn.png)
+* *Textnachricht nur an diese Stationen (privat)* leer = **öffentlich an alle** im Raum (FRN-Befehl `TM:` mit leerer `<ID>`).
+* Mit Rufzeichen (Komma-Liste, z. B. `DL1ABC, DB0XYZ`) geht die Nachricht **privat** nur an diese Stationen (`<ID>` = deren Client-ID aus der Raumliste). Bei allen anderen ploppt nichts auf. Einen stillen „Info“-Nachrichtentyp kennt das FRN-Protokoll nicht.
 
-* Beschreibung: Platzhalter `{quelle}` (DMR/Zello), `{detail}` (TG/Kanal), `{id}` (DMR-ID), `{call}`, `{name}`, `{ort}`. Am besten ohne Umlaute.
+Operator (`<ON>`) und Beschreibung (`<DS>`) überträgt FRN nur bei der Anmeldung; ein Operator-Wechsel per Neuanmeldung (1.5.0) hat in der Praxis nicht funktioniert und ist ab 1.6.0 wieder entfernt.
 
 ### 📧 FRN-Passwort anfordern
 Wer noch kein FRN-Konto hat: Rufzeichen, Name, E-Mail, Band/Kanal, Land und Ort („Ort - Ortsteil“) ausfüllen und **„📧 Passwort anfordern“** klicken. Die Werte aus dem Formular werden auch ohne Speichern genommen. Die Bridge registriert die Station beim **System Manager** (Standard `sysman.freeradionetwork.eu:10025`, einstellbar für eigene FRN-Netze), genauso wie das SvxLink-Skript `frn-register`. Ein Popup zeigt das Ergebnis:
@@ -74,7 +72,7 @@ Pro Minute ist eine Anforderung möglich.
 ## 💬 Zello
 **Private Key:** Liegt eine Datei `zello*.key`/`zello*.pem` im Programm-, Daten- oder Quellordner, übernimmt Installer/Update/Berechtigungsprüfung sie automatisch: sicher verschieben (nur root) → in SQLite übernehmen → per Fingerabdruck gegenprüfen → Datei mit `shred` löschen. Gelesen wird der Schlüssel nur noch aus der Datenbank (und er ist im verschlüsselten Backup). Von Hand: `sudo /opt/n8crosslink/install.sh --fix-perms`. Fingerabdruck anzeigen: `… cli zello-key-info`.
 
-Server (`wss://zello.io/ws` bzw. `wss://zellowork.io/ws/NETZ`), Kanal, Konto, Authentifizierung: *Entwickler-Token* (30 Tage gültig, von developers.zello.com), *Issuer + Private Key* (die Bridge erzeugt selbst JWTs – für den Dauerbetrieb) oder *keine* (Zello Work). Text-Vorlage für den Sprechernamen mit `{name}`, `{callsign}`, `{source}`, `{detail}`.
+**Schritt-für-Schritt-Anleitung: [ZELLO.md](ZELLO.md).** Kurz: Server (`wss://zello.io/ws` bzw. `wss://zellowork.io/ws/NETZ`), Kanal, Konto, Authentifizierung: *Entwickler-Token* (30 Tage gültig, von developers.zello.com), *Issuer + Private Key* (die Bridge erzeugt selbst JWTs – für den Dauerbetrieb) oder *keine* (Zello Work). Text-Vorlage für den Sprechernamen mit `{name}`, `{callsign}`, `{source}`, `{detail}`.
 
 ## 🗂️ ID-Listen & Avatare
 | Quelle | Verwendung |
@@ -95,13 +93,15 @@ Aktualisierung 1× täglich automatisch und per **„ID-Listen jetzt aktualisier
 Nur für Superadmins. Bietet ein verschlüsseltes Backup zum Download, die Wiederherstellung (vorher prüfen) und das Zurücksetzen in drei Stufen. Wichtig: Der Schlüssel des Backups ist das Superadmin-Passwort, siehe [BACKUP.md](BACKUP.md) und [DEINSTALLATION.md](DEINSTALLATION.md).
 
 ## 🎧 Mithören
-Angemeldete Admins sehen in der On-Air-Karte den Knopf **„🎧 Mithören“** mit Lautstärkeregler. Der Ton der gerade aktiven Durchsage kommt aus jedem Netz (FRN, DMR oder Zello) als 8-kHz-Audio über einen eigenen, per Login geschützten WebSocket. Ohne Anmeldung wird die Verbindung abgelehnt, beim Abmelden endet das Mithören.
+Angemeldete Admins sehen oben im Menü (neben *Links*) den Knopf **„🎧 Mithören“**; der kleine Pfeil **▾** rechts daran öffnet die **Lautstärke** (0–200 %, wird im Browser gemerkt). Der Ton der gerade aktiven Durchsage kommt aus jedem Netz (FRN, DMR oder Zello) als 8-kHz-Audio über einen eigenen, per Login geschützten WebSocket. Ohne Anmeldung wird die Verbindung abgelehnt, beim Abmelden endet das Mithören.
 
 ## ⬆️ Updates
 Installierte und neueste Version, Zeitpunkt der letzten Prüfung, Änderungen aus dem Changelog, **„Jetzt prüfen“**, **„Update jetzt installieren“** und das Protokoll des letzten Updates.
 
 ## 🎛️ Vocoder
-siehe [VOCODER.md](VOCODER.md)
+Betriebsart (N8schicht-Vocoder, USB-Stick, AMBEserver, Test), Pegel und Watchdog. Beim N8schicht-Vocoder öffnet **🎚️ Klang-Einstellungen** auf der Karte ein Popup mit Reglern (wirken sofort), Grundabstimmung und Probehören – alle Regler erklärt in [VOCODER.md](VOCODER.md#-klang-einstellungen-popup).
+
+![Klang-Einstellungen](screenshots/admin-vocoder-klang.png)
 
 ## 👥 Benutzer · 🛠️ System
 Benutzer anlegen/löschen/Passwort ändern. System: **Dienste** (N8 Crosslink, erkannte alte Dienste wie svxlink/mmdvm_bridge/Zello-Bridge) mit Start, Stopp, Neustart, Autostart an/aus; **Berechtigungen prüfen & korrigieren**; **Server neu starten** (falls bei der Installation erlaubt); Bridge neu starten (nur die Netze), Dienst neu starten, ID-Listen aktualisieren, Konfiguration exportieren/importieren (ohne Passwörter), Ereignisprotokoll. Siehe [BETRIEB.md](BETRIEB.md).

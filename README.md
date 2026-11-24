@@ -27,19 +27,19 @@ Alles läuft in **einem** Python-Dienst mit Live-Dashboard und Adminportal – i
 | 🎙️ **Sendeerkennung ohne VOX** | Beginn und Ende jeder Durchsage kommen aus dem jeweiligen Protokoll – nicht aus dem Audiopegel (Details unten) |
 | 🛡️ **Schleifenschutz** | Immer nur eine aktive Quelle; alles andere wird gesperrt und als „blockiert“ protokolliert, plus Sperrzeit nach jeder Aussendung |
 | 🏷️ **Stationsnamen überall** | FRN-Sprecher (aus der Raumliste), DMR-Rufzeichen (ID-Datenbank + empfangener Talker Alias) und Zello-Benutzer erscheinen im Dashboard, im Last Heard, als **DMR Talker Alias** (Embedded LC, 7-Bit) und als **Zello-Textnachricht** |
-| 🎛️ **Vocoder wählbar** | Im Adminportal: **DroidStar** (Software-Vocoder aus DroidStar, läuft nativ auf x86 und ARM direkt in der Bridge – kein qemu, kein Zusatzdienst; Installer und Webinterface bauen und testen ihn) oder **USB-Stick** (ThumbDV, DVstick 30, DV3000) – zusätzlich AMBEserver im Netz |
+| 🎛️ **N8schicht-Vocoder** | Eigener Software-AMBE+2-Vocoder (Fork des DroidStar-Codecs, Quellen im Repository): nativ auf x86 und ARM (auch 32 Bit), eigener absturzsicherer Prozess, auf **Verständlichkeit gemessen abgestimmt** (ESTOI/PESQ), Frequenzgang bis 4 kHz. **Klang-Popup** mit Reglern, die live wirken, und Probehören (Eingang ↔ Ausgang, eigene WAV-Dateien). Alternativ **USB-Stick** (ThumbDV, DVstick 30, DV3000) oder AMBEserver |
 | 📧 **FRN-Passwort anfordern** | Knopf im FRN-Adminbereich: Registrierung beim FRN-System-Manager, Ergebnis als Status-Popup, Passwort kommt per E-Mail |
-| 🎧 **Mithören** | Angemeldete Admins hören die aktive Durchsage direkt im Browser mit (aus jedem Netz) |
+| 🎧 **Mithören** | Angemeldete Admins hören die aktive Durchsage direkt im Browser mit (aus jedem Netz) – Knopf oben im Menü, Lautstärke im Dropdown am kleinen Pfeil. In der Statusleiste stehen Sprecher und eine **segmentierte Pegelanzeige** mit Spitzenwert |
 | 💾 **Backup** | Alles als vollständig verschlüsselte Datei zum Download (AES-256-GCM). **Der Schlüssel ist das Superadmin-Passwort – im Passwortsafe aufbewahren!** Wiederherstellen im Webinterface, per CLI oder direkt im Installer |
 | ♻️ **Neuanfang** | Zurücksetzen im Webinterface (Verlauf / Einstellungen / alles) und `uninstall.sh` mit „Daten behalten“ oder „komplett entfernen“, inkl. Wiedereinschalten der alten Dienste |
 | 📊 **Dashboard** | On-Air-Anzeige mit Pegel und Zeit, Netzkarten mit RX/TX, Last Heard, FRN-Raumliste, Ereignisse, Statistik (Heute … 90 Tage) |
 | ⚙️ **Adminportal** | Alle Einstellungen in SQLite, Benutzerverwaltung, Bridge-/Dienst-Neustart, ID-Datenbank-Update, Export/Import |
-| 🔁 **Operator-Wechsel & Sprachansage** | Optional (Standard aus): FRN meldet sich je Durchgang mit Rufzeichen/Name der Station an und danach zurück – mit Testknopf und automatischem Rückfall. Dazu eine abschaltbare Sprachansage des Rufzeichens (espeak-ng, Buchstaben oder NATO-Alphabet) je Zielnetz |
+| 🔊 **Sprachansage & Sprechername** | Optional: Computerstimme sagt das Rufzeichen am Anfang des Durchgangs an (espeak-ng, Buchstaben oder NATO, je Zielnetz). Sprechername als FRN-Textnachricht – öffentlich oder **privat nur an ausgewählte Stationen** |
 | 🐕 **Watchdogs** | Jede Verbindung (FRN, DMR, Zello) baut sich nach einem Abbruch selbst neu auf; zusätzlich baut ein Watchdog ein Netz komplett neu auf, wenn es zu lange offline bleibt oder seine Verbindungsschleife stirbt. Der Vocoder wird bei Ausfall neu geöffnet (AMBEserver im Lockstep mit neuem Socket nach jedem Timeout), und der systemd-Watchdog startet den Dienst neu, falls er hängt |
 | 🗂️ **ID-Listen** | Alle Listen der FreeRadioID.net-API (alle DMR-IDs, registrierte IDs, Einzelabfrage unbekannter IDs) plus Talkgroup-Namen aus `n8schicht/talkgroup_ids.json` – 1× täglich und per Knopf |
 | 🖼️ **Avatare** | In SQLite zwischengespeichert (192 px WebP), 1× täglich oder per Knopf aktualisiert: FreeRadioID-Bilder für DMR, Rufzeichen-Zuordnung für FRN und Zello, eigene Zello-Bilder per Upload |
 | ⬆️ **Updates** | Prüfung stündlich zur vollen Stunde, Banner mit Änderungen, **„Update jetzt“** direkt im Webinterface |
-| 🛠️ **Alles im Webinterface** | Dank eng begrenztem `sudo`: Dienst-Neustart, DroidStar-Vocoder bauen, alte Dienste (Start/Stopp/Autostart), Berechtigungen prüfen, Server-Neustart |
+| 🛠️ **Alles im Webinterface** | Dank eng begrenztem `sudo`: Dienst-Neustart, N8schicht-Vocoder bauen, alte Dienste (Start/Stopp/Autostart), Berechtigungen prüfen, Server-Neustart |
 | 🧭 **Geführter Installer** | Fragt alles Schritt für Schritt ab, prüft und korrigiert bei jeder Installation und jedem Update die Berechtigungen, richtet sudo ein, löst auf Wunsch SvxLink & alte Zello-Bridge ab |
 
 ## Schnellstart
@@ -80,7 +80,7 @@ Senden in die Netze:
 |---|---|
 | ![Statistik](docs/screenshots/statistik.png) | ![Netze](docs/screenshots/netze.png) |
 
-| Admin – Vocoder (DroidStar / USB-Stick) | Admin – Routing |
+| Admin – Vocoder (N8schicht-Vocoder / USB-Stick) | Admin – Routing |
 |---|---|
 | ![Vocoder](docs/screenshots/admin-vocoder.png) | ![Routing](docs/screenshots/admin-routing.png) |
 
@@ -108,7 +108,8 @@ Senden in die Netze:
 
 * [Installation & Update](docs/INSTALLATION.md)
 * [Konfiguration / Adminportal](docs/KONFIGURATION.md)
-* [Vocoder: DroidStar oder USB-Stick](docs/VOCODER.md)
+* [Vocoder: N8schicht-Vocoder (Klang, Messwerte, Test mit WAV) oder USB-Stick](docs/VOCODER.md)
+* [Zello verbinden – Schritt für Schritt](docs/ZELLO.md)
 * [Umstieg von SvxLink und der alten Zello-Bridge](docs/MIGRATION.md)
 * [Technik & Protokolle](docs/TECHNIK.md)
 * [Betrieb: Watchdogs, Updates, sudo & Berechtigungen](docs/BETRIEB.md)
@@ -124,10 +125,10 @@ Senden in die Netze:
 python3 tests/sim_e2e.py
 ```
 
-Startet einen simulierten FRN-Server, einen simulierten HBlink-Master, einen simulierten Zello-Server und einen simulierten AMBE3000 und prüft alle Richtungen, Talker Alias, Textnachrichten, Start/Stop-Erkennung und den Schleifenschutz (aktuell 53/53 Prüfungen: FRN-Passwortanforderung, alle Richtungen, zwei Durchsagen direkt hintereinander, Mithören, ID-Listen, Avatare, Verbindungsabbrüche mit Watchdog, Updateprüfung, verschlüsseltes Backup, Zurücksetzen und Wiederherstellen). `tests/test_fec.py` vergleicht die DMR-FEC bitgenau mit dmr_utils3. `tests/demo_server.py` startet dieselbe Simulation mit echtem Dashboard (Login `demo` / `demo12345`).
+Startet einen simulierten FRN-Server, einen simulierten HBlink-Master, einen simulierten Zello-Server und einen simulierten AMBE3000 und prüft alle Richtungen, Talker Alias, Textnachrichten, Start/Stop-Erkennung und den Schleifenschutz (aktuell 57/57 Prüfungen: FRN-Passwortanforderung, private FRN-Textnachricht, Sprachansage, alle Richtungen, zwei Durchsagen direkt hintereinander, Mithören, ID-Listen, Avatare, Verbindungsabbrüche mit Watchdog, Updateprüfung, verschlüsseltes Backup, Zurücksetzen und Wiederherstellen). `tests/test_vocoder.py` prüft den N8schicht-Vocoder (Ton, Bitfehler, Regler, Absturz/Neustart), `tools/vocoder_test.py` misst Eingang gegen Ausgang mit WAV-Dateien. `tests/test_fec.py` vergleicht die DMR-FEC bitgenau mit dmr_utils3. `tests/demo_server.py` startet dieselbe Simulation mit echtem Dashboard (Login `demo` / `demo12345`).
 
 ## Lizenz & Danksagung
 
-GPL-2.0 (siehe [LICENSE](LICENSE)). Die DMR-Fehlerschutzroutinen (BPTC, RS(12,9), Golay, QR, Embedded LC, Talker Alias) sind ein Python-Port aus [MMDVMHost](https://github.com/g4klx/MMDVMHost) von G4KLX; das FRN-Protokoll folgt dem FRN-Modul von [SvxLink](https://github.com/sm0svx/svxlink). Der Software-Vocoder stammt aus [DroidStar](https://github.com/nostar/DroidStar) von Doug McLain (GPL-3.0-or-later). Er ist **nicht** Teil dieses Repositorys, sondern wird bei der Installation aus den DroidStar-Quellen gebaut.
+**GPL-3.0-or-later** (siehe [LICENSE](LICENSE); bis Version 1.5 GPL-2.0). Die DMR-Fehlerschutzroutinen (BPTC, RS(12,9), Golay, QR, Embedded LC, Talker Alias) sind ein Python-Port aus [MMDVMHost](https://github.com/g4klx/MMDVMHost) von G4KLX; das FRN-Protokoll folgt dem FRN-Modul von [SvxLink](https://github.com/sm0svx/svxlink). Der **N8schicht-Vocoder** ist ein Fork des Software-Codecs aus [DroidStar](https://github.com/nostar/DroidStar) von Doug McLain (GPL-3.0-or-later); Quellen, Herkunft und Änderungen in [`third_party/n8schicht-vocoder`](third_party/n8schicht-vocoder/).
 
 © Die N8schicht

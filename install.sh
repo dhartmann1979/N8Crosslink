@@ -133,46 +133,39 @@ import_zello_keys() {
   rmdir "$SAFE" 2>/dev/null || true
 }
 
-# ---------------------------------------------------------------- Software-Vocoder DroidStar
-# Quelle: DroidStar (Doug McLain, https://github.com/nostar/DroidStar), Verzeichnis mbe/ –
-# AMBE+2 half-rate (DMR) Encoder und Decoder, C-API ambe2.h, GPL-3.0-or-later.
-# Nicht im Repository enthalten: wird bei der Installation aus einem festen, geprüften Stand der
-# DroidStar-Quellen gebaut (nur die Codec-Dateien, ohne Qt) und läuft per ctypes direkt in der Bridge.
-DS_REPO="https://github.com/nostar/DroidStar.git"
-DS_REF="${N8X_DROIDSTAR_REF:-fc8e340a61d65f9719d1c4a0c28fdf5cc5d2b444}"
-DS_SRC="/usr/local/src/n8crosslink-droidstar"
+# ---------------------------------------------------------------- N8schicht-Vocoder
+# Software-AMBE+2 für DMR: Fork des Codecs aus DroidStar (Doug McLain, GPL-3.0-or-later).
+# Die Quellen liegen im Repository (third_party/n8schicht-vocoder) und werden hier mit g++
+# gebaut – kein Download nötig. Die Bibliothek läuft in einem eigenen Prozess der Bridge.
+VOC_SRC="$APP_DIR/third_party/n8schicht-vocoder"
 VOC_DIR="$APP_DIR/lib"
-VOC_LIB="$VOC_DIR/libambe2.so"
+VOC_LIB="$VOC_DIR/libn8vocoder.so"
 
-voc_probe() { cli vocoder-test --mode droidstar 2>&1 | tail -1; }
+voc_probe() { cli vocoder-test --mode n8vocoder 2>&1 | tail -1; }
+voc_hash() { (cd "$VOC_SRC" && cat VERSION UPSTREAM_COMMIT build.sh src/*) | sha256sum | cut -c1-16; }
 build_vocoder() {   # build_vocoder [force]
-  local force="${1:-}" tmp out
-  if [[ -z "$force" && -f "$VOC_LIB" && "$(cat "$VOC_DIR/libambe2.ref" 2>/dev/null)" == "$DS_REF" ]]; then
-    out=$(voc_probe); [[ "$out" == OK* ]] && { ok "DroidStar-Vocoder aktuell (${DS_REF:0:12}) – $out"; return 0; }
+  local force="${1:-}" out h
+  [[ -f "$VOC_SRC/build.sh" ]] || { warn "Quellen des N8schicht-Vocoders fehlen ($VOC_SRC)"; return 1; }
+  h=$(voc_hash)
+  if [[ -z "$force" && -f "$VOC_LIB" && "$(cat "$VOC_DIR/libn8vocoder.ref" 2>/dev/null)" == "$h" ]]; then
+    out=$(voc_probe); [[ "$out" == OK* ]] && { ok "N8schicht-Vocoder aktuell – $out"; return 0; }
   fi
-  info "Baue DroidStar-Vocoder (Stand ${DS_REF:0:12}) …"
-  command -v g++ >/dev/null && command -v git >/dev/null || apt-get install -y -qq g++ git >/dev/null \
-    || { warn "Compiler (g++) nicht installierbar"; return 1; }
-  if [[ ! -d "$DS_SRC/.git" ]]; then
-    rm -rf "$DS_SRC"; install -d -m 755 "$DS_SRC"; git -C "$DS_SRC" init -q; git -C "$DS_SRC" remote add origin "$DS_REPO"
-  fi
-  git -C "$DS_SRC" fetch -q --depth 1 origin "$DS_REF" && git -C "$DS_SRC" checkout -q --force FETCH_HEAD \
-    || { warn "DroidStar-Quellen nicht ladbar (GitHub erreichbar?)"; return 1; }
-  chown -R root:root "$DS_SRC"
-  tmp=$(mktemp -d); echo "/* N8 Crosslink: Build ohne Qt */" > "$tmp/QtGlobal"
-  if ! g++ -O2 -fPIC -shared -std=c++17 -w -I"$tmp" -I"$DS_SRC/mbe" "$DS_SRC"/mbe/*.cc -o "$tmp/libambe2.so" 2>"$tmp/build.log"; then
-    warn "Bauen fehlgeschlagen:"; tail -5 "$tmp/build.log"; rm -rf "$tmp"; return 1
-  fi
+  info "Baue N8schicht-Vocoder $(cat "$VOC_SRC/VERSION") …"
+  command -v g++ >/dev/null || apt-get install -y -qq g++ >/dev/null || { warn "Compiler (g++) nicht installierbar"; return 1; }
   install -d -m 755 -o root -g root "$VOC_DIR"
-  install -m 644 -o root -g root "$tmp/libambe2.so" "$VOC_LIB"
-  echo "$DS_REF" > "$VOC_DIR/libambe2.ref"; chmod 644 "$VOC_DIR/libambe2.ref"
-  rm -rf "$tmp"
+  if ! out=$(bash "$VOC_SRC/build.sh" "$VOC_LIB.new" 2>&1); then
+    warn "Bauen fehlgeschlagen:"; echo "$out" | tail -8; rm -f "$VOC_LIB.new"; return 1
+  fi
+  mv -f "$VOC_LIB.new" "$VOC_LIB"; chown root:root "$VOC_LIB"; chmod 644 "$VOC_LIB"
+  echo "$h" > "$VOC_DIR/libn8vocoder.ref"; chmod 644 "$VOC_DIR/libn8vocoder.ref"
+  rm -f "$VOC_DIR/libambe2.so" "$VOC_DIR/libambe2.ref"                       # Bau aus 1.4/1.5
+  rm -rf /usr/local/src/n8crosslink-droidstar                                 # Quellen-Download aus 1.4/1.5
   out=$(voc_probe)
-  if [[ "$out" == OK* ]]; then ok "DroidStar-Vocoder gebaut und getestet – $out"; return 0; fi
-  warn "DroidStar-Vocoder gebaut, Test fehlgeschlagen: $out"; return 1
+  if [[ "$out" == OK* ]]; then ok "N8schicht-Vocoder gebaut und getestet – $out"; return 0; fi
+  warn "N8schicht-Vocoder gebaut, Test fehlgeschlagen: $out"; return 1
 }
 
-# md380-emu wird nicht mehr gebraucht (ersetzt durch den DroidStar-Vocoder) und wird restlos entfernt:
+# md380-emu wird nicht mehr gebraucht (ersetzt durch den N8schicht-Vocoder) und wird restlos entfernt:
 # Dienst, Paket, /opt/md380-emu, sudo-Freigabe. Die DVSwitch-Paketquelle bleibt nur, wenn noch andere
 # DVSwitch-Pakete (Analog_Bridge, MMDVM_Bridge …) installiert sind.
 remove_md380() {
@@ -262,7 +255,7 @@ if [[ "${1:-}" == "--diagnose" ]]; then
     systemd-run --quiet --wait --pipe -p User="$SVC_USER" -p AmbientCapabilities=CAP_NET_BIND_SERVICE \
       "$APP_DIR/venv/bin/python" -c "import socket;s=socket.socket();s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);s.bind(('0.0.0.0',$PORT));print('Port $PORT: OK')" 2>&1 || true
   fi
-  echo "== DroidStar-Vocoder: $([[ -f "$VOC_LIB" ]] && echo "$VOC_LIB (Stand $(cut -c1-12 "$VOC_DIR/libambe2.ref" 2>/dev/null))" || echo 'nicht gebaut'); md380-emu: $(dpkg -s md380-emu >/dev/null 2>&1 || [[ -d /opt/md380-emu ]] && echo 'noch vorhanden – wird beim Update entfernt' || echo 'entfernt')"
+  echo "== N8schicht-Vocoder: $([[ -f "$VOC_LIB" ]] && echo "$VOC_LIB ($(cat "$VOC_SRC/VERSION" 2>/dev/null), Bau $(cat "$VOC_DIR/libn8vocoder.ref" 2>/dev/null))" || echo 'nicht gebaut'); md380-emu: $(dpkg -s md380-emu >/dev/null 2>&1 || [[ -d /opt/md380-emu ]] && echo 'noch vorhanden – wird beim Update entfernt' || echo 'entfernt')"
   echo "== Vocoder-Test: $( (cd "$APP_DIR" && runuser -u "$SVC_USER" -- env N8X_DB="$DB" "$APP_DIR/venv/bin/python" -m n8crosslink.cli vocoder-test) 2>&1 | tail -1)"
   echo "== Zello-Schlüssel: $(cli zello-key-info 2>&1 | tail -1); Schlüsseldateien: $(find "$APP_DIR" -maxdepth 2 -iname 'zello*.key' 2>/dev/null | wc -l)"
   echo "== sudo-Freigaben: $(grep -c NOPASSWD /etc/sudoers.d/n8crosslink 2>/dev/null || echo 0)"
@@ -272,9 +265,9 @@ if [[ "${1:-}" == "--diagnose" ]]; then
 fi
 if [[ "${1:-}" == "--build-vocoder" || "${1:-}" == "--install-md380" ]]; then
   [[ $EUID -eq 0 ]] || fail "Bitte als root starten"
-  echo "DroidStar-Vocoder bauen/prüfen …"
+  echo "N8schicht-Vocoder bauen/prüfen …"
   build_vocoder force || exit 1
-  setcfg vocoder vocoder_mode droidstar; ok "Vocoder auf DroidStar gestellt"
+  setcfg vocoder vocoder_mode n8vocoder; ok "Vocoder auf N8schicht-Vocoder gestellt"
   remove_md380
   REBOOT=true; grep -q '"reboot": false' "$DATA_DIR/system.json" 2>/dev/null && REBOOT=false
   setup_sudo "$REBOOT"; exit 0
@@ -328,6 +321,9 @@ fi
 usermod -a -G dialout "$SVC_USER" 2>/dev/null || true   # Zugriff auf USB-AMBE-Stick
 mkdir -p "$APP_DIR" "$DATA_DIR"
 cp -r "$SRC_DIR/n8crosslink" "$SRC_DIR/requirements.txt" "$APP_DIR/"
+rm -rf "$APP_DIR/third_party"; mkdir -p "$APP_DIR/third_party"
+cp -r "$SRC_DIR/third_party/n8schicht-vocoder" "$APP_DIR/third_party/"
+chmod 755 "$APP_DIR/third_party/n8schicht-vocoder/build.sh"
 cp "$SRC_DIR/install.sh" "$SRC_DIR/update.sh" "$SRC_DIR/uninstall.sh" "$APP_DIR/" 2>/dev/null || true
 [[ -d "$SRC_DIR/.git" ]] && echo "$SRC_DIR" > "$APP_DIR/.source"
 rm -rf "$APP_DIR/n8crosslink/__pycache__"
@@ -458,13 +454,13 @@ else setcfg zello enabled false; info "Zello bleibt aus."; fi
 # ---------------------------------------------------------------- 8 Vocoder
 step 8 "Vocoder für DMR (AMBE+2)"
 ask_choice VOC "Welcher Vocoder?" 1 \
-  "DroidStar (Software, ohne Hardware – empfohlen)" \
+  "N8schicht-Vocoder (Software, ohne Hardware – empfohlen)" \
   "USB-Stick (ThumbDV / DVstick 30 / DV3000)" \
   "AMBEserver im Netz" \
   "später im Adminportal festlegen"
 case "$VOC" in
-  1) setcfg vocoder vocoder_mode droidstar
-     build_vocoder || warn "Vocoder kann später unter Admin → 🎛️ Vocoder → „DroidStar-Vocoder bauen“ nachgeholt werden" ;;
+  1) setcfg vocoder vocoder_mode n8vocoder
+     build_vocoder || warn "Vocoder kann später unter Admin → 🎛️ Vocoder → „Vocoder bauen“ nachgeholt werden" ;;
   2) setcfg vocoder vocoder_mode usb
      DEV=$(ls /dev/serial/by-id/* 2>/dev/null | head -1 || true); [[ -z "$DEV" ]] && DEV=$(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null | head -1 || true)
      ask V "Gerät" "${DEV:-/dev/ttyUSB0}"; setcfg vocoder usb_device "$V"
@@ -477,11 +473,11 @@ case "$VOC" in
 esac
 else
   step 4 "Einstellungen bleiben erhalten"; ok "$([[ "$MODE" == restored ]] && echo "aus dem Backup übernommen" || echo "Update-Modus")"
-  # 1.4.0: md380-emu -> DroidStar. Alte Einstellung umstellen, Vocoder bauen (nur wenn nötig), md380-emu entfernen
-  if sqlite3 "$DB" "SELECT value FROM settings WHERE section='vocoder' AND key='vocoder_mode'" 2>/dev/null | grep -q md380; then
-    setcfg vocoder vocoder_mode droidstar; ok "Vocoder von md380-emu auf DroidStar umgestellt"
+  # md380-emu (bis 1.3) und „droidstar“ (1.4/1.5) -> N8schicht-Vocoder; bauen nur wenn nötig; md380-emu entfernen
+  if sqlite3 "$DB" "SELECT value FROM settings WHERE section='vocoder' AND key='vocoder_mode'" 2>/dev/null | grep -qE 'md380|droidstar'; then
+    setcfg vocoder vocoder_mode n8vocoder; ok "Vocoder auf den N8schicht-Vocoder umgestellt"
   fi
-  if cli show vocoder | grep -q '"vocoder_mode": "droidstar"'; then build_vocoder || true; fi
+  if cli show vocoder | grep -q '"vocoder_mode": "n8vocoder"'; then build_vocoder || true; fi
   remove_md380
   step 5 "–"; step 6 "–"; step 7 "–"; step 8 "–"
 fi

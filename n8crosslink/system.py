@@ -87,7 +87,7 @@ class System:
 
     async def build_vocoder(self) -> tuple[bool, str]:
         if not self.config().get("build_vocoder"):
-            return False, ("Bauen des DroidStar-Vocoders über das Webinterface ist nicht freigegeben – "
+            return False, ("Bauen des N8schicht-Vocoders über das Webinterface ist nicht freigegeben – "
                            "einmal sudo /opt/n8crosslink/update.sh ausführen")
         rc, out = await self.sudo("/opt/n8crosslink/install.sh", "--build-vocoder", timeout=1200)
         return rc == 0, out[-3000:]

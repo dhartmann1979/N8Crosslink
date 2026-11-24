@@ -112,8 +112,11 @@ function renderState() {
   }
   const v = st.vocoder;
   $('#ssVoc').className = 'ss ' + (v ? (v.online ? 'on' : '') : 'warn');
-  $('#ssVocLbl').innerHTML = '&nbsp;' + esc(v ? (v.mode === 'droidstar' ? 'DroidStar' : v.mode === 'usb' ? 'USB-Stick' : v.mode) + (v.online ? '' : ' offline') : 'aus');
-  $('#ssInfo').textContent = st.active ? '' : 'Ruhe';
+  $('#ssVocLbl').innerHTML = '&nbsp;' + esc(v ? (v.mode === 'n8vocoder' ? 'N8schicht' : v.mode === 'usb' ? 'USB-Stick' : v.mode) + (v.online ? '' : ' offline') : 'aus');
+  const act = st.active;
+  $('#ssTalk').classList.toggle('live', !!act);
+  $('#ssTalker').innerHTML = act ? `🎙 ${esc(act.talker.name || act.talker.callsign || '')} <span style="color:var(--text-dim);font-weight:400">· ${esc(NET[act.source]?.label || act.source)}</span>` : 'Ruhe';
+  setSegMeter(act ? (st.ports[act.source]?.rx_level ?? -90) : -90);
   renderOnAir(); renderNetCards(); renderRoom();
   const up = st.update;
   $('#updateBanner').hidden = !(S.me?.user && up?.available);
@@ -132,7 +135,7 @@ function renderOnAir() {
     if ($('#oaAv').dataset.k) { $('#oaAv').outerHTML = '<div class="big-av" id="oaAv"><span class="av-fb">N8</span></div>'; }
     $('#oaSub').innerHTML = last ? `Zuletzt: <b>${esc(last.name || last.callsign)}</b> ${badge(last.source)} · vor ${ago(last.ts_end || last.ts_start)}` : 'Warte auf die nächste Durchsage …';
     box.style.removeProperty('--srccol');
-    $('#oaTimer').textContent = ''; $('#oaMeter').style.width = '0';
+    $('#oaTimer').textContent = '';
     return;
   }
   const t = a.talker, [cs, nm] = splitName(t);
@@ -146,8 +149,25 @@ function renderOnAir() {
   const tg = a.targets.length ? a.targets.map(k => badge(k)).join(' ') : '<span class="badge off">kein Ziel online</span>';
   const frid = t.extra?.frid ? ' <span class="frid-tag" title="Registriert bei FreeRadioID.net">FRID</span>' : '';
   $('#oaSub').innerHTML = `${badge(a.source)} <span class="arrow">→</span> ${tg} · ${esc(t.detail || '')}${t.city ? ' · ' + esc(t.city) : ''}${t.dmr_id ? ' · ID ' + t.dmr_id : ''}${frid}`;
-  const lvl = S.state.ports[a.source]?.rx_level ?? -90;
-  $('#oaMeter').style.width = Math.max(0, Math.min(100, (lvl + 60) / 60 * 100)) + '%';
+}
+
+/* Segmentierte Pegelanzeige: 20 Segmente à 3 dB (−60 … 0 dBFS), grün bis −18, gelb bis −6, rot darüber, mit Spitzenwert */
+const SEG = { n: 20, peak: -90, peakT: 0 };
+(function buildSegMeter() {
+  const m = $('#ssMeter'); if (!m) return;
+  m.innerHTML = Array.from({ length: SEG.n }, (_, i) => {
+    const db = -60 + (i + 1) * 3;
+    return `<i class="${db > -6 ? 'r' : db > -18 ? 'y' : 'g'}"></i>`;
+  }).join('');
+})();
+function setSegMeter(lvl) {
+  const segs = $$('#ssMeter i'); if (!segs.length) return;
+  const n = Math.max(0, Math.min(SEG.n, Math.round((lvl + 60) / 3)));
+  const now = Date.now();
+  if (lvl > SEG.peak || now - SEG.peakT > 1500) { SEG.peak = lvl; SEG.peakT = now; }
+  const pk = Math.max(0, Math.min(SEG.n, Math.round((SEG.peak + 60) / 3))) - 1;
+  segs.forEach((el, i) => { el.classList.toggle('lit', i < n); el.classList.toggle('peak', i === pk && SEG.peak > -60); });
+  $('#ssMeterDb').textContent = lvl > -60 ? `${Math.round(lvl)} dB` : '';
 }
 setInterval(() => {
   const a = S.state?.active;
@@ -325,7 +345,7 @@ async function loadMe() {
   $('#setupBanner').hidden = true;
   $('#pwBanner').hidden = !S.me.default_password;
   $('#tabAdminBtn').hidden = !S.me.user;
-  $('#listenBox').hidden = !S.me.user;
+  $('#listenMenu').hidden = !S.me.user;
   if (!S.me.user && typeof L !== 'undefined' && L.on) listenStop();
   $('#userArea').innerHTML = S.me.user
     ? `<button class="hdr-btn" id="logoutBtn" title="Abmelden">👤 ${esc(S.me.user)} · ⎋</button>`
@@ -375,17 +395,12 @@ const SCHEMA = {
     F('net', 'Raum (Net)'), F('description', 'Beschreibung'), F('country', 'Land'), F('city', 'Ort – Ortsteil / Locator'),
     F('version', 'Protokollversion'), F('rx_timeout_ms', 'Ende-Erkennung RX (ms)', 'number', { help: 'Kein Sprachpaket für diese Zeit = Durchgang beendet (SvxLink: 1000)' }),
     F('rx_gain_db', 'Pegel FRN → Bridge (dB)', 'number', { step: 0.5 }), F('tx_gain_db', 'Pegel Bridge → FRN (dB)', 'number', { step: 0.5 }),
-    F('text_messages', 'Sprechername als FRN-Textnachricht (experimentell)', 'bool'),
-    F('id_override', '🔁 Operator-Wechsel: bei jedem Durchgang mit Rufzeichen/Name der Station neu anmelden', 'bool', { wide: true, help: 'FRN zeigt dann die sprechende Station statt der Bridge. Kostet 1–2 s Verzögerung am Anfang und erzeugt Kommen/Gehen im Raum. Vorher oben mit „Operator-Wechsel testen“ prüfen!' }),
-    F('id_override_desc', 'Dabei auch die Beschreibung setzen', 'bool'),
-    F('id_desc_template', 'Beschreibung beim Operator-Wechsel', 'text', { help: 'Platzhalter: {quelle} {detail} {id} {call} {name} {ort}' }),
-    F('id_restore_s', 'Zurück zum eigenen Operator nach … s Ruhe', 'number'),
+    F('text_messages', 'Sprechername als FRN-Textnachricht', 'bool', { help: 'Vor jedem Durchgang aus DMR/Zello, z. B. „DO1TEST Tobias (DMR)“' }),
+    F('text_targets', 'Textnachricht nur an diese Stationen (privat)', 'text', { help: 'Rufzeichen mit Komma, z. B. DL1ABC, DB0XYZ – leer = öffentlich an alle im Raum. Privat ploppt bei den übrigen Stationen nichts auf.' }),
     F('sysman_server', 'System Manager (für „Passwort anfordern“)', 'text', { help: 'Standard sysman.freeradionetwork.eu – bei eigenem FRN-Netz dessen System Manager' }),
     F('sysman_port', 'System-Manager-Port', 'number'),
   ], extra: `<div class="banner" style="margin:12px 4px 0">🔑 <span class="grow">Noch kein FRN-Passwort? Rufzeichen, Name, E-Mail, Band/Kanal, Land und Ort ausfüllen und anfordern – das Passwort kommt per E-Mail.</span>
-      <button class="btn" type="button" id="frnPwBtn">📧 Passwort anfordern</button></div>
-    <div class="banner" style="margin:12px 4px 0">🔁 <span class="grow">Operator-Wechsel testen: Die Bridge meldet sich einmal als „DL0TEST, N8 Crosslink Test“ an und danach wieder normal. So siehst du, ob dein FRN-Server fremde Operatoren mit diesem Konto annimmt.</span>
-      <button class="btn secondary" type="button" id="frnIdBtn">🧪 Operator-Wechsel testen</button></div>` },
+      <button class="btn" type="button" id="frnPwBtn">📧 Passwort anfordern</button></div>` },
   dmr: { title: '📡 DMR', fields: [
     F('enabled', 'DMR aktiv', 'bool'), F('host', 'Server (HBlink4 / FreeDMR)'), F('port', 'Port', 'number'),
     F('password', 'Passwort (Passphrase)', 'password', { help: 'leer lassen = unverändert · Bei HBlink4-FreeRadioID: persönliches FreeRadioID-Passwort – mit der Server-Passphrase ist die Bridge nur Gast und darf nicht in TG 262 senden' }),
@@ -432,7 +447,7 @@ async function loadAdmin() {
   const sec = SCHEMA[S.adminSec];
   if (sec.custom) return sec.custom();
   renderForm(S.adminSec, sec.fields, sec.extra || '');
-  if (S.adminSec === 'frn') { $('#frnPwBtn').onclick = requestFrnPassword; $('#frnIdBtn').onclick = testFrnIdentity; }
+  if (S.adminSec === 'frn') $('#frnPwBtn').onclick = requestFrnPassword;
   if (S.adminSec === 'general') $('#annBtn').onclick = previewAnnounce;
 }
 
@@ -489,43 +504,44 @@ function renderRoutes() {
 function renderVocoder() {
   const c = S.cfg.vocoder, mode = c.vocoder_mode;
   const opts = [
-    ['droidstar', '🧠 DroidStar (Software)', 'AMBE+2-Software-Vocoder aus DroidStar. Ohne Zusatzhardware, ohne qemu und ohne Zusatzdienst – läuft direkt in der Bridge (x86 und ARM).'],
+    ['n8vocoder', '🧠 N8schicht-Vocoder (Software)', 'AMBE+2 in Software – Fork des DroidStar-Codecs, auf Verständlichkeit abgestimmt. Ohne Zusatzhardware und ohne qemu; läuft als eigener Prozess (x86 und ARM).'],
     ['usb', '🔌 USB-Stick (AMBE3000)', 'ThumbDV, DVstick 30, DV3000 direkt per USB/seriell. Beste Qualität, kein Zusatzdienst nötig.'],
     ['ambeserver', '🌐 AMBEserver (Netz)', 'AMBE3000 an einem anderen Rechner hinter AMBEserver (UDP 2460).'],
     ['none', '🧪 Test ohne Vocoder', 'Nur zum Testen der Verbindungen – DMR-Audio ist dann stumm.'],
   ];
   const fields = {
-    droidstar: [F('droidstar_lib', 'Bibliothek (leer = automatisch)', 'text', { help: 'Standard: /opt/n8crosslink/lib/libambe2.so' })],
+    n8vocoder: [F('n8vocoder_lib', 'Bibliothek (leer = automatisch)', 'text', { help: 'Standard: /opt/n8crosslink/lib/libn8vocoder.so' })],
     usb: [F('usb_device', 'Gerät', 'text', { help: 'z. B. /dev/ttyUSB0 oder /dev/serial/by-id/…' }),
       F('usb_baud', 'Baudrate', 'select', { options: [[460800, '460800 (ThumbDV / DVstick 30)'], [230400, '230400 (DV3000 Pi-Hat)'], [921600, '921600']] }),
       F('usb_send_init', 'Init-Pakete (Reset/Rate) senden', 'bool')],
     ambeserver: [F('ambeserver_host', 'AMBEserver Adresse'), F('ambeserver_port', 'AMBEserver Port', 'number'), F('ambeserver_send_init', 'Init-Pakete senden', 'bool')],
     none: [],
   };
-  const sel = window._vocSel || (fields[mode] ? mode : 'droidstar');
+  const sel = window._vocSel || (fields[mode] ? mode : 'n8vocoder');
   const common = [F('vocoder_enc_gain_db', 'Pegel vor dem Kodieren (dB)', 'number', { step: 0.5 }), F('vocoder_dec_gain_db', 'Pegel nach dem Dekodieren (dB)', 'number', { step: 0.5 }),
     ...(sel === 'usb' || sel === 'ambeserver' ? [F('vocoder_timeout_ms', 'Antwortzeit je Rahmen (ms)', 'number')] : []),
     F('vocoder_restart_s', 'Watchdog: neu öffnen nach (s) ohne Antwort', 'number')];
   const flds = [...fields[sel], ...common];
   const v = S.state?.vocoder;
-  $('#adminBody').innerHTML = `<div class="voc-choice">${opts.map(([k, t, d]) => `<div class="voc-opt ${k === sel ? 'active' : ''}" data-m="${k}"><b>${t}${k === mode ? ' · aktiv' : ''}</b><small>${d}</small></div>`).join('')}</div>
+  $('#adminBody').innerHTML = `<div class="voc-choice">${opts.map(([k, t, d]) => `<div class="voc-opt ${k === sel ? 'active' : ''}" data-m="${k}"><b>${t}${k === mode ? ' · aktiv' : ''}</b><small>${d}</small>${k === 'n8vocoder' ? '<button class="btn secondary" type="button" id="vocTuneBtn" style="margin-top:8px">🎚️ Klang-Einstellungen</button>' : ''}</div>`).join('')}</div>
     <div class="form">${flds.map(f => fieldHtml('vocoder', f, c[f.key])).join('')}
       <div class="field wide"><label>Aktueller Zustand</label><div>${v ? `${v.online ? '<span class="badge ok">bereit</span>' : '<span class="badge off">offline</span>'} ${esc(v.name)} ${esc(v.product || '')} ${esc(v.version || '')} · Encode ${v.enc} · Decode ${v.dec} · Timeouts ${v.timeouts} · Wiederholt ${v.retries ?? 0} · Neu geöffnet ${v.reopens ?? 0}` : '<span class="badge warn">nicht gestartet</span>'}</div>
       <small id="vocTestRes"></small></div></div>
     <pre id="mdOut" style="font-size:11.5px;white-space:pre-wrap;color:var(--text-dim);padding:0 4px"></pre>
     <div class="form-actions">${sel === 'usb' ? '<button class="btn secondary" id="scanBtn">🔍 USB-Geräte suchen</button>' : ''}
-      ${sel === 'droidstar' ? '<button class="btn secondary" id="mdBtn">🔨 DroidStar-Vocoder bauen / aktualisieren</button>' : ''}
+      ${sel === 'n8vocoder' ? '<button class="btn secondary" id="mdBtn">🔨 Vocoder bauen / aktualisieren</button>' : ''}
       <button class="btn secondary" id="vocTestBtn">🧪 Vocoder testen</button><button class="btn" id="saveBtn">💾 Speichern &amp; neu starten</button></div>`;
-  $$('.voc-opt').forEach(o => o.onclick = () => { window._vocSel = o.dataset.m; renderVocoder(); });
+  $$('.voc-opt').forEach(o => o.onclick = (ev) => { if (ev.target.id === 'vocTuneBtn') return; window._vocSel = o.dataset.m; renderVocoder(); });
+  if ($('#vocTuneBtn')) $('#vocTuneBtn').onclick = (ev) => { ev.stopPropagation(); openVocTune(); };
   $('#saveBtn').onclick = async () => {
     await saveSection('vocoder', flds, { vocoder_mode: sel });
     await api('/api/admin/restart', { method: 'POST' }); $('#restartBanner').hidden = true;
     window._vocSel = null; toast('🔄 Vocoder gespeichert, Bridge startet neu …'); setTimeout(loadAdmin, 2500);
   };
   if ($('#mdBtn')) $('#mdBtn').onclick = async () => {
-    if (!confirm('DroidStar-Vocoder jetzt aus den DroidStar-Quellen bauen? (Compiler wird bei Bedarf installiert, Funktionstest – dauert ca. 1–5 Minuten)')) return;
+    if (!confirm('N8schicht-Vocoder jetzt aus den mitgelieferten Quellen neu bauen? (Compiler wird bei Bedarf installiert, Funktionstest – dauert ca. 1–5 Minuten)')) return;
     $('#mdOut').textContent = 'baue … (bitte warten)';
-    try { const r = await api('/api/admin/vocoder/build', { method: 'POST' }); $('#mdOut').textContent = r.message; toast(r.ok ? '✅ DroidStar-Vocoder bereit' : '⚠️ siehe Ausgabe');
+    try { const r = await api('/api/admin/vocoder/build', { method: 'POST' }); $('#mdOut').textContent = r.message; toast(r.ok ? '✅ N8schicht-Vocoder bereit' : '⚠️ siehe Ausgabe');
       if (r.ok) { await api('/api/admin/restart', { method: 'POST' }); } }
     catch (e) { $('#mdOut').textContent = '⚠️ ' + e.message; }
   };
@@ -695,16 +711,6 @@ async function requestFrnPassword() {
   } catch (e) { statusPopup('err', 'Fehler', e.message); }
 }
 
-/* ---------- FRN: Operator-Wechsel testen ---------- */
-async function testFrnIdentity() {
-  if (!confirm('Operator-Wechsel jetzt testen? Die Bridge meldet sich dafür zweimal kurz neu am FRN-Server an.')) return;
-  statusPopup('busy', 'Teste Operator-Wechsel …', 'Anmeldung als „DL0TEST, N8 Crosslink Test“, danach zurück zum eigenen Operator');
-  try {
-    const r = await api('/api/admin/frn/identity-test', { method: 'POST' });
-    statusPopup(r.ok ? 'ok' : 'err', r.title, r.message);
-  } catch (e) { statusPopup('err', 'Fehler', e.message); }
-}
-
 /* ---------- Sprachansage probehören ---------- */
 async function previewAnnounce() {
   const v = { callsign: $('#annCall').value.trim() };
@@ -717,6 +723,82 @@ async function previewAnnounce() {
     const a = new Audio(URL.createObjectURL(await r.blob())); a.play();
   } catch (e) { toast('⚠️ ' + e.message); }
 }
+
+/* ---------- N8schicht-Vocoder: Klang-Popup ---------- */
+const VT = { data: null, profile: 'n8schicht', own: { enc: {}, dec: {}, post: {} }, timer: null };
+const VT_SIDES = [['dec', '🔊 Decoder – DMR → FRN / Zello (was man hört)'], ['post', '✨ Nachbearbeitung'], ['enc', '🎙️ Encoder – FRN / Zello → DMR (was ins DMR geht)']];
+async function openVocTune() {
+  try { VT.data = await api('/api/admin/vocoder/params'); } catch (e) { return toast('⚠️ ' + e.message); }
+  VT.profile = VT.data.profile;
+  const own = S.cfg?.vocoder?.n8vocoder_options || {};
+  VT.own = { enc: { ...(own.enc || {}) }, dec: { ...(own.dec || {}) }, post: { ...(own.post || {}) } };
+  $('#vpInfo').textContent = VT.data.active ? 'Der N8schicht-Vocoder ist aktiv – Änderungen wirken sofort im laufenden Betrieb (ohne Neustart).'
+    : 'Hinweis: Der N8schicht-Vocoder ist gerade nicht aktiv. Werte werden gespeichert und gelten, sobald er läuft. Probehören geht trotzdem.';
+  renderVocTune();
+  $('#vocModal').classList.add('open');
+}
+function vtValue(p) {
+  const o = VT.own[p.side] || {};
+  if (p.key in o) return o[p.key];
+  return VT.profile === 'n8schicht' ? p.n8schicht : p.droidstar;
+}
+function fmtV(p, v) { return p.step >= 1 ? String(Math.round(v)) : Number(v).toFixed(p.step < 0.1 ? 2 : 1); }
+function renderVocTune() {
+  const d = VT.data;
+  $('#vpProfiles').innerHTML = `<span style="font-size:13px;color:var(--text-dim);align-self:center">Grundabstimmung:</span>` +
+    [['n8schicht', '⭐ N8schicht (verständlich)'], ['droidstar', 'DroidStar-Original']].map(([k, l]) => `<button class="btn secondary ${VT.profile === k ? 'active' : ''}" data-p="${k}">${l}</button>`).join('');
+  $$('#vpProfiles button').forEach(b => b.onclick = () => { VT.profile = b.dataset.p; renderVocTune(); scheduleVt(); });
+  $('#vpBody').innerHTML = VT_SIDES.map(([side, title]) => `<h3 class="vp-sec">${title}</h3>` + d.params.filter(p => p.side === side).map(p => {
+    const v = vtValue(p), changed = p.key in (VT.own[p.side] || {});
+    const isBool = p.min === 0 && p.max === 1 && p.step === 1;
+    return `<div class="vp-row"><label for="vp_${p.side}_${p.key}">${esc(p.label)}</label>
+      <input type="range" id="vp_${p.side}_${p.key}" data-side="${p.side}" data-key="${p.key}" min="${p.min}" max="${p.max}" step="${p.step}" value="${v}">
+      <span class="vp-val ${changed ? 'changed' : ''}" id="vpv_${p.side}_${p.key}">${isBool ? (v >= 0.5 ? 'an' : 'aus') : fmtV(p, v)}</span>
+      <small>${esc(p.help)} · DroidStar ${fmtV(p, p.droidstar)} · N8schicht ${fmtV(p, p.n8schicht)}</small></div>`;
+  }).join('')).join('');
+  $$('#vpBody input[type=range]').forEach(el => el.oninput = () => {
+    const p = d.params.find(x => x.side === el.dataset.side && x.key === el.dataset.key);
+    const v = parseFloat(el.value); VT.own[p.side][p.key] = v;
+    const isBool = p.min === 0 && p.max === 1 && p.step === 1;
+    const lab = $(`#vpv_${p.side}_${p.key}`); lab.textContent = isBool ? (v >= 0.5 ? 'an' : 'aus') : fmtV(p, v); lab.classList.add('changed');
+    scheduleVt();
+  });
+}
+function scheduleVt() {   // live übernehmen, kurz entprellt
+  clearTimeout(VT.timer);
+  VT.timer = setTimeout(saveVt, 450);
+}
+async function saveVt(final) {
+  try {
+    const r = await api('/api/admin/vocoder/options', { method: 'POST', body: { profile: VT.profile, options: VT.own } });
+    S.cfg.vocoder.n8vocoder_profile = VT.profile; S.cfg.vocoder.n8vocoder_options = JSON.parse(JSON.stringify(VT.own));
+    if (r.bad?.length) toast('⚠️ Nicht übernommen: ' + r.bad.join(', '));
+    else if (final) toast(r.live ? '✅ Klang übernommen (live)' : '💾 Gespeichert – gilt, sobald der N8schicht-Vocoder läuft');
+  } catch (e) { toast('⚠️ ' + e.message); }
+}
+async function runVtPreview() {
+  const body = { profile: VT.profile, options: VT.own, text: $('#vpText').value.trim() };
+  const f = $('#vpWav').files[0];
+  if (f) {
+    if (f.size > 8 * 1024 * 1024) return toast('⚠️ WAV-Datei zu groß (max. 8 MB)');
+    body.wav = await new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); });
+  }
+  $('#vpResult').innerHTML = '<p style="margin-top:10px"><span class="spinner"></span> kodiere und dekodiere …</p>';
+  try {
+    const r = await api('/api/admin/vocoder/preview', { method: 'POST', body });
+    const m = r.metrics || {};
+    const q = [m.estoi != null ? `Verständlichkeit (ESTOI) <b>${m.estoi}</b>` : '', m.pesq_nb != null ? `Qualität (PESQ) <b>${m.pesq_nb}</b>` : ''].filter(Boolean).join(' · ');
+    $('#vpResult').innerHTML = `<div class="vp-res"><div><small>Eingang (8 kHz, ${r.seconds} s)</small><audio controls src="data:audio/wav;base64,${r.orig}"></audio></div>
+        <div><small>Nach DMR (Encoder → Decoder)</small><audio controls src="data:audio/wav;base64,${r.out}"></audio></div></div>
+      <div class="vp-metrics">Bandbreite bis <b>${m.bandwidth_hz || '–'} Hz</b> (von max. 4000 Hz bei 8 kHz) · Pegel ${m.level_in_dbfs} → ${m.level_out_dbfs} dBFS · Laufzeit ${m.delay_ms} ms${q ? ' · ' + q : ''}</div>
+      <div class="vp-bands">${(m.bands || []).map(b => `<div title="Abweichung Ausgang zu Eingang">${b.from}–${b.to} Hz<b style="color:${Math.abs(b.dev_db) <= 3 ? '#30d158' : Math.abs(b.dev_db) <= 8 ? '#ffd60a' : '#ff453a'}">${b.dev_db > 0 ? '+' : ''}${b.dev_db} dB</b></div>`).join('')}</div>`;
+  } catch (e) { $('#vpResult').innerHTML = `<p style="color:#ff453a;margin-top:10px">⚠️ ${esc(e.message)}</p>`; }
+}
+$('#vpClose').addEventListener('click', () => { clearTimeout(VT.timer); $('#vocModal').classList.remove('open'); loadAdmin(); });
+$('#vpSave').addEventListener('click', () => { clearTimeout(VT.timer); saveVt(true); });
+$('#vpReset').addEventListener('click', () => { if (!confirm('Alle eigenen Werte löschen und die Grundabstimmung verwenden?')) return; VT.own = { enc: {}, dec: {}, post: {} }; renderVocTune(); saveVt(true); });
+$('#vpRun').addEventListener('click', runVtPreview);
+$('#vpWav').addEventListener('change', () => { const f = $('#vpWav').files[0]; if (f) toast('📂 ' + f.name + ' – jetzt „Testen“'); });
 
 /* ---------- Backup & Neuanfang ---------- */
 function renderBackup() {
@@ -796,14 +878,23 @@ function listenStart() {
     src.start(L.next); L.next += buf.duration;
   };
   L.ws.onclose = (ev) => { if (L.on && ev.code !== 4401) setTimeout(() => { if (L.on) listenStart(); }, 2000); else listenStop(); };
-  L.on = true; $('#listenBtn').classList.add('on'); $('#listenBtn').textContent = '🎧 Mithören aktiv'; $('#ssListen').hidden = false;
+  L.on = true; $('#listenBtn').classList.add('on'); $('#listenLbl').textContent = ' Mithören aktiv'; $('#ssListen').hidden = false;
 }
 function listenStop() {
   L.on = false; if (L.ws) { L.ws.onclose = null; L.ws.close(); L.ws = null; }
-  $('#listenBtn').classList.remove('on'); $('#listenBtn').textContent = '🎧 Mithören'; $('#ssListen').hidden = true;
+  $('#listenBtn').classList.remove('on'); $('#listenLbl').textContent = ' Mithören'; $('#ssListen').hidden = true;
 }
 $('#listenBtn').addEventListener('click', () => L.on ? listenStop() : listenStart());
-$('#listenVol').addEventListener('input', () => { if (L.gain) L.gain.gain.value = $('#listenVol').value / 100; });
+function setListenVol(v, save = true) {
+  $('#listenVol').value = v; $('#listenVolVal').textContent = v + ' %';
+  if (L.gain) L.gain.gain.value = v / 100;
+  if (save) try { localStorage.setItem('n8x_listen_vol', String(v)); } catch { /* privater Modus */ }
+}
+$('#listenVol').addEventListener('input', () => setListenVol(parseInt($('#listenVol').value, 10)));
+$('#listenCaret').addEventListener('click', (e) => { e.stopPropagation(); $('#linksMenu').classList.remove('open'); $('#listenMenu').classList.toggle('open'); });
+$('#listenPop').addEventListener('click', (e) => e.stopPropagation());
+document.addEventListener('click', () => $('#listenMenu').classList.remove('open'));
+try { const v = parseInt(localStorage.getItem('n8x_listen_vol'), 10); if (v >= 0 && v <= 200) setListenVol(v, false); } catch { /* ohne Speicher */ }
 
 /* ---------- Start ---------- */
 (async () => {

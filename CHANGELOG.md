@@ -2,6 +2,50 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.6.0] – 2026-11-24
+
+### Neu: N8schicht-Vocoder (eigener Fork, Quellen im Repository)
+- Der Software-Vocoder heißt jetzt **N8schicht-Vocoder**. Er ist ein Fork des AMBE+2-Codecs aus [DroidStar](https://github.com/nostar/DroidStar) (Doug McLain), Version 1.0.0 auf Basis von DroidStar `fc8e340a61d6`.
+- **Quellen liegen im Repository** unter `third_party/n8schicht-vocoder/`, mit Lizenz, Herkunft und Änderungsliste. Installer und Update bauen die Bibliothek `lib/libn8vocoder.so` mit `g++` direkt daraus; GitHub wird dafür nicht mehr gebraucht. Neu gebaut wird nur, wenn sich die Quellen ändern.
+- **Läuft auf 32-Bit-ARM** (Raspberry Pi OS armhf, Tinker Board): Die 128-Bit-Multiplikation hat einen portablen Weg ohne Qt; Bitgleichheit ist geprüft. `ambe2_version()` ist ergänzt.
+- **Eigener Prozess** (`n8crosslink.ambe_worker`): Stürzt der C-Code ab oder hängt er, startet nur der Vocoder-Prozess neu und die Bridge läuft weiter. Zähler „Neustarts“ und „Fehlrahmen“ (vom Decoder überbrückte Rahmen = Maß für Bitfehler auf Funk).
+- **Ende des Durchgangs nicht mehr abgeschnitten:** Der Encoder arbeitet 40 ms verzögert, deshalb werden am Ende jedes Durchgangs nach DMR 2 Stille-Rahmen nachgeschoben.
+- `tools/update_n8vocoder.sh` übernimmt neue DroidStar-Stände und spielt die Änderungen wieder ein.
+
+### Neu: Klang-Abstimmung „N8schicht“ – verständlicher, weniger komprimiert, bis 4 kHz
+- Gemessen mit ESTOI (Verständlichkeit) und PESQ (Qualität) an 35 deutschen Sätzen von 7 Stimmen. Übernommen wurde nur, was auf zwei getrennten Stimmgruppen besser war.
+- **Kompressor (Frame-Limiter) aus:** Er war die Ursache des „komprimierten“ Klangs.
+- **Natürlichere Interpolation:** schnellerer Tonhöhen-Übergang (120 statt 160 Samples) und weicherer Übergang stimmhaft → stimmlos (80 statt 50).
+- **Höhenanhebung 0,8:** glatter Frequenzgang bis zur AMBE-Grenze bei ≈ 3,65 kHz.
+- **Höhen-Ergänzung 3,65–4 kHz** in der Bridge: Rauschen nach der Hüllkurve des Bands 3,0–3,65 kHz. Damit ist das Band bis zur 8-kHz-Grenze von 4000 Hz gefüllt.
+- Ergebnis gegenüber DroidStar-Original: ESTOI 0,777 → **0,790**, PESQ 2,78 → **2,85**, mit 2 % Bitfehlern ESTOI 0,751 → **0,768**; Frequenzgang 3,8–4 kHz −20,4 dB → **−2,4 dB**. Messverfahren und Tabelle in `docs/VOCODER.md`.
+
+### Neu: Klang-Popup mit Reglern und Probehören
+- Auf der Karte **N8schicht-Vocoder** öffnet **„🎚️ Klang-Einstellungen“** ein Popup: Grundabstimmung (N8schicht / DroidStar-Original) und 17 Regler für Decoder, Nachbearbeitung und Encoder, jeweils mit Erklärung und den Werten beider Abstimmungen. Die Regler **wirken sofort** im laufenden Betrieb.
+- **Probehören:** Standardsatz, eigener Text oder **eigene WAV-Datei** durch Encoder → Decoder schicken. Eingang und Ausgang werden nebeneinander abgespielt, dazu Bandbreite, Abweichung je Frequenzband, Pegel, Laufzeit sowie ESTOI/PESQ, falls installiert.
+- `tools/vocoder_test.py`: Eingang gegen Ausgang auf der Kommandozeile (WAV in jedem Format, `--compare`, `--set`, Ergebnis-WAVs). Testsätze in `tests/audio/`.
+
+### Geändert
+- **Lizenz jetzt GPL-3.0-or-later** (bisher GPL-2.0), damit der GPL-3-Vocoder im Repository liegen darf.
+- **Operator-Wechsel per Neuanmeldung entfernt** (aus 1.5.0, hat in der Praxis nicht funktioniert).
+- **FRN-Textnachricht privat:** Neues Feld *Textnachricht nur an diese Stationen*. Die Nachricht geht dann nur an diese Rufzeichen (`TM:` mit deren Client-ID), bei den anderen ploppt nichts auf. Leer = öffentlich an alle wie bisher.
+- Einstellungen unter *Allgemein* (auch Sprachansage) wirken jetzt **sofort** nach dem Speichern; nur Web-Adresse und -Port brauchen einen Dienst-Neustart.
+- Alte Vocoder-Einstellungen (md380-emu, „DroidStar“) werden automatisch auf den N8schicht-Vocoder umgestellt.
+
+### Dashboard
+- **Mithören im Kopfmenü:** Der Knopf sitzt jetzt oben neben *Links*. Der kleine Pfeil ▾ rechts daran öffnet die Lautstärke als Dropdown (0–200 %, im Browser gemerkt).
+- **Segmentierte Pegelanzeige in der Statusleiste:** Hinter dem Namen der sprechenden Station stehen 20 Segmente à 3 dB (−60 … 0 dBFS, grün/gelb/rot), dazu Spitzenwert und dB-Zahl. Sie ersetzt den Balken in der On-Air-Karte.
+
+### Doku
+- `docs/VOCODER.md` neu: jeder Regler erklärt, Messverfahren, Ergebnisse, Test mit WAV-Dateien, Fork-Pflege.
+- **Neu `docs/ZELLO.md`:** Zello Schritt für Schritt verbinden (Bridge-Konto, Kanal, Entwickler-Token oder Issuer + Private Key, Zello Work, Felder, Test, Fehlersuche).
+- Konfiguration, Installation, Fehlersuche, Technik, Deinstallation und README angepasst; neue Screenshots (Klang-Popup, Probehören, Mithören-Menü, Pegelanzeige).
+
+### Tests
+- `tests/test_vocoder.py`: 1-kHz-Ton → 997 Hz, Stille-Rahmen, 300 Zufallsrahmen ohne Übersteuerung, Regler live, Absturz und Neustart des Vocoder-Prozesses.
+- Simulation **57/57**, auch mit echtem N8schicht-Vocoder (`N8X_SIM_VOCODER=n8vocoder`), dazu private und öffentliche FRN-Textnachricht.
+- Update von 1.5 (DroidStar-Einstellung) auf 1.6 im Installer durchgespielt: umgestellt, gebaut, getestet, Weboberfläche antwortet.
+
 ## [1.5.1] – 2026-11-24
 
 ### Behoben
@@ -35,7 +79,7 @@ Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org
 - Der Installer installiert `espeak-ng` mit (auch beim Update).
 
 ### Tests & Doku
-- Simulation um 11 Prüfungen erweitert (jetzt **64/64**): Neuanmeldung mit Stations-Operator und Beschreibung, Ton unter fremdem Operator, Rückwechsel, kein Verbindungsverlust-Ereignis, Ablehnung → Rückfall mit Ton, Testknopf (Annahme/Ablehnung), Ansage vor dem Ton, NATO-Text.
+- Simulation um 11 Prüfungen erweitert (jetzt **64/64**; ab 1.6.0 ohne Operator-Wechsel **57/57**): Neuanmeldung mit Stations-Operator und Beschreibung, Ton unter fremdem Operator, Rückwechsel, kein Verbindungsverlust-Ereignis, Ablehnung → Rückfall mit Ton, Testknopf (Annahme/Ablehnung), Ansage vor dem Ton, NATO-Text.
 - Doku: Konfiguration (Abschnitte Operator-Wechsel und Sprachansage), README, Screenshots.
 
 ## [1.4.0] – 2026-11-24

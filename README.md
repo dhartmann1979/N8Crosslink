@@ -30,7 +30,7 @@ Alles läuft in **einem** Python-Dienst mit Live-Dashboard und Adminportal – i
 | 🎛️ **N8schicht-Vocoder** | Eigener Software-AMBE+2-Vocoder (Fork des DroidStar-Codecs, Quellen im Repository): nativ auf x86 und ARM (auch 32 Bit), eigener absturzsicherer Prozess, auf **Verständlichkeit gemessen abgestimmt** (ESTOI/PESQ), Frequenzgang bis 4 kHz. **Klang-Popup** mit Reglern, die live wirken, und Probehören (Eingang ↔ Ausgang, eigene WAV-Dateien). Alternativ **USB-Stick** (ThumbDV, DVstick 30, DV3000) oder AMBEserver |
 | 📧 **FRN-Passwort anfordern** | Knopf im FRN-Adminbereich: Registrierung beim FRN-System-Manager, Ergebnis als Status-Popup, Passwort kommt per E-Mail |
 | 🎧 **Mithören** | Angemeldete Admins hören die aktive Durchsage direkt im Browser mit (aus jedem Netz) – Knopf oben im Menü, Lautstärke im Dropdown am kleinen Pfeil. In der Statusleiste stehen Sprecher und eine **segmentierte Pegelanzeige** mit Spitzenwert |
-| 💾 **Backup** | Alles als vollständig verschlüsselte Datei zum Download (AES-256-GCM). **Der Schlüssel ist das Superadmin-Passwort – im Passwortsafe aufbewahren!** Wiederherstellen im Webinterface, per CLI oder direkt im Installer |
+| 💾 **Backup** | Alles als vollständig verschlüsselte Datei zum Download (AES-256-GCM). **Der Schlüssel ist das Superadmin-Passwort – im Passwortsafe aufbewahren!** Wiederherstellen im Webinterface, per CLI oder direkt im Installer – auch ohne Rückfragen. **📦 Umzug ins HobbyRadioPortal**: Backup im Web-Installer des Portals hochladen |
 | ♻️ **Neuanfang** | Zurücksetzen im Webinterface (Verlauf / Einstellungen / alles) und `uninstall.sh` mit „Daten behalten“ oder „komplett entfernen“, inkl. Wiedereinschalten der alten Dienste |
 | 📊 **Dashboard** | On-Air-Anzeige mit Pegel und Zeit, Netzkarten mit RX/TX, Last Heard, FRN-Raumliste, Ereignisse, Statistik (Heute … 90 Tage) |
 | ⚙️ **Adminportal** | Alle Einstellungen in SQLite, Benutzerverwaltung, Bridge-/Dienst-Neustart, ID-Datenbank-Update, Export/Import |
@@ -116,7 +116,7 @@ Senden in die Netze:
 * [Technik & Protokolle](docs/TECHNIK.md)
 * [Betrieb: Watchdogs, Updates, sudo & Berechtigungen](docs/BETRIEB.md)
 * [Sicherheit, Sprache DE/EN & N8 Kit (gemeinsam mit HBlink4, adn-frn-server, N8-HotSpot)](docs/SICHERHEIT.md)
-* [Backup & Wiederherstellung](docs/BACKUP.md)
+* [Backup & Wiederherstellung](docs/BACKUP.md) – mit Umzug ins HobbyRadioPortal
 * [Deinstallation & von vorn beginnen](docs/DEINSTALLATION.md)
 * [Branding & Site-Icons](docs/BRANDING.md)
 * [Fehlersuche](docs/FEHLERSUCHE.md)

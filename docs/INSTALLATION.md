@@ -35,6 +35,11 @@ Der Installer fragt Schritt für Schritt:
 
 Alle Einstellungen liegen danach in `/opt/n8crosslink/data/crosslink.db` und sind im Adminportal änderbar.
 
+### Ohne Rückfragen aus einem Backup (Umzug)
+
+Für Skripte und den Web-Installer des HobbyRadioPortals: `N8X_RESTORE` (Backupdatei), `N8X_RESTORE_PASSWORD_FILE` (Passwort in der
+ersten Zeile), optional `N8X_WEB_PORT`, `N8X_LOCAL_LINKS=1` und `N8X_PORTAL_TOKEN_FILE` – siehe [Backup → Umzug](BACKUP.md#umzug-ins-hobbyradioportal).
+
 ## Standard-Login
 
 Beim ersten Start gibt es den Superadmin **`n8schicht`** mit Passwort **`n8schicht`**. Solange dieses Passwort aktiv ist, zeigt das Dashboard nach dem Login einen Hinweis mit Knopf „Passwort ändern“ (Admin → 👥 Benutzer).

@@ -2,6 +2,34 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.9.0] – 2026-11-24
+
+**Umzug ins HobbyRadioPortal: das verschlüsselte Backup ist das Umzugspaket – der Web-Installer des Portals richtet N8 Crosslink damit
+auf seinem Server ein, ohne eine einzige Rückfrage.** Ausführlich: [docs/BACKUP.md](docs/BACKUP.md#umzug-ins-hobbyradioportal) und
+die [Umzugsanleitung des Portals](https://github.com/dhartmann1979/HobbyRadioPortal/blob/main/docs/UMZUG.md).
+
+### 📦 Admin → 💾 Backup & Neuanfang → Umzug ins HobbyRadioPortal
+- Neuer Abschnitt: Crosslink läuft meist nur im LAN, das Portal kann ihn von seinem Server aus nicht erreichen – deshalb geht der Umzug
+  per Datei: **Verschlüsseltes Backup erstellen**, im Web-Installer des Portals im Schritt **🔀 Crosslink** hochladen und dasselbe
+  Superadmin-Passwort eingeben. **Hier bleibt alles, wie es ist**, bis du den alten Crosslink abschaltest.
+
+### 🛠️ Installer ohne Rückfragen (für den Umzug)
+- `install.sh` liest auf Wunsch alles aus der Umgebung und fragt nichts:
+  - `N8X_RESTORE=/pfad/backup.n8xbak` – Backup einspielen (wie „Backup einspielen“ im Installer)
+  - `N8X_RESTORE_PASSWORD_FILE=/pfad/datei` – Superadmin-Passwort des Backups (erste Zeile; nie über die Kommandozeile)
+  - `N8X_WEB_PORT=8070` – Web-Port auf dem neuen Server (dort belegt das HBlink4-Dashboard meist 8080)
+  - `N8X_LOCAL_LINKS=1` – FRN- und DMR-Server auf `127.0.0.1` umstellen (laufen jetzt auf demselben Rechner)
+  - `N8X_PORTAL_TOKEN_FILE=/pfad/datei` – API-Token „HobbyRadioPortal“ anlegen und dorthin schreiben (600)
+- Falsches Passwort oder kaputte Datei: der Installer bricht mit klarer Meldung ab, statt neu einzurichten.
+- Der Rest bleibt wie beim normalen Installieren: Pakete, Dienstbenutzer, venv, Vocoder bauen, Dienste, **Rechte prüfen und korrigieren**.
+
+### ⌨️ Kommandozeile
+- `python -m n8crosslink.cli api-token NAME` – legt einen Portal-Token an und gibt ihn einmal aus (nutzt der Installer).
+
+### 🧪 Tests
+- `tests/test_api_tokens.py`: Token über die Kommandozeile, ungültiger Name.
+- Mit dem Portal geprüft: ein echtes Backup dieser Version wird dort entschlüsselt und gelesen (Manifest, Zahlen); falsches Passwort wird erkannt.
+
 ## [1.8.0] – 2026-11-24
 
 **Portal-Zugang: N8 Crosslink lässt sich komplett im HobbyRadioPortal einstellen – und der Titel nennt nur noch die eingeschalteten Netze.**

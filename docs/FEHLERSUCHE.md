@@ -1,7 +1,11 @@
 # Fehlersuche
 
+**Zuerst immer:** `sudo /opt/n8crosslink/install.sh --diagnose` – zeigt Version, Dienste, Port (inkl. Bind-Test mit den Dienst-Rechten), md380-emu-Startzeile, Vocoder-Test, Zello-Schlüssel (nur Fingerabdruck) und die letzten Logzeilen; gespeichert in `/tmp/n8crosslink-diagnose.txt`, ohne Passwörter.
+
 | Symptom | Ursache / Lösung |
 |---|---|
+| md380-emu startet nicht (`exit-code`, `status=1/FAILURE`, SEGV) | md380-emu muss über `qemu-arm-static … -S 2470` laufen; unter Debian 13 mit dem qemu aus `/opt/md380-emu/`. Ab 1.2.2 richtet der Installer das automatisch ein: `sudo /opt/n8crosslink/install.sh --install-md380` oder Admin → Vocoder → „md380-emu installieren / reparieren“ |
+| „Bind-Test“ beim Start von Hand meldet Errno 13 auf Port 80 | Beim Start von Hand fehlt das Port-Recht des Dienstes – das ist normal. Maßgeblich ist der Bind-Test in `--diagnose`, der mit den Dienst-Rechten prüft |
 | Dienst startet nicht, im Log `[Errno 13] … bind on address ('0.0.0.0', 80): permission denied` | Web-Port unter 1024 (z. B. 80). Ab 1.2.1 erhält der Dienst dafür `CAP_NET_BIND_SERVICE` – `sudo /opt/n8crosslink/update.sh` ausführen. Alternativ Port 8080: `cd /opt/n8crosslink && sudo -u n8crosslink venv/bin/python -m n8crosslink.cli set general web_port 8080 && sudo systemctl restart n8crosslink` |
 | Dienst startet nicht, Ursache unklar | Von Hand starten zeigt die Fehlermeldung: `sudo systemctl stop n8crosslink; cd /opt/n8crosslink && sudo -u n8crosslink env N8X_DB=/opt/n8crosslink/data/crosslink.db venv/bin/python -m n8crosslink` |
 | FRN „Login abgelehnt (WRONG)“ | E-Mail/Passwort falsch oder Konto nicht freigeschaltet. Das FRN-Passwort ist das dynamische Passwort aus der Registrierung. |

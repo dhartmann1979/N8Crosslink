@@ -98,6 +98,41 @@ fix_perms() {
   if (( n + m > 0 )); then ok "Berechtigungen geprüft – $((n + m)) Einträge korrigiert"; else ok "Berechtigungen geprüft – alles in Ordnung"; fi
 }
 
+# ---------------------------------------------------------------- Zello-Schlüssel: Datei -> SQLite
+# Sucht Zello-Schlüssel (zello*.key, zello*.pem) im Programm-, Daten- und Quellordner, verschiebt sie
+# zuerst an einen sicheren Ort (/root/.n8crosslink-import, nur root), übernimmt sie in die Datenbank,
+# prüft per Fingerabdruck gegen und löscht die Datei danach sicher (shred). Die Bridge liest den
+# Schlüssel ausschließlich aus der Datenbank (und er ist Teil des verschlüsselten Backups).
+import_zello_keys() {
+  local SAFE=/root/.n8crosslink-import f src dirs=("$APP_DIR" "$DATA_DIR")
+  [[ -x "$APP_DIR/venv/bin/python" && -f "$DB" ]] || return 0
+  src=$(cat "$APP_DIR/.source" 2>/dev/null || true); [[ -n "$src" && -d "$src" ]] && dirs+=("$src")
+  local found=()
+  for d in "${dirs[@]}"; do
+    while IFS= read -r f; do found+=("$f"); done < <(find "$d" -maxdepth 2 -path "$APP_DIR/venv" -prune -o -type f \
+      \( -iname 'zello*.key' -o -iname 'zello*.pem' \) -print 2>/dev/null)
+  done
+  (( ${#found[@]} )) || return 0
+  install -d -m 700 -o root -g root "$SAFE"
+  for f in "${found[@]}"; do
+    grep -q "PRIVATE KEY" "$f" 2>/dev/null || continue
+    local tmp="$SAFE/$(basename "$f").$$"
+    mv "$f" "$tmp"; chmod 600 "$tmp"
+    info "Schlüsseldatei $f gefunden – sicher verschoben, übernehme in die Datenbank …"
+    # der Dienstbenutzer darf $SAFE nicht lesen -> Inhalt über eine kurzlebige Kopie im Datenordner
+    local hand="$DATA_DIR/.import.key"; install -m 600 -o "$SVC_USER" -g "$SVC_USER" "$tmp" "$hand"
+    if out=$(cli import-zello-key "$hand" 2>&1); then
+      shred -u "$hand" 2>/dev/null || rm -f "$hand"
+      shred -u "$tmp" 2>/dev/null || rm -f "$tmp"
+      ok "Zello-Schlüssel in SQLite übernommen (${out#OK }) – Datei sicher gelöscht"
+    else
+      shred -u "$hand" 2>/dev/null || rm -f "$hand"
+      warn "Import fehlgeschlagen ($out) – Datei bleibt geschützt in $tmp"
+    fi
+  done
+  rmdir "$SAFE" 2>/dev/null || true
+}
+
 # ---------------------------------------------------------------- Software-Vocoder md380-emu
 # Quelle: DVSwitch-Paketquelle (http://dvswitch.org/bookworm – Debian 12/13, Ubuntu 22.04/24.04,
 # amd64/arm64). Auf x86 läuft md380-emu (ARM-Code) über qemu-user-static.
@@ -160,8 +195,19 @@ install_md380() {
     if md380_probe; then ok "md380-emu antwortet auf UDP 2470 (Dienst aus dem Paket)"; return 0; fi
     warn "Paket-Dienst antwortet nicht auf 2470 – probiere eigene Startvarianten"
   fi
-  local args
-  for args in "-S 2470" "2470" "-p 2470"; do
+  # Startvarianten (DVSwitch startet md380-emu über qemu-arm-static mit "-S 2470"):
+  #   1. mit dem qemu-arm-static, das das DVSwitch-Paket in /opt/md380-emu mitbringt
+  #      (neuere System-qemu-Versionen, z. B. qemu 10 in Debian 13, stürzen mit md380-emu ab)
+  #   2. mit dem System-qemu-arm-static   3. direkt (ARM nativ / binfmt)
+  local dir; dir=$(dirname "$BIN")
+  chown -R root:root "$dir"; chmod 755 "$dir"; find "$dir" -type f -exec chmod go-w {} +   # nicht von Benutzern änderbar
+  local variants=()
+  [[ -x "$dir/qemu-arm-static" ]] && variants+=("$dir/qemu-arm-static $BIN -S 2470")
+  local sq; sq=$(type -P qemu-arm-static || type -P qemu-arm || true)
+  [[ -n "$sq" ]] && variants+=("$sq $BIN -S 2470")
+  variants+=("$BIN -S 2470")
+  local cmd
+  for cmd in "${variants[@]}"; do
     cat > /etc/systemd/system/md380-emu.service <<UNIT
 [Unit]
 Description=md380-emu AMBE+2 Software-Vocoder (DVSwitch) für N8 Crosslink
@@ -169,10 +215,16 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=$(dirname "$BIN")
-ExecStart=$BIN $args
+User=$SVC_USER
+Group=$SVC_USER
+WorkingDirectory=$dir
+ExecStart=$cmd
 Restart=always
 RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
@@ -180,7 +232,8 @@ UNIT
     systemctl daemon-reload
     systemctl enable md380-emu >/dev/null 2>&1 || true
     systemctl restart md380-emu >/dev/null 2>&1 || true
-    if md380_probe; then ok "md380-emu antwortet auf UDP 2470 (ExecStart: $BIN $args)"; return 0; fi
+    if md380_probe; then ok "md380-emu antwortet auf UDP 2470 (ExecStart: $cmd)"; return 0; fi
+    warn "Variante „$cmd“ antwortet nicht: $(journalctl -u md380-emu -n 3 --no-pager -o cat 2>/dev/null | tail -1)"
   done
   warn "md380-emu läuft, antwortet aber nicht auf UDP 2470 – journalctl -u md380-emu prüfen"
   return 1
@@ -229,7 +282,33 @@ setcfg() { cli set "$1" "$2" "$3" >/dev/null; }
 
 if [[ "${1:-}" == "--fix-perms" ]]; then
   [[ $EUID -eq 0 ]] || fail "Bitte als root starten"
-  echo "Berechtigungen prüfen (N8 Crosslink) …"; fix_perms; exit 0
+  echo "Berechtigungen prüfen (N8 Crosslink) …"; import_zello_keys; fix_perms; exit 0
+fi
+if [[ "${1:-}" == "--diagnose" ]]; then
+  [[ $EUID -eq 0 ]] || fail "Bitte als root starten"
+  {
+  . /etc/os-release 2>/dev/null
+  echo "== System:  $PRETTY_NAME ($(dpkg --print-architecture)), $(python3 --version 2>&1)"
+  echo "== Version: $(grep -oP '__version__ = "\K[^"]+' "$APP_DIR/n8crosslink/__init__.py" 2>/dev/null)"
+  PORT=$(cli show general 2>/dev/null | grep -oP '"web_port": \K[0-9]+'); echo "== Web-Port: ${PORT:-?}"
+  for u in n8crosslink md380-emu n8crosslink-update.path; do
+    echo "== Dienst $u: $(systemctl is-active $u 2>&1) / $(systemctl is-enabled $u 2>&1)"
+  done
+  echo "== Dienst-Rechte: $(systemctl show n8crosslink -p User -p AmbientCapabilities --value 2>/dev/null | tr '\n' ' ')"
+  echo "== Lauscht auf Port ${PORT:-?}:"; ss -ltnp "( sport = :${PORT:-0} )" 2>/dev/null | tail -n +2 || true
+  if [[ -n "$PORT" ]] && ! ss -ltn "( sport = :$PORT )" | grep -q LISTEN; then
+    echo "== Bind-Test als Dienstbenutzer mit Dienst-Rechten:"
+    systemd-run --quiet --wait --pipe -p User="$SVC_USER" -p AmbientCapabilities=CAP_NET_BIND_SERVICE \
+      "$APP_DIR/venv/bin/python" -c "import socket;s=socket.socket();s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);s.bind(('0.0.0.0',$PORT));print('Port $PORT: OK')" 2>&1 || true
+  fi
+  echo "== md380-emu: $(md380_bin || echo 'nicht gefunden'); ExecStart: $(systemctl show md380-emu -p ExecStart --value 2>/dev/null | grep -oP 'argv\[\]=\K[^;]+')"
+  echo "== Vocoder-Test: $( (cd "$APP_DIR" && runuser -u "$SVC_USER" -- env N8X_DB="$DB" "$APP_DIR/venv/bin/python" -m n8crosslink.cli vocoder-test) 2>&1 | tail -1)"
+  echo "== Zello-Schlüssel: $(cli zello-key-info 2>&1 | tail -1); Schlüsseldateien: $(find "$APP_DIR" -maxdepth 2 -iname 'zello*.key' 2>/dev/null | wc -l)"
+  echo "== sudo-Freigaben: $(grep -c NOPASSWD /etc/sudoers.d/n8crosslink 2>/dev/null || echo 0)"
+  echo "== Log n8crosslink (letzte 40):"; journalctl -u n8crosslink -n 40 --no-pager -o cat 2>/dev/null
+  echo "== Log md380-emu (letzte 15):"; journalctl -u md380-emu -n 15 --no-pager -o cat 2>/dev/null
+  } 2>&1 | tee /tmp/n8crosslink-diagnose.txt
+  echo; echo "(gespeichert in /tmp/n8crosslink-diagnose.txt – enthält keine Passwörter)"; exit 0
 fi
 if [[ "${1:-}" == "--install-md380" ]]; then
   [[ $EUID -eq 0 ]] || fail "Bitte als root starten"
@@ -398,9 +477,13 @@ if ask_yn "Zello anbinden?" j; then
        ask V "Issuer" ""; setcfg zello issuer "$V"
        ask V "Pfad zur Private-Key-Datei (PEM)" ""
        if [[ -f "$V" ]]; then
-         setcfg zello private_key "$(cat "$V")"; ok "Private Key in die Datenbank übernommen"
-         chmod 600 "$V"
-         ask_yn "Schlüsseldatei $V jetzt löschen? (liegt jetzt sicher in der Datenbank und im verschlüsselten Backup)" j && rm -f "$V" && ok "Schlüsseldatei gelöscht"
+         install -d -m 700 /root/.n8crosslink-import; mv "$V" /root/.n8crosslink-import/zello.key
+         install -m 600 -o "$SVC_USER" -g "$SVC_USER" /root/.n8crosslink-import/zello.key "$DATA_DIR/.import.key"
+         if out=$(cli import-zello-key "$DATA_DIR/.import.key" 2>&1); then
+           ok "Private Key in SQLite übernommen (${out#OK })"
+           shred -u /root/.n8crosslink-import/zello.key; ok "Schlüsseldatei sicher gelöscht – gelesen wird nur noch aus der Datenbank"
+         else warn "$out – Datei liegt geschützt in /root/.n8crosslink-import/"; fi
+         shred -u "$DATA_DIR/.import.key" 2>/dev/null || true
        else warn "Datei nicht gefunden – im Adminportal nachtragen."; fi ;;
     *) setcfg zello server "wss://zello.io/ws"; setcfg zello auth_mode token
        ask_secret V "Entwickler-Token (developers.zello.com)" optional; [[ -n "$V" ]] && setcfg zello auth_token "$V" ;;
@@ -443,6 +526,7 @@ fi
 # ---------------------------------------------------------------- 9 Dienst
 step 9 "Berechtigungen, Dienst und alte Bridges"
 if [[ ! -d /run/systemd/system ]]; then
+  import_zello_keys
   fix_perms
   warn "Kein systemd gefunden (Container?). Start von Hand:"
   echo "       runuser -u $SVC_USER -- env N8X_DB=$DB $APP_DIR/venv/bin/python -m n8crosslink"
@@ -462,6 +546,7 @@ if [[ -n "$OLD" ]]; then
 fi
 cp "$SRC_DIR/systemd/n8crosslink.service" "$SRC_DIR/systemd/n8crosslink-update.path" \
    "$SRC_DIR/systemd/n8crosslink-update.service" /etc/systemd/system/
+import_zello_keys
 REBOOT=true
 if [[ -f "$DATA_DIR/system.json" ]]; then grep -q '"reboot": false' "$DATA_DIR/system.json" && REBOOT=false
 elif ! ask_yn "Server-Neustart (Reboot) über das Webinterface erlauben?" j; then REBOOT=false; fi
@@ -471,10 +556,14 @@ fix_perms
 systemctl enable n8crosslink >/dev/null 2>&1
 systemctl enable --now n8crosslink-update.path >/dev/null 2>&1 && ok "„Update jetzt“ aus dem Adminportal eingerichtet"
 systemctl restart n8crosslink
-sleep 3
-systemctl is-active --quiet n8crosslink && ok "Dienst n8crosslink läuft" || { warn "Dienst läuft nicht – Log:"; journalctl -u n8crosslink -n 25 --no-pager; }
-
 PORT=$(cli show general | grep -oP '"web_port": \K[0-9]+' || echo 8080)
+for i in $(seq 1 20); do ss -ltn "( sport = :$PORT )" 2>/dev/null | grep -q LISTEN && break; sleep 1; done
+if ss -ltn "( sport = :$PORT )" 2>/dev/null | grep -q LISTEN; then
+  ok "Dienst n8crosslink läuft – Weboberfläche lauscht auf Port $PORT"
+else
+  warn "Weboberfläche lauscht nicht auf Port $PORT – Log:"; journalctl -u n8crosslink -n 25 --no-pager -o cat
+  info "Ausführliche Prüfung: sudo $APP_DIR/install.sh --diagnose"
+fi
 IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 if [[ "$MODE" == "neu" ]]; then
   echo

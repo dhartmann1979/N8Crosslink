@@ -20,7 +20,11 @@ md380-emu stammt aus dem **DVSwitch**-Projekt (Emulation der AMBE-Routinen der M
 1. Vorhandenes md380-emu suchen (`md380-emu` im PATH, `/opt/md380-emu/md380-emu`, `/usr/local/bin`, `/usr/bin`).
 2. Falls keins da ist: DVSwitch-Paketquelle einrichten mit `http://dvswitch.org/bookworm`. Das gilt für Debian 12 und 13, Raspberry Pi OS sowie Ubuntu 22.04/24.04; für Debian 11 wird `bullseye` genommen. Danach `apt install md380-emu`.
 3. Ausführrechte setzen. Auf **x86** wird `qemu-user-static` + `binfmt-support` installiert, weil md380-emu ARM-Code ist. Auf dem Raspberry Pi läuft er nativ.
-4. Dienst: Bringt das Paket einen eigenen `md380-emu.service` mit, wird er verwendet. Sonst richtet der Installer einen Dienst auf UDP 2470 ein und probiert die bekannten Startvarianten durch.
+4. Dienst: Bringt das Paket einen funktionierenden `md380-emu.service` mit, wird er verwendet. Sonst richtet der Installer einen eigenen Dienst ein – so wie DVSwitch ihn startet, **über qemu-arm-static mit `-S 2470`**:
+   1. mit dem `qemu-arm-static`, das neuere DVSwitch-Pakete in `/opt/md380-emu/` mitbringen (wichtig unter **Debian 13**: das System-qemu 10 bringt md380-emu zum Absturz),
+   2. mit dem System-`qemu-arm-static`,
+   3. direkt (ARM nativ).
+   Der Dienst läuft als Benutzer `n8crosslink` (nicht als root) mit `NoNewPrivileges`/`ProtectSystem=strict`; `/opt/md380-emu` wird auf root gesetzt, damit ihn kein Benutzer verändern kann.
 5. **Funktionstest:** Ein 1-kHz-Ton wird über UDP 2470 kodiert und wieder dekodiert. Erst wenn das klappt, meldet der Installer Erfolg.
 
 Hinweise:

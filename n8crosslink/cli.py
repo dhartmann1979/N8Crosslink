@@ -30,6 +30,10 @@ def main() -> int:
     sh = sub.add_parser("show")
     sh.add_argument("section", nargs="?")
     sub.add_parser("users")
+    ik = sub.add_parser("import-zello-key", help="PEM-Private-Key prüfen und in die Datenbank übernehmen")
+    ik.add_argument("file")
+    ik.add_argument("--issuer", default=None)
+    sub.add_parser("zello-key-info")
     vt = sub.add_parser("vocoder-test")
     vt.add_argument("--mode", default=None, help="md380 | usb | ambeserver (Standard: aus der Konfiguration)")
     vt.add_argument("--host", default=None)
@@ -59,6 +63,41 @@ def main() -> int:
     if args.cmd == "show":
         cfg = Database.public_config(db.load_config())
         print(json.dumps(cfg[args.section] if args.section else cfg, indent=2, ensure_ascii=False))
+        return 0
+    if args.cmd in ("import-zello-key", "zello-key-info"):
+        import hashlib
+
+        from cryptography.hazmat.primitives import serialization
+
+        def fingerprint(pem: str) -> str:
+            key = serialization.load_pem_private_key(pem.encode(), password=None)
+            pub = key.public_key().public_bytes(serialization.Encoding.DER,
+                                                serialization.PublicFormat.SubjectPublicKeyInfo)
+            return "SHA256:" + hashlib.sha256(pub).hexdigest()[:32]
+        if args.cmd == "zello-key-info":
+            pem = db.load_config()["zello"].get("private_key") or ""
+            if not pem:
+                print("kein Zello-Schlüssel in der Datenbank")
+                return 1
+            print(f"Zello-Schlüssel in der Datenbank: {fingerprint(pem)}")
+            return 0
+        try:
+            with open(args.file) as f:
+                pem = f.read().strip() + "\n"
+            fp = fingerprint(pem)
+        except Exception as e:  # noqa: BLE001
+            print(f"Keine gültige PEM-Private-Key-Datei: {e}", file=sys.stderr)
+            return 2
+        vals = {"private_key": pem, "auth_mode": "key"}
+        if args.issuer:
+            vals["issuer"] = args.issuer
+        db.save_section("zello", vals)
+        # Gegenprüfung: genau dieser Schlüssel steht jetzt in der Datenbank
+        if fingerprint(db.load_config()["zello"]["private_key"]) != fp:
+            print("Gegenprüfung fehlgeschlagen – Datei NICHT löschen", file=sys.stderr)
+            return 3
+        issuer = db.load_config()["zello"].get("issuer")
+        print(f"OK {fp}" + ("" if issuer else " – Hinweis: Issuer fehlt noch (Admin → Zello)"))
         return 0
     if args.cmd == "vocoder-test":
         import asyncio

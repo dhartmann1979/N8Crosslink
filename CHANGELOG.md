@@ -2,6 +2,17 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.2.2] – 2026-11-24
+
+### Behoben
+- **md380-emu startete nicht (Debian 13):** md380-emu wird jetzt so gestartet wie bei DVSwitch – über `qemu-arm-static` mit `-S 2470`. Bevorzugt wird das `qemu-arm-static`, das neuere DVSwitch-Pakete in `/opt/md380-emu/` mitbringen, weil das System-qemu 10 unter Debian 13 md380-emu abstürzen lässt. Danach System-qemu, zuletzt direkt (ARM). Ungültige Startvarianten (`2470`, `-p 2470`) entfernt; jede Variante wird mit einem echten Encode/Decode-Test geprüft, Fehlversuche zeigen die Logzeile.
+- **Sicherheit md380-emu:** Der Dienst läuft jetzt als Benutzer `n8crosslink` statt als root (mit `NoNewPrivileges`, `ProtectSystem=strict`). `/opt/md380-emu` wird auf root gesetzt – dort lag ein `qemu-arm-static`, das einem normalen Benutzer gehörte und vom root-Dienst ausgeführt wurde.
+
+### Neu
+- **Zello-Schlüssel nur noch in der Datenbank:** `zello*.key`/`zello*.pem` im Programm-, Daten- oder Quellordner werden bei Installation, Update und Berechtigungsprüfung automatisch erkannt → an einen sicheren Ort verschoben (nur root) → in SQLite übernommen → per Fingerabdruck gegengeprüft → mit `shred` gelöscht. Neue CLI-Befehle `import-zello-key` (prüft, ob es ein gültiger PEM-Private-Key ist) und `zello-key-info` (zeigt nur den Fingerabdruck).
+- **Diagnose:** `sudo /opt/n8crosslink/install.sh --diagnose` – System, Version, Dienste, Web-Port mit Bind-Test unter den echten Dienst-Rechten, md380-emu-Startzeile, Vocoder-Test, Zello-Schlüssel-Fingerabdruck, sudo-Freigaben, letzte Logzeilen; ohne Passwörter.
+- Nach jeder Installation/jedem Update prüft der Installer, ob die Weboberfläche wirklich auf ihrem Port lauscht, und zeigt sonst das Log.
+
 ## [1.2.1] – 2026-11-24
 
 Fehlerbehebung: Dienst startete mit Web-Port 80 nicht.

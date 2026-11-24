@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .. import __version__
+from .. import backup as bk
 from ..db import DEFAULTS, Database
 from ..dmr.burst import AMBE_SILENCE
 
@@ -47,15 +48,38 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
             raise HTTPException(401, "Bitte anmelden")
         return u
 
+    def require_superadmin(request: Request, password: str) -> str:
+        u = require_admin(request)
+        if db.user_role(u) != "superadmin":
+            raise HTTPException(403, "Nur für Superadmins")
+        if not db.check_login(u, password):
+            raise HTTPException(401, "Superadmin-Passwort falsch")
+        return u
+
     @app.get("/", response_class=HTMLResponse)
     async def index() -> str:
         g = bridge.cfg["general"]
         return env.get_template("index.html").render(title=g.get("title", "N8 Crosslink"),
                                                      server_name=g.get("server_name", ""), version=__version__)
 
+    ICONS = HERE / "static" / "icons"
+    LONG = {"Cache-Control": "public, max-age=604800"}
+
     @app.get("/favicon.ico")
     async def favicon() -> Response:
-        return Response((HERE / "static" / "n8crosslink-icon.svg").read_bytes(), media_type="image/svg+xml")
+        return Response((ICONS / "favicon.ico").read_bytes(), media_type="image/x-icon", headers=LONG)
+
+    @app.get("/apple-touch-icon.png")
+    @app.get("/apple-touch-icon-precomposed.png")
+    async def apple_icon() -> Response:
+        return Response((ICONS / "apple-touch-icon.png").read_bytes(), media_type="image/png", headers=LONG)
+
+    @app.get("/site.webmanifest")
+    @app.get("/manifest.json")
+    async def manifest() -> Response:
+        m = json.loads((ICONS / "site.webmanifest").read_text())
+        m["name"] = bridge.cfg["general"].get("title", m["name"])
+        return Response(json.dumps(m, ensure_ascii=False), media_type="application/manifest+json")
 
     @app.get("/api/me")
     async def me(request: Request) -> dict:
@@ -141,6 +165,40 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
             pass
         finally:
             bridge.router.listeners.discard(q)
+
+    @app.websocket("/ws/audio")
+    async def ws_audio(sock: WebSocket) -> None:
+        """Mithören: 8 kHz / 16 Bit mono PCM der aktiven Durchsage – nur für angemeldete Admins."""
+        user = db.session_user(sock.cookies.get(COOKIE))
+        if not user:
+            await sock.close(code=4401)
+            return
+        await sock.accept()
+        q: asyncio.Queue = asyncio.Queue()
+        bridge.router.audio_listeners.add(q)
+        try:
+            a = bridge.router.active
+            if a:
+                await sock.send_text(json.dumps({"type": "start", "source": a.source.key, "talker": a.talker.to_dict()}))
+            while True:
+                item = await q.get()
+                if isinstance(item, dict):
+                    await sock.send_text(json.dumps(item))
+                    continue
+                chunk = [item]                      # bis zu 3 Rahmen (60 ms) bündeln
+                while len(chunk) < 3 and not q.empty() and not isinstance(q._queue[0], dict):  # noqa: SLF001
+                    chunk.append(q.get_nowait())
+                await sock.send_bytes(b"".join(chunk))
+                if db.session_user(sock.cookies.get(COOKIE)) is None:
+                    break                           # abgemeldet -> Mithören beenden
+        except (WebSocketDisconnect, RuntimeError):
+            pass
+        finally:
+            bridge.router.audio_listeners.discard(q)
+            try:
+                await sock.close()
+            except RuntimeError:
+                pass
 
     # ------------------------------------------------------------ Admin
     @app.get("/api/admin/config")
@@ -239,6 +297,69 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
     async def avatar_upload_delete(user: str, _: str = Depends(require_admin)) -> dict:
         db.avatar_delete(f"upload:zello:{user.lower()}")
         return {"ok": True}
+
+    # ---- Backup / Wiederherstellung / Zurücksetzen (nur Superadmin, Passwort erneut)
+    @app.post("/api/admin/backup")
+    async def make_backup(request: Request, data: dict = Body(...)) -> Response:
+        pw = str(data.get("password", ""))
+        user = require_superadmin(request, pw)
+        data_dir = os.path.dirname(os.path.abspath(db.path))
+        name, blob = await asyncio.to_thread(bk.create, db, data_dir, pw, user)
+        bridge.router.event("info", f"Verschlüsseltes Backup erstellt von {user} ({len(blob) // 1024} KB)")
+        return Response(blob, media_type="application/octet-stream",
+                        headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
+
+    def _blob(data: dict) -> bytes:
+        try:
+            return base64.b64decode(str(data.get("file", "")).split(",")[-1])
+        except ValueError:
+            raise HTTPException(400, "Datei unlesbar") from None
+
+    @app.post("/api/admin/restore/inspect")
+    async def restore_inspect(request: Request, data: dict = Body(...)) -> dict:
+        require_admin(request)
+        try:
+            manifest, _ = await asyncio.to_thread(bk.inspect, _blob(data), str(data.get("password", "")))
+        except bk.BackupError as e:
+            raise HTTPException(400, str(e)) from None
+        return {"ok": True, "manifest": manifest}
+
+    @app.post("/api/admin/restore")
+    async def restore(request: Request, data: dict = Body(...)) -> dict:
+        u = require_admin(request)
+        if db.user_role(u) != "superadmin":
+            raise HTTPException(403, "Nur für Superadmins")
+        try:
+            manifest, dbbytes = await asyncio.to_thread(bk.inspect, _blob(data), str(data.get("password", "")))
+        except bk.BackupError as e:
+            raise HTTPException(400, str(e)) from None
+        await bridge.stop()
+        await asyncio.to_thread(bk.restore_into, db, dbbytes)
+        bridge.router.event("info", f"Backup vom {time.strftime('%d.%m.%Y %H:%M', time.localtime(manifest.get('created', 0)))} "
+                                    f"(Version {manifest.get('version')}) eingespielt von {u}")
+        await bridge.restart()
+        return {"ok": True, "manifest": manifest, "relogin": True}
+
+    @app.post("/api/admin/reset")
+    async def reset(request: Request, data: dict = Body(...)) -> dict:
+        scope = str(data.get("scope", ""))
+        if scope not in ("history", "settings", "all"):
+            raise HTTPException(400, "Unbekannter Bereich")
+        user = require_superadmin(request, str(data.get("password", "")))
+        await bridge.stop()
+        await asyncio.to_thread(db.reset, scope)
+        bridge.router.event("warn", {"history": "Last Heard, Statistik und Ereignisse gelöscht",
+                                     "settings": "Alle Einstellungen auf Standard zurückgesetzt",
+                                     "all": "Komplett zurückgesetzt (Standard-Login n8schicht/n8schicht)"}[scope] + f" von {user}")
+        await bridge.restart()
+        return {"ok": True, "relogin": scope == "all"}
+
+    # ---- Software-Vocoder
+    @app.post("/api/admin/md380/install")
+    async def md380_install(user: str = Depends(require_admin)) -> dict:
+        ok, out = await bridge.system.install_md380()
+        bridge.router.event("info" if ok else "warn", f"md380-emu-Installation durch {user}: {'ok' if ok else 'Fehler'}")
+        return {"ok": ok, "message": out}
 
     # ---- Updates
     @app.get("/api/admin/update")

@@ -30,6 +30,14 @@ def main() -> int:
     sh = sub.add_parser("show")
     sh.add_argument("section", nargs="?")
     sub.add_parser("users")
+    vt = sub.add_parser("vocoder-test")
+    vt.add_argument("--mode", default=None, help="md380 | usb | ambeserver (Standard: aus der Konfiguration)")
+    vt.add_argument("--host", default=None)
+    vt.add_argument("--port", type=int, default=None)
+    b = sub.add_parser("backup")
+    b.add_argument("--out", default=".")
+    r = sub.add_parser("restore")
+    r.add_argument("file")
     args = ap.parse_args()
     db = Database(args.db)
 
@@ -51,6 +59,60 @@ def main() -> int:
     if args.cmd == "show":
         cfg = Database.public_config(db.load_config())
         print(json.dumps(cfg[args.section] if args.section else cfg, indent=2, ensure_ascii=False))
+        return 0
+    if args.cmd == "vocoder-test":
+        import asyncio
+        import time
+
+        import numpy as np
+
+        from .vocoder import Vocoder
+        cfg = dict(db.load_config()["vocoder"])
+        if args.mode:
+            cfg["vocoder_mode"] = args.mode
+        m = cfg["vocoder_mode"]
+        if args.host:
+            cfg["md380_host" if m == "md380" else "ambeserver_host"] = args.host
+        if args.port:
+            cfg["md380_port" if m == "md380" else "ambeserver_port"] = args.port
+
+        async def run() -> int:
+            v = Vocoder(cfg)
+            await v.start()
+            t0 = time.perf_counter()
+            tone = (np.sin(2 * np.pi * 1000 * np.arange(160) / 8000) * 9000).astype("<i2").tobytes()
+            amb = await v.encode(tone, timeout=2)
+            pcm = await v.decode(amb, timeout=2) if amb else None
+            await v.stop()
+            if amb and pcm:
+                print(f"OK {m}: Encode+Decode in {(time.perf_counter() - t0) * 1000:.0f} ms {v.product}".strip())
+                return 0
+            print(f"FEHLER {m}: keine Antwort")
+            return 1
+        return asyncio.run(run())
+    if args.cmd in ("backup", "restore"):
+        from . import backup as bk
+        pw = sys.stdin.readline().rstrip("\n") if not sys.stdin.isatty() else getpass.getpass("Superadmin-Passwort: ")
+        if args.cmd == "backup":
+            supers = [u["username"] for u in db.list_users() if u["role"] == "superadmin"]
+            user = next((u for u in supers if db.check_login(u, pw)), None)
+            if not user:
+                print("Passwort passt zu keinem Superadmin", file=sys.stderr)
+                return 2
+            name, blob = bk.create(db, os.path.dirname(os.path.abspath(args.db)), pw, user)
+            path = os.path.join(args.out, name)
+            with open(path, "wb") as f:
+                f.write(blob)
+            print(f"Backup verschlüsselt gespeichert: {path}")
+            return 0
+        try:
+            with open(args.file, "rb") as f:
+                manifest, dbbytes = bk.inspect(f.read(), pw)
+            bk.restore_into(db, dbbytes)
+        except (OSError, bk.BackupError) as e:
+            print(f"Wiederherstellung fehlgeschlagen: {e}", file=sys.stderr)
+            return 2
+        print(f"Backup vom {manifest.get('created')} (Version {manifest.get('version')}) eingespielt")
         return 0
     if args.cmd == "users":
         for u in db.list_users():

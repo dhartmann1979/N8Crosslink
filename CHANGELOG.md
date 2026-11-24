@@ -2,6 +2,48 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.2.0] – 2026-11-24
+
+Mithören, verschlüsseltes Backup, geplante Deinstallation, vollständige Software-Vocoder-Installation und komplettes Site-Icon-Set.
+
+### 🎧 Mithören (nur angemeldete Admins)
+- Knopf „Mithören“ mit Lautstärkeregler in der On-Air-Karte; der Ton der aktiven Durchsage kommt aus jedem Netz (FRN, DMR, Zello).
+- Eigener WebSocket `/ws/audio`, geschützt per Login-Cookie: Ohne Anmeldung wird die Verbindung abgelehnt, beim Abmelden endet sie. 8 kHz / 16 Bit, im Browser mit 250-ms-Jitterpuffer über Web Audio abgespielt.
+- Statusleiste zeigt „🎧 Mithören“, solange aktiv.
+
+### 💾 Verschlüsseltes Backup & Wiederherstellung
+- **Alles in einer Datei** (`.n8xbak`): Einstellungen inkl. Zugangsdaten, Benutzer, Last Heard, Statistik, Ereignisse, ID-Listen, Talkgroups, Avatare.
+- **Kein Klartext:** Die gesamte Datei inkl. Manifest ist mit AES-256-GCM verschlüsselt. Der Schlüssel wird per scrypt aus dem **Superadmin-Passwort** abgeleitet. Deutliche Hinweise im Webinterface, im Installer, in `uninstall.sh` und in der Doku: Passwort im Passwortsafe aufbewahren.
+- Webinterface (Admin → 💾 Backup & Neuanfang, nur Superadmin, Passwort erneut): Backup herunterladen, Backup prüfen (Datum, Version, Umfang), wiederherstellen.
+- CLI `cli backup` / `cli restore`; der Installer bietet bei Neuinstallation das Einspielen eines Backups an.
+
+### ♻️ Deinstallation & Neuanfang
+- Zurücksetzen im Webinterface in drei Stufen: Verlauf, Einstellungen, alles (danach Standard-Login).
+- Neues `uninstall.sh`:
+  - „Daten behalten“ oder „komplett entfernen“, Backup vorher anbieten
+  - entfernt Dienste, Update-Auslöser, sudo-Freigaben und nginx-Konfiguration, optional auch Zertifikat, Dienstbenutzer und Quellcode
+  - md380-emu und DVSwitch-Paketquelle nur auf Nachfrage
+  - **schaltet die vom Installer abgeschalteten alten Dienste (SvxLink, Bridges) wieder ein**
+  - Optionen `--keep-data`, `--purge`, `--yes`, `--no-backup`
+- Neue Doku `docs/DEINSTALLATION.md`.
+
+### 🧠 Software-Vocoder md380-emu – vollständige Installation
+- DVSwitch-Paketquelle über `dvswitch.org/bookworm` für Debian 12/13, Raspberry Pi OS und Ubuntu 22.04/24.04 (bisher wurde der jeweilige Codename aufgerufen und lief bei Trixie/Noble ins Leere). Debian 11 nutzt `bullseye`.
+- Auf x86 automatisch `qemu-user-static` + `binfmt-support`; Ausführrechte werden gesetzt.
+- Der Paket-Dienst wird bevorzugt, sonst eigener Dienst mit automatischem Durchprobieren der Startvarianten.
+- **Echter Funktionstest** (Encode/Decode über UDP 2470) statt Annahme; neue CLI `cli vocoder-test`.
+- Im Webinterface: **„md380-emu installieren / reparieren“** (über sudo, `install.sh --install-md380`); bei Update und Wiederherstellung wird md380-emu nachinstalliert, wenn er eingestellt, aber nicht vorhanden ist.
+
+### 🖼️ Site-Icons (für alle N8schicht-Repos)
+- Komplettes Set: `favicon.ico` (16/32/48), PNG-Favicons, vereinfachtes Favicon-SVG für kleine Größen, `apple-touch-icon` (180 px, randlos), PWA-Icons 192/512, maskable 512, Open-Graph-Vorschau 1200×630, `site.webmanifest`, Theme-/Tile-Farben.
+- Ausgeliefert auch unter den Standardpfaden `/favicon.ico`, `/apple-touch-icon.png`, `/site.webmanifest`.
+- Wiederverwendbares Skript `tools/make_icons.py` und Doku `docs/BRANDING.md` für die anderen N8schicht-Repositories.
+
+### Tests & Doku
+- Simulation auf **49 Prüfungen** erweitert: Mithören-Audio, Backup ohne Klartext, falsches Passwort, Zurücksetzen, Wiederherstellen.
+- Live geprüft: Ohne Login wird Mithören abgelehnt, mit Login kommt Audio an; Backup-Download und -Prüfung funktionieren über die Web-API; alle Icon-Pfade antworten.
+- Neue Doku `BACKUP.md`, `DEINSTALLATION.md`, `BRANDING.md`; `VOCODER.md`, `INSTALLATION.md`, `KONFIGURATION.md` und README aktualisiert, neue Screenshots.
+
 ## [1.1.0] – 2026-11-24
 
 Watchdogs, alle FreeRadioID-Listen, Talkgroup-Namen, Avatare, Updates per Knopf und volle Bedienung über das Webinterface.

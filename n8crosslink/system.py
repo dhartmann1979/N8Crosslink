@@ -85,6 +85,12 @@ class System:
         rc, out = await self.sudo(c["systemctl"], "reboot")
         return rc == 0, out or "Neustart wird ausgeführt"
 
+    async def install_md380(self) -> tuple[bool, str]:
+        if not self.config().get("install_md380"):
+            return False, "md380-emu-Installation über das Webinterface ist nicht freigegeben – einmal sudo /opt/n8crosslink/update.sh ausführen"
+        rc, out = await self.sudo("/opt/n8crosslink/install.sh", "--install-md380", timeout=900)
+        return rc == 0, out[-4000:]
+
     async def fix_perms(self) -> tuple[bool, str]:
         if not self.config().get("fix_perms"):
             return False, "Berechtigungsprüfung nicht freigegeben"

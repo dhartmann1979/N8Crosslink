@@ -172,6 +172,7 @@ class Router:
         self.guard_until: dict[str, float] = {}
         self.blocked: dict[str, tuple[int, float]] = {}
         self.listeners: set[asyncio.Queue] = set()
+        self.audio_listeners: set[asyncio.Queue] = set()   # Mithören (nur angemeldete Admins)
         self._dirty = asyncio.Event()
         self.started = time.time()
         self.vocoder = None
@@ -273,6 +274,8 @@ class Router:
         log.info("RX %s: %s -> %s", port.label, talker.short(), dest)
         self.broadcast({"type": "talk_start", "source": port.key, "talker": talker.to_dict(),
                         "targets": [t.key for t in targets], "ts": now})
+        for q in list(self.audio_listeners):
+            q.put_nowait({"type": "start", "source": port.key, "talker": talker.to_dict()})
         self.notify()
         return True
 
@@ -284,6 +287,9 @@ class Router:
             return
         s.last_audio = time.time()
         s.frames += 1
+        for q in list(self.audio_listeners):
+            if q.qsize() < 100:          # ~2 s Rückstau, danach verwerfen (langsamer Client)
+                q.put_nowait(pcm)
         for t in s.targets:
             t.tx_level = lvl
             try:
@@ -326,6 +332,8 @@ class Router:
         s.source.counters["rx_s"] += dur
         self.db.lh_update(s.lh_id, ts_end=now, duration=round(dur, 1), status=status)
         self.active = None
+        for q in list(self.audio_listeners):
+            q.put_nowait({"type": "end"})
         self.broadcast({"type": "talk_end", "source": s.source.key, "talker": s.talker.to_dict(),
                         "duration": round(dur, 1), "ts": now})
         log.info("Ende %s: %s (%.1f s)", s.source.label, s.talker.short(), dur)

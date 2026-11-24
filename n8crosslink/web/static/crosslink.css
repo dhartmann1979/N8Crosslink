@@ -111,6 +111,10 @@ h1 { font-size: 21px; font-weight: 700; white-space: nowrap;
 .oa-timer { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); min-width: 84px; text-align: right; }
 .onair-dot { width: 9px; height: 9px; border-radius: 50%; background: #64748b; }
 .onair.live .onair-dot { background: #ff453a; box-shadow: 0 0 10px #ff453a; animation: blink .6s infinite alternate; }
+.oa-side { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+.listen { display: flex; gap: 8px; align-items: center; }
+.listen input[type=range] { width: 90px; accent-color: var(--accent); }
+#listenBtn.on { background: linear-gradient(135deg, #30d158, #0a84ff); color: #fff; border-color: transparent; box-shadow: 0 0 14px rgba(48,209,88,.45); }
 .meter { width: 150px; height: 8px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; }
 .meter > i { display: block; height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, #30d158, #ffd60a 75%, #ff453a); transition: width .15s; }
 

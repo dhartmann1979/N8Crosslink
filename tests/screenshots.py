@@ -21,7 +21,7 @@ def wait_live(page, source: str, timeout: float = 40) -> None:
 
 
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = p.chromium.launch(args=["--autoplay-policy=no-user-gesture-required"])
     ctx = b.new_context(viewport={"width": 1440, "height": 1100}, device_scale_factor=1)
     page = ctx.new_page()
     page.goto(BASE)
@@ -47,11 +47,16 @@ with sync_playwright() as p:
     page.click("button[data-tab=live]")
     time.sleep(1)
     page.screenshot(path=f"{OUT}/banner-update-passwort.png", clip={"x": 0, "y": 0, "width": 1440, "height": 330})
+    wait_live(page, "")
+    page.click("#listenBtn")
+    time.sleep(1.5)
+    page.screenshot(path=f"{OUT}/dashboard-mithoeren.png", clip={"x": 0, "y": 0, "width": 1440, "height": 560})
+    page.click("#listenBtn")
     page.click("button[data-tab=admin]")
     time.sleep(0.8)
     for sec, name in [("vocoder", "admin-vocoder"), ("routes", "admin-routing"), ("dmr", "admin-dmr"),
                       ("frn", "admin-frn"), ("zello", "admin-zello"), ("ids", "admin-idlisten-avatare"),
-                      ("update", "admin-updates"), ("system", "admin-system")]:
+                      ("update", "admin-updates"), ("backup", "admin-backup"), ("system", "admin-system")]:
         page.click(f"#adminNav button[data-s={sec}]")
         time.sleep(0.8)
         page.screenshot(path=f"{OUT}/{name}.png", full_page=True)

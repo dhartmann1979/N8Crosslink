@@ -214,6 +214,30 @@ class Database:
         with self.lock:
             return [dict(r) for r in self.conn.execute("SELECT username, role, created FROM users ORDER BY username")]
 
+    def user_role(self, username: str) -> str | None:
+        with self.lock:
+            r = self.conn.execute("SELECT role FROM users WHERE username=?", (username,)).fetchone()
+        return r[0] if r else None
+
+    def reset(self, scope: str) -> None:
+        """Zurücksetzen: 'history' (Last Heard, Statistik, Ereignisse), 'settings' (alle Einstellungen
+        auf Standard), 'all' (alles inkl. Benutzer -> Standard-Login n8schicht/n8schicht, ID-Listen, Avatare)."""
+        with self.lock:
+            c = self.conn
+            if scope in ("history", "all"):
+                c.execute("DELETE FROM lastheard")
+                c.execute("DELETE FROM events")
+            if scope in ("settings", "all"):
+                c.execute("DELETE FROM settings")
+            if scope == "all":
+                for t in ("users", "sessions", "dmr_users", "frid_registered", "talkgroups", "avatars", "meta"):
+                    c.execute(f"DELETE FROM {t}")
+            c.commit()
+            if scope == "all":
+                c.execute("VACUUM")
+        if scope == "all":
+            self.set_user(DEFAULT_USER, DEFAULT_PASSWORD, "superadmin")
+
     def check_login(self, username: str, password: str) -> bool:
         with self.lock:
             row = self.conn.execute("SELECT pw_hash FROM users WHERE username=?", (username,)).fetchone()

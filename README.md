@@ -27,7 +27,10 @@ Alles läuft in **einem** Python-Dienst mit Live-Dashboard und Adminportal – i
 | 🎙️ **Sendeerkennung ohne VOX** | Beginn und Ende jeder Durchsage kommen aus dem jeweiligen Protokoll – nicht aus dem Audiopegel (Details unten) |
 | 🛡️ **Schleifenschutz** | Immer nur eine aktive Quelle; alles andere wird gesperrt und als „blockiert“ protokolliert, plus Sperrzeit nach jeder Aussendung |
 | 🏷️ **Stationsnamen überall** | FRN-Sprecher (aus der Raumliste), DMR-Rufzeichen (ID-Datenbank + empfangener Talker Alias) und Zello-Benutzer erscheinen im Dashboard, im Last Heard, als **DMR Talker Alias** (Embedded LC, 7-Bit) und als **Zello-Textnachricht** |
-| 🎛️ **Vocoder wählbar** | Im Adminportal: **md380-emu** (Software) oder **USB-Stick** (ThumbDV, DVstick 30, DV3000) – zusätzlich AMBEserver im Netz |
+| 🎛️ **Vocoder wählbar** | Im Adminportal: **md380-emu** (Software-Vocoder – Installer und Webinterface installieren ihn komplett inkl. DVSwitch-Paketquelle, qemu auf x86, Dienst und Funktionstest) oder **USB-Stick** (ThumbDV, DVstick 30, DV3000) – zusätzlich AMBEserver im Netz |
+| 🎧 **Mithören** | Angemeldete Admins hören die aktive Durchsage direkt im Browser mit (aus jedem Netz) |
+| 💾 **Backup** | Alles als vollständig verschlüsselte Datei zum Download (AES-256-GCM). **Der Schlüssel ist das Superadmin-Passwort – im Passwortsafe aufbewahren!** Wiederherstellen im Webinterface, per CLI oder direkt im Installer |
+| ♻️ **Neuanfang** | Zurücksetzen im Webinterface (Verlauf / Einstellungen / alles) und `uninstall.sh` mit „Daten behalten“ oder „komplett entfernen“, inkl. Wiedereinschalten der alten Dienste |
 | 📊 **Dashboard** | On-Air-Anzeige mit Pegel und Zeit, Netzkarten mit RX/TX, Last Heard, FRN-Raumliste, Ereignisse, Statistik (Heute … 90 Tage) |
 | ⚙️ **Adminportal** | Alle Einstellungen in SQLite, Benutzerverwaltung, Bridge-/Dienst-Neustart, ID-Datenbank-Update, Export/Import |
 | 🐕 **Watchdogs** | Jede Verbindung (FRN, DMR, Zello) baut sich nach einem Abbruch selbst neu auf; zusätzlich baut ein Watchdog ein Netz komplett neu auf, wenn es zu lange offline bleibt oder seine Verbindungsschleife stirbt. Der Vocoder wird bei Ausfall neu geöffnet, und der systemd-Watchdog startet den Dienst neu, falls er hängt |
@@ -79,6 +82,10 @@ Senden in die Netze:
 |---|---|
 | ![Vocoder](docs/screenshots/admin-vocoder.png) | ![Routing](docs/screenshots/admin-routing.png) |
 
+| Mithören (nur Admins) | Admin – Backup & Neuanfang |
+|---|---|
+| ![Mithören](docs/screenshots/dashboard-mithoeren.png) | ![Backup](docs/screenshots/admin-backup.png) |
+
 | Admin – ID-Listen & Avatare | Admin – Updates |
 |---|---|
 | ![ID-Listen](docs/screenshots/admin-idlisten-avatare.png) | ![Updates](docs/screenshots/admin-updates.png) |
@@ -99,6 +106,9 @@ Senden in die Netze:
 * [Umstieg von SvxLink und der alten Zello-Bridge](docs/MIGRATION.md)
 * [Technik & Protokolle](docs/TECHNIK.md)
 * [Betrieb: Watchdogs, Updates, sudo & Berechtigungen](docs/BETRIEB.md)
+* [Backup & Wiederherstellung](docs/BACKUP.md)
+* [Deinstallation & von vorn beginnen](docs/DEINSTALLATION.md)
+* [Branding & Site-Icons](docs/BRANDING.md)
 * [Fehlersuche](docs/FEHLERSUCHE.md)
 * [Changelog](CHANGELOG.md)
 
@@ -108,7 +118,7 @@ Senden in die Netze:
 python3 tests/sim_e2e.py
 ```
 
-Startet einen simulierten FRN-Server, einen simulierten HBlink-Master, einen simulierten Zello-Server und einen simulierten AMBE3000 und prüft alle Richtungen, Talker Alias, Textnachrichten, Start/Stop-Erkennung und den Schleifenschutz (aktuell 43/43 Prüfungen: alle Richtungen, zwei Durchsagen direkt hintereinander, ID-Listen, Avatare, Verbindungsabbrüche mit Watchdog, Updateprüfung). `tests/test_fec.py` vergleicht die DMR-FEC bitgenau mit dmr_utils3. `tests/demo_server.py` startet dieselbe Simulation mit echtem Dashboard (Login `demo` / `demo12345`).
+Startet einen simulierten FRN-Server, einen simulierten HBlink-Master, einen simulierten Zello-Server und einen simulierten AMBE3000 und prüft alle Richtungen, Talker Alias, Textnachrichten, Start/Stop-Erkennung und den Schleifenschutz (aktuell 49/49 Prüfungen: alle Richtungen, zwei Durchsagen direkt hintereinander, Mithören, ID-Listen, Avatare, Verbindungsabbrüche mit Watchdog, Updateprüfung, verschlüsseltes Backup, Zurücksetzen und Wiederherstellen). `tests/test_fec.py` vergleicht die DMR-FEC bitgenau mit dmr_utils3. `tests/demo_server.py` startet dieselbe Simulation mit echtem Dashboard (Login `demo` / `demo12345`).
 
 ## Lizenz & Danksagung
 

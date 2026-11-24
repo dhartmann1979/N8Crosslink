@@ -31,7 +31,7 @@ n8crosslink ALL=(root) NOPASSWD: /usr/bin/systemctl stop md380-emu.service
 n8crosslink ALL=(root) NOPASSWD: /opt/n8crosslink/install.sh --fix-perms
 ```
 
-Freigegeben werden: Neustart der Bridge, Update-Dienst, md380-emu und die bei der Installation erkannten alten Dienste (Start/Stopp/Neustart/Autostart), Berechtigungsprüfung und – nur wenn bei der Installation bestätigt – `systemctl reboot`. Die Datei wird vor dem Einspielen mit `visudo` geprüft und bei jedem Update neu erzeugt. Alles andere (Shell, andere Dienste) ist verboten.
+Freigegeben werden: Neustart der Bridge, Installation/Reparatur von md380-emu (`install.sh --install-md380`), Update-Dienst, md380-emu und die bei der Installation erkannten alten Dienste (Start/Stopp/Neustart/Autostart), Berechtigungsprüfung und – nur wenn bei der Installation bestätigt – `systemctl reboot`. Die Datei wird vor dem Einspielen mit `visudo` geprüft und bei jedem Update neu erzeugt. Alles andere (Shell, andere Dienste) ist verboten.
 
 ## Berechtigungen
 

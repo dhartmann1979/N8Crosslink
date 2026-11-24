@@ -4,10 +4,30 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>{{ title }}</title>
-  <link rel="icon" type="image/svg+xml" href="/static/n8crosslink-icon.svg">
-  <link rel="alternate icon" type="image/png" href="/static/n8crosslink-icon-192.png">
-  <link rel="apple-touch-icon" href="/static/n8crosslink-icon-192.png">
+  <!-- Site-Icons (Die N8schicht) -->
+  <link rel="icon" type="image/svg+xml" href="/static/n8crosslink-favicon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png">
+  <link rel="shortcut icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
   <meta name="theme-color" content="#070b17">
+  <meta name="msapplication-TileColor" content="#0c1230">
+  <meta name="msapplication-TileImage" content="/static/icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="{{ title }}">
+  <meta name="application-name" content="{{ title }}">
+  <meta name="description" content="{{ title }} – FRN · DMR · Zello Bridge der N8schicht">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Die N8schicht">
+  <meta property="og:title" content="{{ title }}">
+  <meta property="og:description" content="FRN · DMR · Zello Bridge – Live-Dashboard">
+  <meta property="og:image" content="/static/icons/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="/static/icons/og-image.png">
   <link rel="stylesheet" href="/static/crosslink.css?v={{ version }}">
 </head>
 <body>
@@ -41,6 +61,7 @@
       <span class="ss" id="ssDmr">DMR<span class="hdr-lbl" id="ssDmrLbl"></span></span>
       <span class="ss" id="ssZello">Zello<span class="hdr-lbl" id="ssZelloLbl"></span></span>
       <span class="ss" id="ssVoc">Vocoder<span class="hdr-lbl" id="ssVocLbl"></span></span>
+      <span class="ss on" id="ssListen" hidden>🎧<span class="hdr-lbl">&nbsp;Mithören</span></span>
       <span class="ss-spacer"></span>
       <span class="ss-info" id="ssInfo" style="color:var(--text-dim)"></span>
     </div>
@@ -74,7 +95,11 @@
         <div class="oa-name" id="oaName">Ruhe auf allen Netzen</div>
         <div class="oa-sub" id="oaSub">Warte auf die nächste Durchsage …</div>
       </div>
-      <div><div class="meter"><i id="oaMeter"></i></div></div>
+      <div class="oa-side"><div class="meter"><i id="oaMeter"></i></div>
+        <div class="listen" id="listenBox" hidden>
+          <button class="btn secondary" id="listenBtn" title="Mithören (nur für angemeldete Admins)">🎧 Mithören</button>
+          <input type="range" id="listenVol" min="0" max="200" value="100" title="Lautstärke">
+        </div></div>
       <div class="oa-timer" id="oaTimer"></div>
     </div>
 

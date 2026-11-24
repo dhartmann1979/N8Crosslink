@@ -94,6 +94,94 @@ fix_perms() {
   if (( n + m > 0 )); then ok "Berechtigungen geprüft – $((n + m)) Einträge korrigiert"; else ok "Berechtigungen geprüft – alles in Ordnung"; fi
 }
 
+# ---------------------------------------------------------------- Software-Vocoder md380-emu
+# Quelle: DVSwitch-Paketquelle (http://dvswitch.org/bookworm – Debian 12/13, Ubuntu 22.04/24.04,
+# amd64/arm64). Auf x86 läuft md380-emu (ARM-Code) über qemu-user-static.
+# Danach echter Test (Encode/Decode über UDP 2470); passt der Paket-Dienst nicht, werden
+# Startvarianten durchprobiert.
+md380_bin() {
+  local p
+  for p in "$(type -P md380-emu 2>/dev/null)" /opt/md380-emu/md380-emu /usr/local/bin/md380-emu /usr/bin/md380-emu; do
+    [[ -n "$p" && -f "$p" ]] && { echo "$p"; return 0; }
+  done
+  return 1
+}
+md380_probe() {
+  local i
+  for i in 1 2 3 4 5 6; do
+    sleep 2
+    (cd "$APP_DIR" && runuser -u "$SVC_USER" -- env N8X_DB="$DB" "$APP_DIR/venv/bin/python" -m n8crosslink.cli \
+       vocoder-test --mode md380 --host 127.0.0.1 --port 2470) 2>/dev/null | grep -q '^OK' && return 0
+  done
+  return 1
+}
+install_md380() {
+  local BIN REPO
+  . /etc/os-release 2>/dev/null || true
+  BIN=$(md380_bin || true)
+  if [[ -z "$BIN" ]]; then
+    case "${ID:-}:${VERSION_CODENAME:-}" in
+      *:bullseye) REPO=bullseye ;;
+      *:buster)   REPO=buster ;;
+      *)          REPO=bookworm ;;   # Debian 12/13, Raspberry Pi OS, Ubuntu 22.04/24.04
+    esac
+    info "Richte DVSwitch-Paketquelle ein (dvswitch.org/$REPO) …"
+    if curl -fsSL "http://dvswitch.org/$REPO" -o /tmp/dvswitch-repo; then
+      DEBIAN_FRONTEND=noninteractive bash /tmp/dvswitch-repo </dev/null >/tmp/dvswitch-repo.log 2>&1 || warn "DVSwitch-Skript meldet Fehler (siehe /tmp/dvswitch-repo.log)"
+      apt-get update -qq || true
+      apt-get install -y -qq md380-emu >/dev/null 2>&1 || warn "apt install md380-emu fehlgeschlagen"
+    else
+      warn "dvswitch.org nicht erreichbar"
+    fi
+    BIN=$(md380_bin || true)
+  fi
+  if [[ -z "$BIN" ]]; then
+    warn "md380-emu konnte nicht installiert werden – siehe docs/VOCODER.md (manuell installieren oder USB-Stick nutzen)"
+    return 1
+  fi
+  chmod +x "$BIN"
+  ok "md380-emu: $BIN"
+  case "$(dpkg --print-architecture 2>/dev/null || uname -m)" in
+    arm*|aarch64) : ;;
+    *) if ! command -v qemu-arm-static >/dev/null; then
+         info "x86: installiere qemu-user-static für den ARM-Emulator …"
+         apt-get install -y -qq qemu-user-static binfmt-support >/dev/null 2>&1 || warn "qemu-user-static nicht installierbar"
+       fi ;;
+  esac
+  [[ -d /run/systemd/system ]] || { warn "kein systemd – md380-emu von Hand starten: $BIN -S 2470"; return 0; }
+  systemctl daemon-reload
+  if systemctl list-unit-files 2>/dev/null | grep -q '^md380-emu.service'; then
+    systemctl enable md380-emu >/dev/null 2>&1 || true
+    systemctl restart md380-emu >/dev/null 2>&1 || true
+    if md380_probe; then ok "md380-emu antwortet auf UDP 2470 (Dienst aus dem Paket)"; return 0; fi
+    warn "Paket-Dienst antwortet nicht auf 2470 – probiere eigene Startvarianten"
+  fi
+  local args
+  for args in "-S 2470" "2470" "-p 2470"; do
+    cat > /etc/systemd/system/md380-emu.service <<UNIT
+[Unit]
+Description=md380-emu AMBE+2 Software-Vocoder (DVSwitch) für N8 Crosslink
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$(dirname "$BIN")
+ExecStart=$BIN $args
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+    systemctl daemon-reload
+    systemctl enable md380-emu >/dev/null 2>&1 || true
+    systemctl restart md380-emu >/dev/null 2>&1 || true
+    if md380_probe; then ok "md380-emu antwortet auf UDP 2470 (ExecStart: $BIN $args)"; return 0; fi
+  done
+  warn "md380-emu läuft, antwortet aber nicht auf UDP 2470 – journalctl -u md380-emu prüfen"
+  return 1
+}
+
 # ---------------------------------------------------------------- sudo fürs Webinterface
 # Nur exakt aufgezählte Befehle, geprüft mit visudo. Die Bridge selbst bleibt ohne root-Rechte.
 setup_sudo() {
@@ -120,9 +208,10 @@ setup_sudo() {
   done
   [[ "$allow_reboot" == "true" ]] && echo "$SVC_USER ALL=(root) NOPASSWD: $SC reboot" >> "$TMP"
   echo "$SVC_USER ALL=(root) NOPASSWD: $APP_DIR/install.sh --fix-perms" >> "$TMP"
+  echo "$SVC_USER ALL=(root) NOPASSWD: $APP_DIR/install.sh --install-md380" >> "$TMP"
   if visudo -cf "$TMP" >/dev/null 2>&1; then
     install -o root -g root -m 0440 "$TMP" "$F"
-    printf '{"sudo": true, "systemctl": "%s", "reboot": %s, "fix_perms": true, "units": [%s]}\n' "$SC" "$allow_reboot" "$json" > "$DATA_DIR/system.json"
+    printf '{"sudo": true, "systemctl": "%s", "reboot": %s, "fix_perms": true, "install_md380": true, "units": [%s]}\n' "$SC" "$allow_reboot" "$json" > "$DATA_DIR/system.json"
     chown "$SVC_USER:$SVC_USER" "$DATA_DIR/system.json"; chmod 640 "$DATA_DIR/system.json"
     ok "sudo fürs Webinterface eingerichtet ($(grep -c NOPASSWD "$F") freigegebene Befehle, mit visudo geprüft)"
   else
@@ -137,6 +226,14 @@ setcfg() { cli set "$1" "$2" "$3" >/dev/null; }
 if [[ "${1:-}" == "--fix-perms" ]]; then
   [[ $EUID -eq 0 ]] || fail "Bitte als root starten"
   echo "Berechtigungen prüfen (N8 Crosslink) …"; fix_perms; exit 0
+fi
+if [[ "${1:-}" == "--install-md380" ]]; then
+  [[ $EUID -eq 0 ]] || fail "Bitte als root starten"
+  echo "Software-Vocoder md380-emu installieren/prüfen …"
+  install_md380 && { setcfg vocoder vocoder_mode md380; setcfg vocoder md380_port 2470; ok "Vocoder auf md380-emu gestellt"; } || exit 1
+  # sudo-Freigaben um md380-emu ergänzen (neuer Dienst)
+  REBOOT=true; grep -q '"reboot": false' "$DATA_DIR/system.json" 2>/dev/null && REBOOT=false
+  setup_sudo "$REBOOT"; exit 0
 fi
 
 clear || true
@@ -203,6 +300,24 @@ fix_perms
 runuser -u "$SVC_USER" -- "$APP_DIR/venv/bin/python" -c "import sys; sys.path.insert(0, '$APP_DIR'); from n8crosslink.audio import gsm, opus; gsm.GsmEncoder(); opus.OpusEncoder()" \
   || fail "libgsm/libopus konnten nicht geladen werden"
 ok "Abhängigkeiten installiert, GSM- und Opus-Codec geprüft"
+
+if [[ "$MODE" == "neu" ]]; then
+  echo
+  ask BK_FILE "Verschlüsseltes Backup (.n8xbak) einspielen? Pfad angeben, leer = nein" ""
+  if [[ -n "$BK_FILE" ]]; then
+    if [[ -f "$BK_FILE" ]]; then
+      cp "$BK_FILE" "$DATA_DIR/restore.n8xbak"; chown "$SVC_USER" "$DATA_DIR/restore.n8xbak"
+      for try in 1 2 3; do
+        ask_secret BK_PW "Superadmin-Passwort, mit dem das Backup erstellt wurde"
+        if printf '%s\n' "$BK_PW" | cli restore "$DATA_DIR/restore.n8xbak"; then MODE="restored"; break; fi
+      done
+      rm -f "$DATA_DIR/restore.n8xbak"; unset BK_PW
+      [[ "$MODE" == "restored" ]] && ok "Backup eingespielt – alle Einstellungen, Benutzer und Daten übernommen" || warn "Backup nicht eingespielt – weiter mit Neueinrichtung"
+    else
+      warn "Datei nicht gefunden – weiter mit Neueinrichtung"
+    fi
+  fi
+fi
 
 if [[ "$MODE" == "neu" ]]; then
 # ---------------------------------------------------------------- 4 Allgemein + Superadmin
@@ -288,23 +403,8 @@ ask_choice VOC "Welcher Vocoder?" 1 \
   "AMBEserver im Netz" \
   "später im Adminportal festlegen"
 case "$VOC" in
-  1) setcfg vocoder vocoder_mode md380
-     if command -v md380-emu >/dev/null; then ok "md380-emu gefunden: $(command -v md380-emu)"
-     else
-       warn "md380-emu ist nicht installiert. Es stammt aus dem DVSwitch-Projekt."
-       if ask_yn "DVSwitch-Paketquelle für ${VERSION_CODENAME:-diese Version} einrichten und md380-emu installieren?" j; then
-         if curl -fsSL "http://dvswitch.org/${VERSION_CODENAME}" -o /tmp/dvswitch-repo && bash /tmp/dvswitch-repo >/dev/null 2>&1 \
-            && apt-get update -qq && apt-get install -y -qq md380-emu >/dev/null; then ok "md380-emu installiert"
-         else warn "Automatische Installation fehlgeschlagen – siehe docs/VOCODER.md (manuell installieren, dann Dienst neu starten)."; fi
-       fi
-     fi
-     if command -v md380-emu >/dev/null; then
-       [[ "$ARCH" != arm* && "$ARCH" != "aarch64" ]] && ! command -v qemu-arm-static >/dev/null && apt-get install -y -qq qemu-user-static >/dev/null 2>&1 || true
-       if ! systemctl list-unit-files 2>/dev/null | grep -q '^md380-emu'; then
-         cp "$SRC_DIR/systemd/md380-emu.service" /etc/systemd/system/ && sed -i "s#/usr/bin/md380-emu#$(command -v md380-emu)#" /etc/systemd/system/md380-emu.service
-       fi
-       systemctl daemon-reload; systemctl enable --now md380-emu >/dev/null 2>&1 && ok "md380-emu läuft auf UDP 2470" || warn "md380-emu-Dienst startet nicht – siehe journalctl -u md380-emu"
-     fi ;;
+  1) setcfg vocoder vocoder_mode md380; setcfg vocoder md380_port 2470
+     install_md380 || warn "Vocoder kann später unter Admin → 🎛️ Vocoder → „md380-emu installieren“ nachgeholt werden" ;;
   2) setcfg vocoder vocoder_mode usb
      DEV=$(ls /dev/serial/by-id/* 2>/dev/null | head -1 || true); [[ -z "$DEV" ]] && DEV=$(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null | head -1 || true)
      ask V "Gerät" "${DEV:-/dev/ttyUSB0}"; setcfg vocoder usb_device "$V"
@@ -316,7 +416,11 @@ case "$VOC" in
   *) info "Vocoder wird später im Adminportal gewählt (Admin → 🎛️ Vocoder)." ;;
 esac
 else
-  step 4 "Einstellungen bleiben erhalten"; ok "Update-Modus"
+  step 4 "Einstellungen bleiben erhalten"; ok "$([[ "$MODE" == restored ]] && echo "aus dem Backup übernommen" || echo "Update-Modus")"
+  # Software-Vocoder bei Update/Wiederherstellung mitprüfen: md380 eingestellt, aber nicht installiert -> nachholen
+  if cli show vocoder | grep -q '"vocoder_mode": "md380"' && { [[ "$MODE" == "restored" ]] || ! md380_bin >/dev/null; }; then
+    install_md380 || true
+  fi
   step 5 "–"; step 6 "–"; step 7 "–"; step 8 "–"
 fi
 
@@ -333,7 +437,11 @@ if [[ -n "$OLD" ]]; then
   warn "Gefundene alte Dienste (SvxLink-FRN / DMR-Bridge / Zello-Bridge):"
   echo "$OLD" | sed 's/^/       • /'
   if ask_yn "Diese Dienste stoppen und deaktivieren? (später mit systemctl enable --now wieder einschaltbar)" n; then
-    for s in $OLD; do systemctl disable --now "$s" >/dev/null 2>&1 && ok "$s gestoppt und deaktiviert"; done
+    mkdir -p /var/lib/n8crosslink
+    for s in $OLD; do
+      systemctl disable --now "$s" >/dev/null 2>&1 && ok "$s gestoppt und deaktiviert" && echo "$s" >> /var/lib/n8crosslink/disabled-services
+    done
+    sort -u -o /var/lib/n8crosslink/disabled-services /var/lib/n8crosslink/disabled-services
   else info "Alte Dienste bleiben aktiv – Achtung: nicht beide Bridges gleichzeitig im selben Raum/derselben TG betreiben."; fi
 fi
 cp "$SRC_DIR/systemd/n8crosslink.service" "$SRC_DIR/systemd/n8crosslink-update.path" \

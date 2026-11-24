@@ -316,6 +316,8 @@ async function loadMe() {
   $('#setupBanner').hidden = true;
   $('#pwBanner').hidden = !S.me.default_password;
   $('#tabAdminBtn').hidden = !S.me.user;
+  $('#listenBox').hidden = !S.me.user;
+  if (!S.me.user && typeof L !== 'undefined' && L.on) listenStop();
   $('#userArea').innerHTML = S.me.user
     ? `<button class="hdr-btn" id="logoutBtn" title="Abmelden">👤 ${esc(S.me.user)} · ⎋</button>`
     : `<button class="hdr-btn login" id="loginBtn">🔐 Login</button>`;
@@ -390,6 +392,7 @@ const SCHEMA = {
   vocoder: { title: '🎛️ Vocoder', custom: renderVocoder },
   ids: { title: '🗂️ ID-Listen & Avatare', custom: renderIds },
   update: { title: '⬆️ Updates', custom: renderUpdate },
+  backup: { title: '💾 Backup & Neuanfang', custom: renderBackup },
   users: { title: '👥 Benutzer', custom: renderUsers },
   system: { title: '🛠️ System', custom: renderSystem },
 };
@@ -478,13 +481,22 @@ function renderVocoder() {
     <div class="form">${flds.map(f => fieldHtml('vocoder', f, c[f.key])).join('')}
       <div class="field wide"><label>Aktueller Zustand</label><div>${v ? `${v.online ? '<span class="badge ok">bereit</span>' : '<span class="badge off">offline</span>'} ${esc(v.name)} ${esc(v.product || '')} · Encode ${v.enc} · Decode ${v.dec} · Timeouts ${v.timeouts}` : '<span class="badge warn">nicht gestartet</span>'}</div>
       <small id="vocTestRes"></small></div></div>
+    <pre id="mdOut" style="font-size:11.5px;white-space:pre-wrap;color:var(--text-dim);padding:0 4px"></pre>
     <div class="form-actions">${sel === 'usb' ? '<button class="btn secondary" id="scanBtn">🔍 USB-Geräte suchen</button>' : ''}
+      ${sel === 'md380' ? '<button class="btn secondary" id="mdBtn">🧠 md380-emu installieren / reparieren</button>' : ''}
       <button class="btn secondary" id="vocTestBtn">🧪 Vocoder testen</button><button class="btn" id="saveBtn">💾 Speichern &amp; neu starten</button></div>`;
   $$('.voc-opt').forEach(o => o.onclick = () => { window._vocSel = o.dataset.m; renderVocoder(); });
   $('#saveBtn').onclick = async () => {
     await saveSection('vocoder', flds, { vocoder_mode: sel });
     await api('/api/admin/restart', { method: 'POST' }); $('#restartBanner').hidden = true;
     window._vocSel = null; toast('🔄 Vocoder gespeichert, Bridge startet neu …'); setTimeout(loadAdmin, 2500);
+  };
+  if ($('#mdBtn')) $('#mdBtn').onclick = async () => {
+    if (!confirm('md380-emu jetzt installieren bzw. reparieren? (DVSwitch-Paketquelle, ggf. qemu, Dienst, Funktionstest – dauert bis zu einigen Minuten)')) return;
+    $('#mdOut').textContent = 'installiere … (bitte warten)';
+    try { const r = await api('/api/admin/md380/install', { method: 'POST' }); $('#mdOut').textContent = r.message; toast(r.ok ? '✅ md380-emu bereit' : '⚠️ siehe Ausgabe');
+      if (r.ok) { await api('/api/admin/restart', { method: 'POST' }); } }
+    catch (e) { $('#mdOut').textContent = '⚠️ ' + e.message; }
   };
   $('#vocTestBtn').onclick = async () => {
     $('#vocTestRes').textContent = 'teste …';
@@ -633,6 +645,93 @@ async function startUpdate() {
 $('#updateNowBtn')?.addEventListener('click', () => startUpdate());
 $('#updateInfoBtn')?.addEventListener('click', () => { S.adminSec = 'update'; showTab('admin'); });
 $('#pwChangeBtn')?.addEventListener('click', () => { S.adminSec = 'users'; showTab('admin'); });
+
+/* ---------- Backup & Neuanfang ---------- */
+function renderBackup() {
+  $('#adminBody').innerHTML = `
+    <div class="banner warn" style="margin:12px 0;align-items:flex-start">🔐 <div class="grow"><b>WICHTIG – Superadmin-Passwort = Schlüssel des Backups</b><br>
+      Das Backup wird vollständig verschlüsselt (AES-256-GCM, kein Klartext). Der Schlüssel ist das <b>Passwort des Superadmins</b> zum Zeitpunkt des Backups.
+      Ohne dieses Passwort lässt sich das Backup <b>nicht</b> wiederherstellen – auch nicht vom Entwickler.
+      Bitte das Superadmin-Passwort im <b>Passwortsafe</b> aufbewahren (z. B. zusammen mit dem Backup-Dateinamen).</div></div>
+    <h2 class="section-header">Backup herunterladen</h2>
+    <p style="color:var(--text-dim);font-size:13px;padding:0 4px">Enthält alles: Einstellungen inkl. Zugangsdaten (FRN, DMR, Zello), Benutzer, Last Heard, Statistik, Ereignisse, ID-Listen, Talkgroups und Avatare.</p>
+    <div class="form"><div class="field"><label>Superadmin-Passwort (dein aktuelles Passwort)</label><input type="password" id="bkPw" autocomplete="current-password"></div></div>
+    <div class="form-actions" style="justify-content:flex-start"><button class="btn" id="bkBtn">💾 Verschlüsseltes Backup erstellen</button><span id="bkMsg" style="font-size:13px;color:var(--text-dim)"></span></div>
+
+    <h2 class="section-header">Backup wiederherstellen</h2>
+    <div class="form"><div class="field"><label>Backupdatei (.n8xbak)</label><input type="file" id="rsFile" accept=".n8xbak"></div>
+      <div class="field"><label>Superadmin-Passwort zum Zeitpunkt des Backups</label><input type="password" id="rsPw" autocomplete="off"></div></div>
+    <div class="form-actions" style="justify-content:flex-start"><button class="btn secondary" id="rsCheck">🔍 Prüfen</button><button class="btn" id="rsBtn" disabled>♻️ Wiederherstellen</button></div>
+    <div id="rsInfo" style="padding:0 4px"></div>
+
+    <h2 class="section-header">Von vorn beginnen</h2>
+    <p style="color:var(--text-dim);font-size:13px;padding:0 4px">Vorher am besten ein Backup erstellen. Komplett deinstallieren geht auf dem Server mit <code>sudo /opt/n8crosslink/uninstall.sh</code> (siehe Doku „Deinstallation“).</p>
+    <div class="form"><div class="field"><label>Was zurücksetzen?</label><select id="rsScope">
+        <option value="history">Last Heard, Statistik und Ereignisse löschen</option>
+        <option value="settings">Alle Einstellungen auf Standard (Benutzer und Verlauf bleiben)</option>
+        <option value="all">Alles – wie neu installiert (Login danach n8schicht / n8schicht)</option></select></div>
+      <div class="field"><label>Superadmin-Passwort zur Bestätigung</label><input type="password" id="rsPw2" autocomplete="current-password"></div></div>
+    <div class="form-actions" style="justify-content:flex-start"><button class="btn danger" id="rsReset">⚠️ Zurücksetzen</button></div>`;
+  const b64 = (f) => new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
+  $('#bkBtn').onclick = async () => {
+    $('#bkMsg').textContent = 'verschlüssele …';
+    const r = await fetch('/api/admin/backup', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: $('#bkPw').value }) });
+    if (!r.ok) { let d = {}; try { d = await r.json(); } catch { /* leer */ } $('#bkMsg').textContent = '⚠️ ' + (d.detail || r.statusText); return; }
+    const name = (r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || 'n8crosslink-backup.n8xbak';
+    const url = URL.createObjectURL(await r.blob()); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url);
+    $('#bkPw').value = ''; $('#bkMsg').textContent = '✅ ' + name + ' – Passwort im Passwortsafe aufbewahren!';
+  };
+  let file64 = null;
+  $('#rsCheck').onclick = async () => {
+    const f = $('#rsFile').files[0]; if (!f) return toast('Bitte eine .n8xbak-Datei wählen');
+    file64 = await b64(f);
+    try {
+      const r = await api('/api/admin/restore/inspect', { method: 'POST', body: { file: file64, password: $('#rsPw').value } }); const m = r.manifest;
+      $('#rsInfo').innerHTML = kv([['Erstellt', new Date(m.created * 1000).toLocaleString('de-DE') + ' von ' + esc(m.created_by)], ['Version', esc(m.version)], ['Rechner', esc(m.host)],
+        ['Inhalt', esc((m.contents || []).join(', '))], ['Umfang', `${m.counts?.users} Benutzer · ${(m.counts?.dmr_ids || 0).toLocaleString('de-DE')} DMR-IDs · ${m.counts?.talkgroups} TGs · ${m.counts?.avatars} Avatare`]]);
+      $('#rsBtn').disabled = false;
+    } catch (e) { $('#rsInfo').innerHTML = `<div class="err">⚠️ ${esc(e.message)}</div>`; $('#rsBtn').disabled = true; }
+  };
+  $('#rsBtn').onclick = async () => {
+    if (!confirm('Backup jetzt einspielen? Alle aktuellen Daten werden ersetzt, die Bridge startet neu.')) return;
+    try { await api('/api/admin/restore', { method: 'POST', body: { file: file64, password: $('#rsPw').value } }); toast('✅ Backup eingespielt – bitte neu anmelden'); setTimeout(() => location.reload(), 2000); }
+    catch (e) { toast('⚠️ ' + e.message); }
+  };
+  $('#rsReset').onclick = async () => {
+    const sc = $('#rsScope').value;
+    if (!confirm(`Wirklich zurücksetzen: ${$('#rsScope').selectedOptions[0].text}?`)) return;
+    try { const r = await api('/api/admin/reset', { method: 'POST', body: { scope: sc, password: $('#rsPw2').value } }); toast('✅ Zurückgesetzt'); setTimeout(() => location.reload(), r.relogin ? 1500 : 800); }
+    catch (e) { toast('⚠️ ' + e.message); }
+  };
+}
+
+/* ---------- Mithören (nur angemeldete Admins) ---------- */
+const L = { ws: null, ctx: null, gain: null, next: 0, on: false };
+function listenStart() {
+  L.ctx = L.ctx || new (window.AudioContext || window.webkitAudioContext)();
+  L.ctx.resume();
+  if (!L.gain) { L.gain = L.ctx.createGain(); L.gain.connect(L.ctx.destination); }
+  L.gain.gain.value = $('#listenVol').value / 100;
+  L.ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/audio');
+  L.ws.binaryType = 'arraybuffer';
+  L.ws.onmessage = (ev) => {
+    if (typeof ev.data === 'string') { const m = JSON.parse(ev.data); if (m.type === 'start') L.next = 0; return; }
+    const pcm = new Int16Array(ev.data), buf = L.ctx.createBuffer(1, pcm.length, 8000), ch = buf.getChannelData(0);
+    for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
+    const src = L.ctx.createBufferSource(); src.buffer = buf; src.connect(L.gain);
+    const now = L.ctx.currentTime;
+    if (L.next < now + 0.05 || L.next > now + 1.0) L.next = now + 0.25;   // Jitterpuffer 250 ms
+    src.start(L.next); L.next += buf.duration;
+  };
+  L.ws.onclose = (ev) => { if (L.on && ev.code !== 4401) setTimeout(() => { if (L.on) listenStart(); }, 2000); else listenStop(); };
+  L.on = true; $('#listenBtn').classList.add('on'); $('#listenBtn').textContent = '🎧 Mithören aktiv'; $('#ssListen').hidden = false;
+}
+function listenStop() {
+  L.on = false; if (L.ws) { L.ws.onclose = null; L.ws.close(); L.ws = null; }
+  $('#listenBtn').classList.remove('on'); $('#listenBtn').textContent = '🎧 Mithören'; $('#ssListen').hidden = true;
+}
+$('#listenBtn').addEventListener('click', () => L.on ? listenStop() : listenStart());
+$('#listenVol').addEventListener('input', () => { if (L.gain) L.gain.gain.value = $('#listenVol').value / 100; });
 
 /* ---------- Start ---------- */
 (async () => {

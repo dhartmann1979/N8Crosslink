@@ -49,6 +49,12 @@ Aktualisierung 1× täglich automatisch und per **„ID-Listen jetzt aktualisier
 * **FRN:** Rufzeichen → ID aus der Liste → FreeRadioID-Bild.
 * **Zello:** Die Zello Channel API liefert keine Profilbilder. Daher: 1. eigenes Bild hochladen (pro Zello-Benutzer), 2. optionale URL-Vorlage mit `{username}`, 3. enthält der Zello-Name ein Rufzeichen (z. B. `dl1abc_hans`), dessen FreeRadioID-Bild.
 
+## 💾 Backup & Neuanfang
+Nur für Superadmins. Bietet ein verschlüsseltes Backup zum Download, die Wiederherstellung (vorher prüfen) und das Zurücksetzen in drei Stufen. Wichtig: Der Schlüssel des Backups ist das Superadmin-Passwort, siehe [BACKUP.md](BACKUP.md) und [DEINSTALLATION.md](DEINSTALLATION.md).
+
+## 🎧 Mithören
+Angemeldete Admins sehen in der On-Air-Karte den Knopf **„🎧 Mithören“** mit Lautstärkeregler. Der Ton der gerade aktiven Durchsage kommt aus jedem Netz (FRN, DMR oder Zello) als 8-kHz-Audio über einen eigenen, per Login geschützten WebSocket. Ohne Anmeldung wird die Verbindung abgelehnt, beim Abmelden endet das Mithören.
+
 ## ⬆️ Updates
 Installierte und neueste Version, Zeitpunkt der letzten Prüfung, Änderungen aus dem Changelog, **„Jetzt prüfen“**, **„Update jetzt installieren“** und das Protokoll des letzten Updates.
 

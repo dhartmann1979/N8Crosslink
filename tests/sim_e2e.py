@@ -402,8 +402,16 @@ async def main() -> int:
     print("\n▶ A: FRN (DL1ABC Hans) spricht 2 s")
     hb.rx.clear()
     t0 = time.time()
+    lq: asyncio.Queue = asyncio.Queue()
+    r.audio_listeners.add(lq)
     await frn.talk(1, 2.0)
     await asyncio.sleep(2.0)
+    r.audio_listeners.discard(lq)
+    items = [lq.get_nowait() for _ in range(lq.qsize())]
+    pcm_frames = [x for x in items if isinstance(x, bytes)]
+    ctrl = [x.get("type") for x in items if isinstance(x, dict)]
+    check("Mithören: Start/Ende + Audio", ctrl[:1] == ["start"] and ctrl[-1:] == ["end"] and len(pcm_frames) >= 90,
+          f"{len(pcm_frames)} Rahmen à 20 ms, Pegel {level_dbfs(b''.join(pcm_frames)):.0f} dBFS")
     a = analyse_dmr(hb.rx)
     check("DMR: Voice-Header + Terminator", a["headers"] >= 1 and a["terms"] == 1 and a["lc_ok"],
           f"{a['headers']} Header, {a['terms']} Terminator, LC-Prüfsumme ok={a['lc_ok']}")
@@ -545,6 +553,33 @@ async def main() -> int:
           and "1.0.0" not in st_u["notes"], f"{st_u['current']} → {st_u['latest']}")
     rq = await bridge.updater.request_update("test", bridge.system)
     check("Update jetzt ohne systemd-Unit sauber abgelehnt", not rq["ok"], rq["message"][:50])
+
+    # ---------------- Backup / Wiederherstellung / Zurücksetzen
+    print("\n▶ Verschlüsseltes Backup")
+    from n8crosslink import backup as bk
+    pw = "N8test-Superadmin!"
+    db.set_user("chef", pw, "superadmin")
+    name, blob = bk.create(db, tmp, pw, "chef")
+    plain_hits = [w for w in (b"SQLite format", b"testpass", b"DL1ABC", b"n8schicht", b"manifest", b"crosslink.db")
+                  if w in blob]
+    check("Backup komplett verschlüsselt (kein Klartext)", blob.startswith(b"N8XBAK") and not plain_hits,
+          f"{name}, {len(blob) // 1024} KB, Klartext-Funde: {plain_hits or 'keine'}")
+    try:
+        bk.inspect(blob, "falsch")
+        wrong = False
+    except bk.BackupError as e:
+        wrong = "Passwort falsch" in str(e)
+    check("Falsches Passwort wird abgelehnt", wrong)
+    man, dbb = bk.inspect(blob, pw)
+    check("Manifest lesbar mit richtigem Passwort", man["version"] and man["counts"]["users"] >= 2, str(man["counts"]))
+    lh_before = len(db.lh_recent(500))
+    db.reset("all")
+    check("Zurücksetzen 'alles' -> Standard-Login", db.list_users()[0]["username"] == "n8schicht" and len(db.lh_recent(500)) == 0
+          and db.load_config()["dmr"]["host"] == "dmr.die-n8schicht.de")
+    bk.restore_into(db, dbb)
+    check("Wiederherstellung: Daten, Benutzer, Einstellungen zurück",
+          len(db.lh_recent(500)) == lh_before and db.check_login("chef", pw) and db.load_config()["dmr"]["host"] == "127.0.0.1"
+          and db.idlists_info()["users"] == 1203, f"{lh_before} Last-Heard-Einträge, DMR-Host {db.load_config()['dmr']['host']}")
 
     # ---------------- Statistik
     st = db.stats(0)

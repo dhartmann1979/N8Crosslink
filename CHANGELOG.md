@@ -2,6 +2,47 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.7.0] – 2026-11-24
+
+N8 Crosslink zieht auf **N8 Theme 2** und das **N8 Kit** um – dieselben Bausteine wie HBlink4-FreeRadioID, adn-frn-server und
+N8-HotSpot. Wer zwischen den vier Oberflächen wechselt, findet überall dieselben Farbprofile, denselben Sprachumschalter, denselben
+Update-Hinweis und dieselbe Updates-Seite – die Grundlage für ein gemeinsames Portal. Ausführlich: [docs/SICHERHEIT.md](docs/SICHERHEIT.md).
+
+### 🎨 N8 Theme 2
+- Neue Admin-Seite **🎨 Aussehen** mit dem gemeinsamen Farbeditor: sieben Profile (N8 Night, Ocean, Aurora, Ember, Violet, Graphite,
+  Daylight), jede Farbe einzeln, Hintergrundleuchten, Kartenhelligkeit, Rundung, Glasunschärfe, Vorschau mit Lesbarkeits-Prüfung.
+  Änderungen sind sofort auf der ganzen Seite zu sehen, **💾 Aussehen speichern** übernimmt sie.
+- Das Farbschema steht in der Datenbank (`general.theme`), wird auf dem Server geprüft und schon im Seitenkopf angewendet (kein Flackern).
+  Neue Routen: `GET /api/theme`, `POST /api/admin/theme`. Helles Profil *Daylight* mit `n8-light.css`.
+
+### 🌐 Sprache DE | EN
+- Umschalter **DE | EN** oben rechts neben *Links*, **Standard Deutsch**. Umschalten ohne Neuladen; die Wahl gilt per Cookie (`n8_lang`)
+  für alle N8schicht-Oberflächen auf dem Server. `?lang=en` für Links.
+- Englische Texte für Kopfzeile, Statusleiste, Live, Statistik, Netze und das ganze Adminportal (Allgemein mit Sprachansage, FRN, DMR,
+  Zello, Routing, Vocoder, ID-Listen & Avatare, Aussehen, Updates, Backup, Benutzer, System) in `n8crosslink/web/static/i18n-crosslink.js`.
+  Der gemeinsame Farbeditor bekommt umgekehrt deutsche Texte.
+- Statusleiste: Kurz- und Langtext getrennt (*Live-Daten* / *Live*).
+
+### ⬆️ Updates im N8-Kit-Stil
+- **Hinweis** unter der Statusleiste: *Update verfügbar: alt → neu* mit **Was ist neu?**, **Jetzt aktualisieren**, **Details**, **Später**
+  (einen Tag) – ersetzt das bisherige Banner.
+- **Admin → Updates**: gleiche Kachel wie in den anderen Projekten, mit **Letztes Update** (erfolgreich/zurückgenommen) und Protokoll.
+- **Fortschritt** statt `confirm()` und Toast: Fenster mit Neuerungen, dann *geladen und eingespielt → Dienst startet neu → Weboberfläche
+  wird geprüft*; meldet, wenn `update.sh` die vorige Version wiederhergestellt hat.
+- `update.sh` schreibt das Ergebnis jedes Updates nach `data/update.result` (gleiches Format wie der N8 update guard der anderen Projekte).
+
+### 🔐 Sicherheit
+- **`/openapi.json` war offen** (nur `/docs` und `/redoc` waren aus) – jetzt 404. Zum Entwickeln `N8_API_DOCS=1`.
+- Neue Header bei jeder Antwort: `Content-Security-Policy`, `Strict-Transport-Security` über HTTPS bzw. hinter einem Proxy mit
+  `X-Forwarded-Proto: https`, `Permissions-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`,
+  `Cross-Origin-Opener-Policy`/`-Resource-Policy` (vorher gar keine). Kein `server: uvicorn` mehr.
+- Doku mit Beispielen für **Caddy** und **nginx** als Reverse-Proxy (inklusive WebSocket für Live-Daten und Mithören).
+
+### 🧪 Tests
+- `tests/test_web_security.py`: keine API-Doku, alle Header, HSTS hinter Proxy, kein `server`-Header, Prüfung und Speichern des
+  Farbschemas (nur mit Login), Kit-Dateien eingebunden. `tests/sim_e2e.py` weiter 57/57.
+- `tests/screenshots.py` erzeugt zusätzlich *Aussehen* und die englische Ansicht.
+
 ## [1.6.0] – 2026-11-24
 
 ### Neu: N8schicht-Vocoder (eigener Fork, Quellen im Repository)

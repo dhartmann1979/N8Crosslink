@@ -29,6 +29,14 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:image" content="/static/icons/og-image.png">
   <link rel="stylesheet" href="/static/crosslink.css?v={{ version }}">
+  <!-- N8 Theme 2 + N8 Kit: gleiche Farbtechnik, Sprache und Updates wie HBlink4-FreeRadioID, adn-frn-server und N8-HotSpot -->
+  <link rel="stylesheet" href="/static/n8-theme.css?v={{ version }}">
+  <link rel="stylesheet" href="/static/n8-light.css?v={{ version }}">
+  <link rel="stylesheet" href="/static/n8-kit.css?v={{ version }}">
+  <script src="/static/n8-theme.js?v={{ version }}"></script>
+  <script>N8Theme.apply({{ theme|tojson }});</script>
+  <script src="/static/n8-kit.js?v={{ version }}"></script>
+  <script src="/static/i18n-crosslink.js?v={{ version }}"></script>
 </head>
 <body>
 <div class="container">
@@ -64,7 +72,7 @@
       </div>
     </header>
     <div class="status-strip" role="status">
-      <span class="ss" id="ssLive">Live<span class="hdr-lbl">&nbsp;Daten</span></span>
+      <span class="ss" id="ssLive"><span class="hdr-lbl">Live-Daten</span><span class="hdr-sl">Live</span></span>
       <span class="ss" id="ssFrn">FRN<span class="hdr-lbl" id="ssFrnLbl"></span></span>
       <span class="ss" id="ssDmr">DMR<span class="hdr-lbl" id="ssDmrLbl"></span></span>
       <span class="ss" id="ssZello">Zello<span class="hdr-lbl" id="ssZelloLbl"></span></span>
@@ -81,8 +89,8 @@
     <button class="btn" id="restartNowBtn">Jetzt neu starten</button></div>
   <div class="banner warn" id="pwBanner" hidden>🔑 <span class="grow">Standard-Login <b>n8schicht / n8schicht</b> ist noch aktiv – bitte unter Admin → Benutzer ein eigenes Passwort setzen.</span>
     <button class="btn" id="pwChangeBtn">Passwort ändern</button></div>
-  <div class="banner" id="updateBanner" hidden>⬆️ <span class="grow" id="updateText"></span>
-    <button class="btn secondary" id="updateInfoBtn">Änderungen</button><button class="btn" id="updateNowBtn">Jetzt aktualisieren</button></div>
+  <!-- Update-Hinweis (N8 Kit): nur für angemeldete Admins -->
+  <div class="n8-upd" id="updateBanner" hidden></div>
   <div class="banner" id="announceBanner" hidden>📢 <span class="grow" id="announceText"></span></div>
 
   <!-- ============================== LIVE ============================== -->
@@ -199,5 +207,9 @@
 </div>
 <div class="toast" id="toast"></div>
 <script src="/static/crosslink.js?v={{ version }}"></script>
+<script>
+  // N8 Kit: DE | EN neben Links und Anmeldung (derselbe Umschalter auf allen N8schicht-Seiten)
+  N8Kit.langSwitch(document.querySelector('header .hdr-right'), { before: document.getElementById('userArea') });
+</script>
 </body>
 </html>

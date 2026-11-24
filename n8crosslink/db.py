@@ -14,6 +14,7 @@ import time
 DEFAULTS: dict = {
     "general": {
         "title": "N8 Crosslink",
+        "theme": {},
         "server_name": "crosslink.die-n8schicht.de",
         "web_host": "0.0.0.0",
         "web_port": 8080,

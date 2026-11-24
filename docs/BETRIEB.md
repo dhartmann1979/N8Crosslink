@@ -15,10 +15,15 @@ Jeder Verbindungsverlust und jede Wiederherstellung steht in den Ereignissen; Z�
 
 ## Updates
 
+Hinweis, Updates-Seite und Fortschritt kommen aus dem **N8 Kit** und sehen in N8 Crosslink, HBlink4-FreeRadioID, adn-frn-server und N8-HotSpot gleich aus (siehe [SICHERHEIT.md](SICHERHEIT.md#n8-kit)).
+
 * Prüfung **stündlich zur vollen Stunde** (und kurz nach dem Start): Versionsnummer in `n8crosslink/__init__.py` auf GitHub (`dhartmann1979/N8Crosslink`, Branch `main`) gegen die installierte Version.
-* Neue Version → Banner für angemeldete Admins mit **„Änderungen“** (aus `CHANGELOG.md`) und **„Jetzt aktualisieren“**.
-* „Jetzt aktualisieren“ startet über sudo `n8crosslink-update.service` (als root) → `update.sh --auto`: Quellen holen, Installer im Update-Modus (Abhängigkeiten, Berechtigungen, sudo-Freigaben), Dienst neu starten. Das Dashboard lädt danach automatisch neu.
+* Neue Version → Hinweis unter der Statusleiste für angemeldete Admins: *Update verfügbar: 1.6.0 → 1.7.0* mit **Was ist neu?** (aus `CHANGELOG.md`), **Jetzt aktualisieren**, **Details** (öffnet Admin → Updates) und **Später** (blendet den Hinweis für diese Version einen Tag aus).
+* **Jetzt aktualisieren** öffnet ein Fenster mit den Neuerungen; nach der Bestätigung drei Schritte mit Fortschritt: *Update wird geladen und eingespielt → Dienst startet neu → Weboberfläche wird geprüft*. Technisch startet es über sudo `n8crosslink-update.service` (als root) → `update.sh --auto`: Quellen holen, Installer im Update-Modus (Abhängigkeiten, Berechtigungen, sudo-Freigaben), Dienst neu starten, Weboberfläche per HTTP prüfen. Antwortet sie nicht, stellt `update.sh` die vorige Version wieder her. Die Seite lädt danach von selbst neu.
+* Ergebnis unter **Admin → Updates → Letztes Update** (*erfolgreich* oder *zurückgenommen*), gespeichert in `data/update.result` – dasselbe Format wie in den anderen N8schicht-Projekten.
 * Ersatzweg ohne sudo: `n8crosslink-update.path` reagiert auf `data/update.request`.
+
+![Updates](screenshots/admin-updates.png)
 
 ## sudo – alles über das Webinterface
 

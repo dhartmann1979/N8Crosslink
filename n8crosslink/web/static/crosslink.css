@@ -342,3 +342,7 @@ footer a { color: var(--text-dim); text-decoration: underline; text-decoration-c
 .vp-bands div { flex: 1; text-align: center; font-size: 10.5px; padding: 4px 2px; border-radius: 6px; background: rgba(255,255,255,.05); }
 .vp-bands b { display: block; font-size: 12px; }
 @media (max-width: 640px) { .vp-res { grid-template-columns: 1fr; } }
+
+/* Kurz-/Langtext in der Statusleiste (übersetzbar, N8 Kit) */
+.hdr-sl { display: none; }
+@media (max-width: 760px) { .status-strip .hdr-sl { display: inline; } }

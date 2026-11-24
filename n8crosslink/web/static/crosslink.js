@@ -119,8 +119,12 @@ function renderState() {
   setSegMeter(act ? (st.ports[act.source]?.rx_level ?? -90) : -90);
   renderOnAir(); renderNetCards(); renderRoom();
   const up = st.update;
-  $('#updateBanner').hidden = !(S.me?.user && up?.available);
-  if (up?.available) $('#updateText').innerHTML = `Update verfügbar: <b>${esc(up.current)}</b> → <b>${esc(up.latest)}</b>`;
+  if (!S.me?.user) $('#updateBanner').hidden = true;
+  else if (JSON.stringify(up || {}) !== S.updSig) {
+    S.updSig = JSON.stringify(up || {});
+    N8Kit.update.banner($('#updateBanner'), kitUpdate(up), { app: 'n8x', onInstall: () => startUpdate(),
+      onDetails: () => { S.adminSec = 'update'; showTab('admin'); } });
+  }
   if ($('#tab-nets') && !$('#tab-nets').classList.contains('hidden')) renderNetDetails();
 }
 
@@ -433,6 +437,7 @@ const SCHEMA = {
   ] },
   vocoder: { title: '🎛️ Vocoder', custom: renderVocoder },
   ids: { title: '🗂️ ID-Listen & Avatare', custom: renderIds },
+  appearance: { title: '🎨 Aussehen', custom: renderAppearance },
   update: { title: '⬆️ Updates', custom: renderUpdate },
   backup: { title: '💾 Backup & Neuanfang', custom: renderBackup },
   users: { title: '👥 Benutzer', custom: renderUsers },
@@ -660,37 +665,40 @@ async function renderIds() {
   $$('[data-zdel]').forEach(b => b.onclick = async () => { await api('/api/admin/avatars/upload/' + encodeURIComponent(b.dataset.zdel), { method: 'DELETE' }); renderIds(); });
 }
 
+// N8 Kit: gleicher Hinweis, gleiche Kachel und gleicher Fortschritt wie in den anderen N8schicht-Projekten
+function updNotes(t) {
+  return t ? esc(t).replace(/^### (.*)$/gm, '<b>$1</b>').replace(/^## (.*)$/gm, '<h4 style="margin:8px 0 4px">$1</h4>').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\n/g, '<br>') : '';
+}
+function kitUpdate(u) {
+  if (!u) return null;
+  return { available: !!u.available, current: u.current, latest: u.latest || '', notes: updNotes(u.notes), checked: u.checked,
+           can_install: !!(u.available && (u.systemd ?? true)), error: u.error || '', result: u.result || null, log: u.log || '',
+           schedule: S.cfg?.general && !S.cfg.general.update_check ? 'aus' : 'stündlich zur vollen Stunde',
+           reason: u.systemd === false ? 'Update-Dienst fehlt – einmal <code>sudo /opt/n8crosslink/update.sh</code> ausführen.' : '',
+           extra: [['Update-Dienst', u.systemd ? '<span class="n8-badge ok">eingerichtet</span>' : '<span class="n8-badge warn">fehlt</span>']] };
+}
 async function renderUpdate() {
   const u = await api('/api/admin/update');
-  const md = (t) => esc(t).replace(/^### (.*)$/gm, '<b>$1</b>').replace(/^## (.*)$/gm, '<h3 style="margin:8px 0 4px">$1</h3>').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\n/g, '<br>');
-  $('#adminBody').innerHTML = `${kv([
-      ['Installiert', `<b>${esc(u.current)}</b>`],
-      ['Auf GitHub', u.latest ? `<b>${esc(u.latest)}</b> ${u.available ? '<span class="badge ok">Update verfügbar</span>' : '<span class="badge">aktuell</span>'}` : '–'],
-      ['Zuletzt geprüft', u.checked ? new Date(u.checked * 1000).toLocaleString('de-DE') : '–'],
-      ['Automatische Prüfung', S.cfg.general.update_check ? 'stündlich zur vollen Stunde' : 'aus'],
-      ['Update-Dienst', u.systemd ? '<span class="badge ok">eingerichtet</span>' : '<span class="badge warn">fehlt – einmal sudo /opt/n8crosslink/update.sh ausführen</span>'],
-      ...(u.error ? [['Fehler', esc(u.error)]] : [])])}
-    <div class="form-actions" style="justify-content:flex-start">
-      <button class="btn secondary" id="upCheck">🔍 Jetzt prüfen</button>
-      <button class="btn" id="upNow" ${u.available && u.systemd ? '' : 'disabled'}>⬆️ Update jetzt installieren</button></div>
-    ${u.notes ? `<h2 class="section-header">Änderungen</h2><div class="card" style="font-size:13px;line-height:1.5;padding:12px">${md(u.notes)}</div>` : ''}
-    ${u.log ? `<h2 class="section-header">Update-Protokoll</h2><pre style="font-size:11.5px;white-space:pre-wrap;color:var(--text-dim);padding:8px 4px">${esc(u.log)}</pre>` : ''}`;
-  $('#upCheck').onclick = async () => { toast('Prüfe …'); await api('/api/admin/update/check', { method: 'POST' }); renderUpdate(); };
-  $('#upNow').onclick = () => startUpdate();
+  $('#adminBody').innerHTML = '<div class="card" style="padding:16px"><h3 style="margin:0 0 12px;font-size:13px;letter-spacing:.06em;text-transform:uppercase">⬆️ Updates</h3><div id="updPanel"></div></div>';
+  N8Kit.update.panel($('#updPanel'), kitUpdate(u), {
+    onCheck: async () => { await api('/api/admin/update/check', { method: 'POST' }); renderUpdate(); },
+    onInstall: () => startUpdate(u) });
 }
-async function startUpdate() {
-  if (!confirm('Update jetzt installieren? Der Dienst startet dabei neu (ca. 1 Minute).')) return;
-  const r = await api('/api/admin/update/now', { method: 'POST' }); toast(r.message);
-  if (!r.ok) return;
-  const old = S.me.version; let tries = 0;
-  const poll = setInterval(async () => {
-    tries++;
-    try { const m = await api('/api/me'); if (m.version !== old) { clearInterval(poll); toast('✅ Aktualisiert auf ' + m.version); setTimeout(() => location.reload(), 1200); } } catch { /* Neustart */ }
-    if (tries > 90) { clearInterval(poll); toast('Update dauert ungewöhnlich lange – Admin → Updates → Protokoll'); }
-  }, 3000);
+async function startUpdate(u) {
+  if (!u) { try { u = await api('/api/admin/update'); } catch (e) { toast(e.message); return; } }
+  const k = kitUpdate(u);
+  return N8Kit.update.run({
+    from: k.current, to: k.latest, text: k.notes,
+    install: async () => {
+      const r = await api('/api/admin/update/now', { method: 'POST' });
+      if (!r.ok) throw new Error(r.message || 'Update konnte nicht gestartet werden');
+      $('#updateBanner').hidden = true;
+      return r;
+    },
+    version: async () => (await api('/api/me')).version,
+    timeout: 600000,
+  });
 }
-$('#updateNowBtn')?.addEventListener('click', () => startUpdate());
-$('#updateInfoBtn')?.addEventListener('click', () => { S.adminSec = 'update'; showTab('admin'); });
 $('#pwChangeBtn')?.addEventListener('click', () => { S.adminSec = 'users'; showTab('admin'); });
 
 $('#spOk').addEventListener('click', () => $('#statusModal').classList.remove('open'));
@@ -903,3 +911,22 @@ try { const v = parseInt(localStorage.getItem('n8x_listen_vol'), 10); if (v >= 0
   const h = location.hash.slice(1);
   if (['stats', 'nets'].includes(h) || (h === 'admin' && S.me?.user)) showTab(h);
 })();
+
+// ------------------------------------------------------------ 🎨 Aussehen (N8 Theme 2, wie in den anderen N8schicht-Projekten)
+async function renderAppearance() {
+  const { theme } = await api('/api/theme');
+  $('#adminBody').innerHTML = `<div class="card" style="padding:16px">
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:12px">Gleiche Farbtechnik wie HBlink4-FreeRadioID, adn-frn-server und N8-HotSpot:
+        Profil wählen, dann jede Farbe ändern – die ganze Seite zeigt es sofort, gespeichert wird erst mit „Speichern“.</p>
+      <div id="apEditor">${N8Theme.editorHtml(theme, 'ap')}</div>
+      <div class="form-actions" style="justify-content:flex-start">
+        <button class="btn" id="apSave">💾 Aussehen speichern</button>
+        <button class="btn secondary" id="apReset">↺ N8-Standard</button></div></div>`;
+  const root = $('#apEditor');
+  N8Theme.bindEditor(root, t => N8Theme.apply(t));
+  $('#apSave').onclick = async () => {
+    try { const r = await api('/api/admin/theme', { method: 'POST', body: { theme: N8Theme.readEditor(root) } }); N8Theme.apply(r.theme); toast('Aussehen gespeichert'); }
+    catch (e) { toast(e.message); }
+  };
+  $('#apReset').onclick = () => { N8Theme.setEditor(root, { preset: 'n8' }); N8Theme.apply({ preset: 'n8' }); };
+}

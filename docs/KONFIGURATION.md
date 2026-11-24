@@ -95,8 +95,18 @@ Nur für Superadmins. Bietet ein verschlüsseltes Backup zum Download, die Wiede
 ## 🎧 Mithören
 Angemeldete Admins sehen oben im Menü (neben *Links*) den Knopf **„🎧 Mithören“**; der kleine Pfeil **▾** rechts daran öffnet die **Lautstärke** (0–200 %, wird im Browser gemerkt). Der Ton der gerade aktiven Durchsage kommt aus jedem Netz (FRN, DMR oder Zello) als 8-kHz-Audio über einen eigenen, per Login geschützten WebSocket. Ohne Anmeldung wird die Verbindung abgelehnt, beim Abmelden endet das Mithören.
 
+## 🎨 Aussehen
+Dieselbe Farbtechnik (**N8 Theme 2**) wie HBlink4-FreeRadioID, adn-frn-server und N8-HotSpot: sieben Farbprofile (N8 Night, Ocean, Aurora, Ember, Violet, Graphite, Daylight), jede Farbe einzeln (Akzent, Akzent 2, Hintergrund, drei Leuchtfarben, Text, Kartentönung), dazu Hintergrundleuchten, Kartenhelligkeit, Rundung und Glasunschärfe. Die ganze Seite zeigt Änderungen sofort; **💾 Aussehen speichern** übernimmt sie (gespeichert in der Datenbank, Abschnitt `general.theme`), **↺ N8-Standard** setzt zurück. Wer in einem anderen N8-Dashboard schon ein Farbschema hat, stellt hier dieselben Werte ein – dann sehen alle Seiten gleich aus.
+
+![Aussehen](screenshots/admin-aussehen.png)
+
+## 🌐 Sprache
+Oben rechts neben *Links* schaltet **DE | EN** die Oberfläche um – Standard ist Deutsch. Die Wahl gilt sofort und per Cookie für alle N8schicht-Seiten auf demselben Server. Mehr in [SICHERHEIT.md](SICHERHEIT.md#sprache-de--en).
+
+![Englisch](screenshots/dashboard-englisch.png)
+
 ## ⬆️ Updates
-Installierte und neueste Version, Zeitpunkt der letzten Prüfung, Änderungen aus dem Changelog, **„Jetzt prüfen“**, **„Update jetzt installieren“** und das Protokoll des letzten Updates.
+Kachel im N8-Kit-Stil: installiert, auf GitHub, zuletzt geprüft, automatische Prüfung, letztes Update (erfolgreich/zurückgenommen), Update-Dienst, Neuerungen, **↻ Jetzt prüfen**, **⬆️ Update jetzt installieren** und das Update-Protokoll. Ablauf und Rollback: [BETRIEB.md](BETRIEB.md#updates).
 
 ## 🎛️ Vocoder
 Betriebsart (N8schicht-Vocoder, USB-Stick, AMBEserver, Test), Pegel und Watchdog. Beim N8schicht-Vocoder öffnet **🎚️ Klang-Einstellungen** auf der Karte ein Popup mit Reglern (wirken sofort), Grundabstimmung und Probehören – alle Regler erklärt in [VOCODER.md](VOCODER.md#-klang-einstellungen-popup).

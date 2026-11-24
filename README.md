@@ -95,6 +95,8 @@ Senden in die Netze:
 | Admin – ID-Listen & Avatare | Admin – Updates |
 |---|---|
 | ![ID-Listen](docs/screenshots/admin-idlisten-avatare.png) | ![Updates](docs/screenshots/admin-updates.png) |
+| **🎨 Aussehen** – N8 Theme 2, gleiche Farbprofile wie die anderen N8-Seiten | **🌐 Englisch** – Umschalter DE \| EN oben rechts |
+| ![Aussehen](docs/screenshots/admin-aussehen.png) | ![Englisch](docs/screenshots/dashboard-englisch.png) |
 
 | Admin – System (Dienste über sudo, Demo ohne systemd) | Admin – DMR |
 |---|---|
@@ -113,6 +115,7 @@ Senden in die Netze:
 * [Umstieg von SvxLink und der alten Zello-Bridge](docs/MIGRATION.md)
 * [Technik & Protokolle](docs/TECHNIK.md)
 * [Betrieb: Watchdogs, Updates, sudo & Berechtigungen](docs/BETRIEB.md)
+* [Sicherheit, Sprache DE/EN & N8 Kit (gemeinsam mit HBlink4, adn-frn-server, N8-HotSpot)](docs/SICHERHEIT.md)
 * [Backup & Wiederherstellung](docs/BACKUP.md)
 * [Deinstallation & von vorn beginnen](docs/DEINSTALLATION.md)
 * [Branding & Site-Icons](docs/BRANDING.md)

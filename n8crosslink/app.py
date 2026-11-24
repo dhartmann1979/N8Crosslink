@@ -190,8 +190,9 @@ def main() -> None:
     from .web.server import create_app
     bridge = Bridge(db)
     app = create_app(bridge)
+    from .web.n8_security import UVICORN_KWARGS
     config = uvicorn.Config(app, host=host, port=port, log_level="warning", proxy_headers=True,
-                            forwarded_allow_ips="*")
+                            forwarded_allow_ips="*", **UVICORN_KWARGS)   # kein "server: uvicorn"
     server = uvicorn.Server(config)
 
     async def runner() -> None:

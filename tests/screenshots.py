@@ -59,7 +59,7 @@ with sync_playwright() as p:
     time.sleep(0.8)
     for sec, name in [("vocoder", "admin-vocoder"), ("routes", "admin-routing"), ("dmr", "admin-dmr"),
                       ("frn", "admin-frn"), ("zello", "admin-zello"), ("ids", "admin-idlisten-avatare"),
-                      ("update", "admin-updates"), ("backup", "admin-backup"), ("system", "admin-system")]:
+                      ("appearance", "admin-aussehen"), ("update", "admin-updates"), ("backup", "admin-backup"), ("system", "admin-system")]:
         page.click(f"#adminNav button[data-s={sec}]")
         time.sleep(0.8)
         page.screenshot(path=f"{OUT}/{name}.png", full_page=True)
@@ -84,6 +84,12 @@ with sync_playwright() as p:
     time.sleep(2)
     page.screenshot(path=f"{OUT}/admin-frn-passwort-anfordern.png", full_page=False)
     page.click("#spOk")
+    # Englisch (N8 Kit: DE | EN in der Kopfzeile)
+    page.click("button[data-tab=live]")
+    page.click(".n8-lang button[data-l=en]")
+    time.sleep(1.5)
+    page.screenshot(path=f"{OUT}/dashboard-englisch.png", clip={"x": 0, "y": 0, "width": 1440, "height": 560})
+    page.click(".n8-lang button[data-l=de]")
     # Mobil
     m = b.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True)
     mp = m.new_page()

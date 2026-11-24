@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import base64
 import glob
 import json
@@ -9,6 +10,7 @@ import os
 import time
 from pathlib import Path
 
+from . import n8_security as _sec
 from fastapi import Body, Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -32,7 +34,14 @@ def _since(rng: str) -> float:
 
 def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
     db: Database = bridge.db
-    app = FastAPI(title="N8 Crosslink", version=__version__, docs_url=None, redoc_url=None)
+    app = FastAPI(title="N8 Crosslink", version=__version__,
+                  **{"docs_url": None, "redoc_url": None, "openapi_url": None, **_sec.FASTAPI_KWARGS})
+
+    @app.middleware("http")
+    async def _security_headers(request: Request, call_next):  # noqa: ANN001, ANN202
+        resp = await call_next(request)
+        _sec.headers(resp, https=_sec.is_https(request))
+        return resp
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     env = Environment(loader=FileSystemLoader(HERE / "templates"), autoescape=select_autoescape(["html"]))
 
@@ -58,7 +67,20 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
     async def index() -> str:
         g = bridge.cfg["general"]
         return env.get_template("index.html").render(title=g.get("title", "N8 Crosslink"),
-                                                     server_name=g.get("server_name", ""), version=__version__)
+                                                     server_name=g.get("server_name", ""), version=__version__,
+                                                     theme=_theme(g.get("theme")))
+
+    # ------------------------------------------------------------ N8 Theme 2 (gleiche Farbtechnik wie die anderen N8-Seiten)
+    @app.get("/api/theme")
+    async def theme_get() -> dict:
+        return {"theme": _theme(bridge.cfg["general"].get("theme"))}
+
+    @app.post("/api/admin/theme")
+    async def theme_save(data: dict = Body(...), _: str = Depends(require_admin)) -> dict:
+        t = _theme(data.get("theme"))
+        db.save_section("general", {"theme": t})
+        bridge.cfg["general"]["theme"] = t
+        return {"ok": True, "theme": t}
 
     ICONS = HERE / "static" / "icons"
     LONG = {"Cache-Control": "public, max-age=604800"}
@@ -431,8 +453,14 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
     # ---- Updates
     @app.get("/api/admin/update")
     async def update_state(_: str = Depends(require_admin)) -> dict:
+        res = None
+        try:
+            with open(os.path.join(bridge.updater.data_dir, "update.result"), encoding="utf-8") as f:
+                res = json.load(f)
+        except (OSError, ValueError):
+            pass
         return {**bridge.updater.state, "systemd": bridge.updater.systemd_ready() or await bridge.system.sudo_ok(),
-                "log": bridge.updater.log_tail()}
+                "log": bridge.updater.log_tail(), "result": res}
 
     @app.post("/api/admin/update/check")
     async def update_check(_: str = Depends(require_admin)) -> dict:
@@ -495,6 +523,28 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         return {"ok": True, "restart_required": True}
 
     return app
+
+
+_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
+_PRESETS = ("n8", "ocean", "aurora", "ember", "violet", "graphite", "daylight")
+
+
+def _theme(t) -> dict:  # noqa: ANN001
+    """Theme-Objekt von N8 Theme 2 prüfen: nur bekannte Schlüssel, Farben als #rrggbb, Zahlen im Bereich."""
+    t = t if isinstance(t, dict) else {}
+    out = {"preset": t.get("preset") if t.get("preset") in _PRESETS else "n8"}
+    for k in ("accent", "accent2", "background", "glow1", "glow2", "glow3", "text", "panel"):
+        v = str(t.get(k) or "")
+        out[k] = v.lower() if _HEX.match(v) else ""
+
+    def num(k: str, lo: float, hi: float, d: float) -> float:
+        try:
+            return max(lo, min(hi, float(t.get(k, d))))
+        except (TypeError, ValueError):
+            return d
+    out.update(glow=num("glow", 0, 150, 100), glass=num("glass", 0, 100, 50), radius=num("radius", 0, 28, 22),
+               blur=t.get("blur") not in (False, "false", 0))
+    return out
 
 
 def _coerce(section: str, values: dict) -> dict:

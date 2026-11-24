@@ -36,6 +36,8 @@ if [[ $RC -eq 3 && -n "$OLD_REV" && "$OLD_REV" != "$(git -C "$SRC" rev-parse HEA
   git -C "$SRC" reset --hard --quiet "$OLD_REV"
   set +e; N8X_UPDATE=1 bash "$SRC/install.sh" </dev/null; RC2=$?; set -e
   mkdir -p "$DATA"; date '+%s' > "$DATA/update.rollback"; echo "$NEW_VER" >> "$DATA/update.rollback"
+  # gleiches Ergebnis-Format wie der N8 update guard der anderen N8schicht-Projekte (Admin → Updates → Letztes Update)
+  printf '{"ok": false, "from": "%s", "to": "%s", "time": %s, "message": "zurückgesetzt auf %s"}\n' "$OLD_VER" "$NEW_VER" "$(date +%s)" "$OLD_VER" > "$DATA/update.result"
   chmod 644 "$LOG" 2>/dev/null || true
   echo "=== Update auf $NEW_VER fehlgeschlagen – $OLD_VER wiederhergestellt (Rückgabe $RC2) $(date '+%d.%m.%Y %H:%M:%S') ==="
   echo "    Bitte die Ausgabe oben bzw. sudo /opt/n8crosslink/install.sh --diagnose an den Entwickler schicken."
@@ -46,5 +48,10 @@ elif [[ $RC -ne 0 ]]; then
   exit "$RC"
 fi
 rm -f "$DATA/update.rollback"
+if [[ "$OLD_VER" != "$NEW_VER" || "$OLD_REV" != "$(git -C "$SRC" rev-parse HEAD)" ]]; then
+  mkdir -p "$DATA"
+  printf '{"ok": true, "from": "%s", "to": "%s", "time": %s, "message": ""}\n' "$OLD_VER" "$NEW_VER" "$(date +%s)" > "$DATA/update.result"
+  chmod 644 "$DATA/update.result" 2>/dev/null || true
+fi
 chmod 644 "$LOG" 2>/dev/null || true
 echo "=== Update fertig $(date '+%d.%m.%Y %H:%M:%S') ==="

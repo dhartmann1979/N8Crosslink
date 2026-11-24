@@ -253,6 +253,8 @@ if [[ "${1:-}" == "--diagnose" ]]; then
   for u in n8crosslink n8crosslink-update.path; do
     echo "== Dienst $u: $(systemctl is-active $u 2>&1) / $(systemctl is-enabled $u 2>&1)"
   done
+  echo "== Weboberfläche antwortet: $(curl -fsS -m 3 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT:-0}/api/info" 2>&1 || echo 'nein')"
+  echo "== systemctl status n8crosslink:"; systemctl status n8crosslink --no-pager -l 2>/dev/null | head -12
   echo "== Dienst-Rechte: $(systemctl show n8crosslink -p User -p AmbientCapabilities --value 2>/dev/null | tr '\n' ' ')"
   echo "== Lauscht auf Port ${PORT:-?}:"; ss -ltnp "( sport = :${PORT:-0} )" 2>/dev/null | tail -n +2 || true
   if [[ -n "$PORT" ]] && ! ss -ltn "( sport = :$PORT )" | grep -q LISTEN; then
@@ -518,12 +520,20 @@ systemctl enable n8crosslink >/dev/null 2>&1
 systemctl enable --now n8crosslink-update.path >/dev/null 2>&1 && ok "„Update jetzt“ aus dem Adminportal eingerichtet"
 systemctl restart n8crosslink
 PORT=$(cli show general | grep -oP '"web_port": \K[0-9]+' || echo 8080)
-for i in $(seq 1 20); do ss -ltn "( sport = :$PORT )" 2>/dev/null | grep -q LISTEN && break; sleep 1; done
-if ss -ltn "( sport = :$PORT )" 2>/dev/null | grep -q LISTEN; then
-  ok "Dienst n8crosslink läuft – Weboberfläche lauscht auf Port $PORT"
+# Echte Prüfung: antwortet die Weboberfläche (nicht nur „Port offen“)?
+web_ok() { curl -fsS -m 3 -o /dev/null "http://127.0.0.1:$PORT/api/info" 2>/dev/null \
+           || { ss -ltn "( sport = :$PORT )" 2>/dev/null | grep -q LISTEN && ! ss -ltn "( sport = :$PORT )" | grep -qE '(0\.0\.0\.0|\*|127\.0\.0\.1|\[::\]):'"$PORT"; }; }
+WEB_OK=0
+for i in $(seq 1 45); do web_ok && { WEB_OK=1; break; }; sleep 1; done
+if (( WEB_OK )); then
+  ok "Dienst n8crosslink läuft – Weboberfläche antwortet auf Port $PORT"
 else
-  warn "Weboberfläche lauscht nicht auf Port $PORT – Log:"; journalctl -u n8crosslink -n 25 --no-pager -o cat
+  warn "Weboberfläche antwortet nicht auf Port $PORT – Dienststatus und Log:"
+  systemctl status n8crosslink --no-pager -l 2>/dev/null | head -15 || true
+  journalctl -u n8crosslink -n 40 --no-pager -o cat
   info "Ausführliche Prüfung: sudo $APP_DIR/install.sh --diagnose"
+  # Beim Update meldet der Installer das an update.sh – das stellt dann die vorige Version wieder her
+  [[ "${N8X_UPDATE:-0}" == "1" ]] && exit 3
 fi
 IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 if [[ "$MODE" == "neu" ]]; then

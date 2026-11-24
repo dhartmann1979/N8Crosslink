@@ -388,7 +388,7 @@ const SCHEMA = {
       <button class="btn secondary" type="button" id="frnIdBtn">🧪 Operator-Wechsel testen</button></div>` },
   dmr: { title: '📡 DMR', fields: [
     F('enabled', 'DMR aktiv', 'bool'), F('host', 'Server (HBlink4 / FreeDMR)'), F('port', 'Port', 'number'),
-    F('password', 'Passwort (Passphrase)', 'password', { help: 'leer lassen = unverändert' }),
+    F('password', 'Passwort (Passphrase)', 'password', { help: 'leer lassen = unverändert · Bei HBlink4-FreeRadioID: persönliches FreeRadioID-Passwort – mit der Server-Passphrase ist die Bridge nur Gast und darf nicht in TG 262 senden' }),
     F('peer_id', 'Peer-/Repeater-ID', 'number', { help: '7- oder 9-stellig, muss am Server erlaubt sein' }),
     F('callsign', 'Rufzeichen'), F('src_id', 'Quell-ID für Sendungen ins DMR', 'number'),
     F('use_db_id', 'Rufzeichen → eigene DMR-ID, falls in der ID-Datenbank', 'bool'),

@@ -2,6 +2,20 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.5.1] – 2026-11-24
+
+### Behoben
+- **DMR-ID-Liste wurde nicht geladen:** FreeRadioID liefert `subscriber_ids.csv` inzwischen mit `\n\r` als Zeilenende. Der CSV-Parser brach deshalb ab („new-line character seen in unquoted field“), und Rufzeichen und Namen zu DMR-IDs fehlten. Alle Zeilenende-Varianten werden jetzt vereinheitlicht; geprüft mit der echten Liste (339 677 IDs).
+
+### Update sicherer
+- Der Installer prüft am Ende, ob die Weboberfläche **wirklich antwortet** (HTTP auf `/api/info`, bis 45 s), nicht nur, ob der Port offen ist. Wenn nicht, zeigt er `systemctl status` und die letzten 40 Logzeilen.
+- **Automatisches Zurücksetzen:** Startet die neue Version beim Update nicht, stellt `update.sh` die vorige Version wieder her und installiert sie erneut, damit das Dashboard erreichbar bleibt. Im Update-Log steht dann „Update auf X fehlgeschlagen – Y wiederhergestellt“; zusätzlich wird `data/update.rollback` geschrieben.
+- `install.sh --diagnose` zeigt zusätzlich, ob die Weboberfläche antwortet, und `systemctl status n8crosslink`.
+
+### DMR-Senden geprüft
+- Neuer Integrationstest `tests/integration_hblink4.py` gegen ein **echtes HBlink4-FreeRadioID**: FRN → N8 Crosslink → HBlink4 → zweiter Peer. Ohne FreeRadioID-Login kommen alle 48 Pakete an. Mit Secure Login und der Server-Passphrase wird die Bridge Gast und HBlink4 verwirft alles. Im Server-Log steht dann irreführend „Inbound routing denied … not in allowed list [262, …]“, obwohl 262 in der Liste steht.
+- Hinweis direkt am DMR-Passwortfeld im Adminportal.
+
 ## [Doku] – 2026-11-24
 - Fehlersuche und Konfiguration: „Von DMR kommt alles an, nach DMR geht nichts“. Bei HBlink4-FreeRadioID mit Secure Login wird die Bridge mit der lokalen Passphrase zum FreeRadioID-Gast und darf nur in die Gast-Talkgroups senden. Mit Log-Befehl und drei Lösungen.
 

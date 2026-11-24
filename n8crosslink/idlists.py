@@ -33,7 +33,9 @@ async def _get(url: str, timeout: int = 180) -> bytes:
 
 def parse_subscriber_csv(text: str) -> list[tuple]:
     """FreeRadioID/RadioID-CSV, mit oder ohne Kopfzeile."""
-    rows = list(csv.reader(io.StringIO(text)))
+    # FreeRadioID liefert teils "\n\r" als Zeilenende – alle Varianten vereinheitlichen
+    text = text.replace("\r\n", "\n").replace("\n\r", "\n").replace("\r", "\n")
+    rows = [r for r in csv.reader(io.StringIO(text, newline="")) if r and any(c.strip() for c in r)]
     if not rows:
         return []
     head = [c.strip().lower() for c in rows[0]]

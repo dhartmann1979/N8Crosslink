@@ -354,7 +354,16 @@ const SCHEMA = {
     F('update_repo', 'GitHub-Repository für Updates'), F('update_branch', 'Branch'),
     F('announcement', 'Hinweis-Banner im Dashboard', 'text', { wide: true }),
     F('links', 'Links-Menü (JSON-Liste mit name/url)', 'json', { wide: true }),
-  ] },
+    F('announce_enabled', '🔊 Sprachansage des Rufzeichens am Anfang eines Durchgangs', 'bool', { wide: true, help: 'Computerstimme (espeak-ng) sagt das Rufzeichen an, danach folgt der Ton – der Durchgang läuft um die Länge der Ansage verzögert' }),
+    F('announce_frn', 'Ansage nach FRN', 'bool'), F('announce_dmr', 'Ansage nach DMR', 'bool'), F('announce_zello', 'Ansage nach Zello', 'bool'),
+    F('announce_spell', 'Rufzeichen sprechen als', 'select', { options: [['letters', 'Buchstaben (D O 1 T E S T)'], ['nato', 'NATO-Alphabet (Delta Oscar Eins …)']] }),
+    F('announce_text', 'Ansagetext', 'text', { help: 'Platzhalter: {call} = Rufzeichen, {name} = Name – z. B. „{call}“ oder „{call} {name}“' }),
+    F('announce_repeat_min', 'Je Station höchstens alle … Minuten', 'number', { help: '0 = bei jedem Durchgang' }),
+    F('announce_without_call', 'Auch ohne Rufzeichen (Name ansagen)', 'bool'),
+    F('announce_speed', 'Sprechtempo (Wörter/Min.)', 'number'), F('announce_level_db', 'Lautstärke (dBFS Spitze)', 'number', { step: 0.5 }),
+    F('announce_pause_ms', 'Pause nach der Ansage (ms)', 'number'),
+  ], extra: `<div class="banner" style="margin:12px 4px 0">🔊 <span class="grow">Ansage probehören – mit den Werten aus dem Formular: <input id="annCall" value="DO1TEST" style="width:120px;margin-left:8px;background:rgba(255,255,255,.06);color:inherit;border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:5px 9px;font:inherit"></span>
+      <button class="btn secondary" type="button" id="annBtn">▶ Ansage anhören</button></div>` },
   routes: { title: '🔀 Routing', custom: renderRoutes },
   frn: { title: '📻 FRN', fields: [
     F('enabled', 'FRN aktiv', 'bool'), F('server', 'Server'), F('port', 'Port', 'number'),
@@ -367,10 +376,16 @@ const SCHEMA = {
     F('version', 'Protokollversion'), F('rx_timeout_ms', 'Ende-Erkennung RX (ms)', 'number', { help: 'Kein Sprachpaket für diese Zeit = Durchgang beendet (SvxLink: 1000)' }),
     F('rx_gain_db', 'Pegel FRN → Bridge (dB)', 'number', { step: 0.5 }), F('tx_gain_db', 'Pegel Bridge → FRN (dB)', 'number', { step: 0.5 }),
     F('text_messages', 'Sprechername als FRN-Textnachricht (experimentell)', 'bool'),
+    F('id_override', '🔁 Operator-Wechsel: bei jedem Durchgang mit Rufzeichen/Name der Station neu anmelden', 'bool', { wide: true, help: 'FRN zeigt dann die sprechende Station statt der Bridge. Kostet 1–2 s Verzögerung am Anfang und erzeugt Kommen/Gehen im Raum. Vorher oben mit „Operator-Wechsel testen“ prüfen!' }),
+    F('id_override_desc', 'Dabei auch die Beschreibung setzen', 'bool'),
+    F('id_desc_template', 'Beschreibung beim Operator-Wechsel', 'text', { help: 'Platzhalter: {quelle} {detail} {id} {call} {name} {ort}' }),
+    F('id_restore_s', 'Zurück zum eigenen Operator nach … s Ruhe', 'number'),
     F('sysman_server', 'System Manager (für „Passwort anfordern“)', 'text', { help: 'Standard sysman.freeradionetwork.eu – bei eigenem FRN-Netz dessen System Manager' }),
     F('sysman_port', 'System-Manager-Port', 'number'),
   ], extra: `<div class="banner" style="margin:12px 4px 0">🔑 <span class="grow">Noch kein FRN-Passwort? Rufzeichen, Name, E-Mail, Band/Kanal, Land und Ort ausfüllen und anfordern – das Passwort kommt per E-Mail.</span>
-      <button class="btn" type="button" id="frnPwBtn">📧 Passwort anfordern</button></div>` },
+      <button class="btn" type="button" id="frnPwBtn">📧 Passwort anfordern</button></div>
+    <div class="banner" style="margin:12px 4px 0">🔁 <span class="grow">Operator-Wechsel testen: Die Bridge meldet sich einmal als „DL0TEST, N8 Crosslink Test“ an und danach wieder normal. So siehst du, ob dein FRN-Server fremde Operatoren mit diesem Konto annimmt.</span>
+      <button class="btn secondary" type="button" id="frnIdBtn">🧪 Operator-Wechsel testen</button></div>` },
   dmr: { title: '📡 DMR', fields: [
     F('enabled', 'DMR aktiv', 'bool'), F('host', 'Server (HBlink4 / FreeDMR)'), F('port', 'Port', 'number'),
     F('password', 'Passwort (Passphrase)', 'password', { help: 'leer lassen = unverändert' }),
@@ -417,7 +432,8 @@ async function loadAdmin() {
   const sec = SCHEMA[S.adminSec];
   if (sec.custom) return sec.custom();
   renderForm(S.adminSec, sec.fields, sec.extra || '');
-  if (S.adminSec === 'frn') $('#frnPwBtn').onclick = requestFrnPassword;
+  if (S.adminSec === 'frn') { $('#frnPwBtn').onclick = requestFrnPassword; $('#frnIdBtn').onclick = testFrnIdentity; }
+  if (S.adminSec === 'general') $('#annBtn').onclick = previewAnnounce;
 }
 
 function fieldHtml(sec, f, val) {
@@ -677,6 +693,29 @@ async function requestFrnPassword() {
     const r = await api('/api/admin/frn/request-password', { method: 'POST', body: v });
     statusPopup(r.ok ? 'ok' : 'err', r.title, r.message);
   } catch (e) { statusPopup('err', 'Fehler', e.message); }
+}
+
+/* ---------- FRN: Operator-Wechsel testen ---------- */
+async function testFrnIdentity() {
+  if (!confirm('Operator-Wechsel jetzt testen? Die Bridge meldet sich dafür zweimal kurz neu am FRN-Server an.')) return;
+  statusPopup('busy', 'Teste Operator-Wechsel …', 'Anmeldung als „DL0TEST, N8 Crosslink Test“, danach zurück zum eigenen Operator');
+  try {
+    const r = await api('/api/admin/frn/identity-test', { method: 'POST' });
+    statusPopup(r.ok ? 'ok' : 'err', r.title, r.message);
+  } catch (e) { statusPopup('err', 'Fehler', e.message); }
+}
+
+/* ---------- Sprachansage probehören ---------- */
+async function previewAnnounce() {
+  const v = { callsign: $('#annCall').value.trim() };
+  for (const k of ['announce_spell', 'announce_text', 'announce_speed', 'announce_level_db', 'announce_pause_ms']) {
+    const el = $(`#f_general_${k}`); if (el) v[k] = el.value;
+  }
+  try {
+    const r = await fetch('/api/admin/announce/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(v) });
+    if (!r.ok) { const j = await r.json().catch(() => ({})); return toast('⚠️ ' + (j.detail || 'Ansage nicht möglich')); }
+    const a = new Audio(URL.createObjectURL(await r.blob())); a.play();
+  } catch (e) { toast('⚠️ ' + e.message); }
 }
 
 /* ---------- Backup & Neuanfang ---------- */

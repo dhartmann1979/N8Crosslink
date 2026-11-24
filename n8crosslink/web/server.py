@@ -368,6 +368,34 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         bridge.router.event("info" if ok else "warn", f"FRN-Passwort angefordert von {user} für {v.get('callsign')}: {title}")
         return {"ok": ok, "title": title, "message": msg}
 
+    @app.post("/api/admin/frn/identity-test")
+    async def frn_identity_test(user: str = Depends(require_admin)) -> dict:
+        p = bridge.router.ports.get("frn")
+        if p is None or not getattr(p, "enabled", False):
+            return {"ok": False, "title": "FRN aus", "message": "FRN ist nicht aktiviert."}
+        ok, title, msg = await p.test_identity()
+        bridge.router.event("info" if ok else "warn", f"FRN Operator-Wechsel getestet von {user}: {title}")
+        return {"ok": ok, "title": title, "message": msg}
+
+    @app.post("/api/admin/announce/preview")
+    async def announce_preview(data: dict = Body(...), _: str = Depends(require_admin)) -> Response:
+        from .. import announce
+        if not announce.available():
+            raise HTTPException(503, "espeak-ng ist nicht installiert – sudo /opt/n8crosslink/update.sh ausführen")
+        cfg = dict(bridge.cfg["general"])
+        cfg.update({k: v for k, v in data.items() if k.startswith("announce_") and v not in (None, "")})
+        cs = str(data.get("callsign") or "DO1TEST")[:20]
+        text = announce.speech_text(cs, cs, cfg)
+        pcm = await asyncio.get_running_loop().run_in_executor(None, announce.synth, text, cfg)
+        if not pcm:
+            raise HTTPException(500, "Ansage konnte nicht erzeugt werden")
+        import io as _io
+        import wave as _wave
+        buf = _io.BytesIO()
+        with _wave.open(buf, "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(8000); w.writeframes(pcm)  # noqa: E702
+        return Response(buf.getvalue(), media_type="audio/wav", headers={"Cache-Control": "no-store"})
+
     # ---- Software-Vocoder
     @app.post("/api/admin/vocoder/build")
     async def vocoder_build(user: str = Depends(require_admin)) -> dict:

@@ -312,8 +312,8 @@ fi
 step 1 "Systempakete installieren"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq python3 python3-venv python3-pip libgsm1 libopus0 sqlite3 curl git ca-certificates iproute2 sudo >/dev/null
-ok "python3, libgsm (FRN), libopus (Zello), sqlite3"
+apt-get install -y -qq python3 python3-venv python3-pip libgsm1 libopus0 sqlite3 curl git ca-certificates iproute2 sudo espeak-ng >/dev/null
+ok "python3, libgsm (FRN), libopus (Zello), sqlite3, espeak-ng (Sprachansage)"
 # Update-Modus: vor dem Kopieren auch alte, falsch gesetzte Rechte erkennen
 [[ "$MODE" == "update" ]] && fix_perms
 

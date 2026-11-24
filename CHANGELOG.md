@@ -2,6 +2,25 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.5.0] – 2026-11-24
+
+### Neu: FRN-Operator-Wechsel (Standard aus)
+- FRN überträgt Operator (`<ON>`) und Beschreibung (`<DS>`) nur bei der Anmeldung. Mit der neuen Option **„Operator-Wechsel“** meldet sich die Bridge bei jedem Durchgang aus DMR/Zello mit **Rufzeichen und Name der sprechenden Station** neu an, z. B. `DO1TEST, Tobias`. Die Beschreibung wird aus einer Vorlage gesetzt (Standard `via {quelle} {detail}` → `via DMR TG 262 Deutschland · TS2`).
+- Der Ton wird während der Neuanmeldung gepuffert (bis 10 s) und danach vollständig gesendet. Nach einer einstellbaren Ruhezeit (Standard 10 s) geht es zurück zum eigenen Operator. Spricht dieselbe Station vorher erneut, bleibt die Anmeldung bestehen. Spricht gerade jemand auf FRN, wird der Rückwechsel verschoben.
+- **Automatischer Rückfall:** Lehnt der Server den fremden Operator ab, meldet sich die Bridge sofort wieder normal an, sendet den gepufferten Ton und schaltet die Option bis zum nächsten Neustart ab.
+- **„🧪 Operator-Wechsel testen“** im FRN-Adminbereich: meldet einmal als `DL0TEST, N8 Crosslink Test` an und wieder zurück. Ein Status-Popup zeigt, ob der Server das mit dem Konto annimmt.
+- Ein gewollter Wechsel erzeugt weder „Verbindung verloren“ noch Watchdog-Aktionen; im Status steht „als DO1TEST, Tobias“.
+
+### Neu: Sprachansage des Rufzeichens (Standard aus)
+- Am Anfang eines Durchgangs sagt eine Computerstimme (espeak-ng, offline) das Rufzeichen an, danach folgt der Ton. Wählbar je Zielnetz (FRN/DMR/Zello): Buchstaben oder NATO-Alphabet, eigener Text (`{call}`, `{name}`), höchstens alle X Minuten je Station, Tempo, Lautstärke, Pause.
+- Die Ansage wird im gleichmäßigen 20-ms-Takt vor den Live-Ton gesetzt (kein Paket-Burst ins Zielnetz). Ansagen werden zwischengespeichert. Folgt direkt der nächste Durchgang, wird der Rest sofort ausgegeben.
+- **„▶ Ansage anhören“** unter *Allgemein* spielt die Ansage mit den Formularwerten im Browser ab.
+- Der Installer installiert `espeak-ng` mit (auch beim Update).
+
+### Tests & Doku
+- Simulation um 11 Prüfungen erweitert (jetzt **64/64**): Neuanmeldung mit Stations-Operator und Beschreibung, Ton unter fremdem Operator, Rückwechsel, kein Verbindungsverlust-Ereignis, Ablehnung → Rückfall mit Ton, Testknopf (Annahme/Ablehnung), Ansage vor dem Ton, NATO-Text.
+- Doku: Konfiguration (Abschnitte Operator-Wechsel und Sprachansage), README, Screenshots.
+
 ## [1.4.0] – 2026-11-24
 
 ### Neu: DroidStar-Vocoder statt md380-emu

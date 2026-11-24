@@ -95,6 +95,19 @@ async def request_password(v: dict) -> tuple[bool, str, str]:
     return False, "Abgelehnt", f"Der System Manager hat die Daten abgelehnt (Antwort: „{ans or 'leer'}“). Angaben prüfen."
 
 
+class _Relogin(Exception):
+    """Gewollte Neuanmeldung (Operator wechseln) – kein Fehler."""
+
+
+class _SafeDict(dict):
+    def __missing__(self, key: str) -> str:
+        return "{" + key + "}"
+
+
+def _clean(text: str, n: int) -> str:
+    return re.sub(r"[<>\r\n]", "", str(text or "")).strip()[:n]
+
+
 class FrnPort(Port):
     key = "frn"
     label = "FRN"
@@ -122,6 +135,14 @@ class FrnPort(Port):
         self.tx_packets = 0
         self.tx_gen = 0
         self.last_rx = 0.0
+        # Operator-Wechsel per Neuanmeldung (optional)
+        self.identity: dict | None = None        # angemeldet mit fremdem Operator (None = eigener)
+        self.want_identity: dict | None = None   # beim nächsten Login verwenden
+        self.switching = False
+        self._switch_tries = 0
+        self.override_blocked = False            # Server hat fremden Operator abgelehnt
+        self._restore_h: asyncio.TimerHandle | None = None
+        self._ident_waiter: asyncio.Future | None = None
 
     # ------------------------------------------------------------ Lebenszyklus
     async def start(self) -> None:
@@ -139,7 +160,11 @@ class FrnPort(Port):
             if self.using_backup and s.get("backup_server"):
                 host, port = s["backup_server"], int(s.get("backup_port") or port)
             try:
-                self.set_state(False, "verbinde", f"{host}:{port}")
+                if self.switching:
+                    self.state = "meldet an als " + (self.want_identity or {}).get("on", "eigener Operator")
+                    self.router.notify()
+                else:
+                    self.set_state(False, "verbinde", f"{host}:{port}")
                 reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), 15)
                 sock = writer.get_extra_info("socket")
                 if sock is not None:
@@ -148,10 +173,18 @@ class FrnPort(Port):
                 self.writer = writer
                 await self._session(reader)
                 delay = 5
+            except _Relogin:
+                pass
             except asyncio.IncompleteReadError:
-                self.router.event("warn", f"FRN: Server {host}:{port} hat die Verbindung getrennt")
+                if self.switching:
+                    self._switch_error("Server hat die Neuanmeldung getrennt")
+                else:
+                    self.router.event("warn", f"FRN: Server {host}:{port} hat die Verbindung getrennt")
             except (OSError, asyncio.TimeoutError, ConnectionError) as e:
-                self.router.event("warn", f"FRN: Verbindung zu {host}:{port} fehlgeschlagen ({e or type(e).__name__})")
+                if self.switching:
+                    self._switch_error(f"Neuanmeldung fehlgeschlagen ({e or type(e).__name__})")
+                if not self.switching:
+                    self.router.event("warn", f"FRN: Verbindung zu {host}:{port} fehlgeschlagen ({e or type(e).__name__})")
             except asyncio.CancelledError:
                 raise
             except Exception as e:  # noqa: BLE001
@@ -159,6 +192,9 @@ class FrnPort(Port):
                 self.router.event("warn", f"FRN: Fehler {e}")
             finally:
                 self._drop_connection()
+            if self.switching:
+                await asyncio.sleep(0.3)        # Server kurz Zeit zum Aufräumen lassen
+                continue
             if self.section.get("backup_server"):
                 self.using_backup = not self.using_backup
             self.set_state(False, "getrennt", f"neuer Versuch in {delay} s")
@@ -168,7 +204,7 @@ class FrnPort(Port):
     def _drop_connection(self) -> None:
         if self.rx_accepted or self.rx_active:
             self._rx_stop()
-        if self.tx_state != "idle":
+        if self.tx_state != "idle" and not self.switching:
             self.tx_state = "idle"
             self.router.finished_tx(self)
         if self.writer:
@@ -188,12 +224,15 @@ class FrnPort(Port):
 
     async def _session(self, reader: asyncio.StreamReader) -> None:
         s = self.section
-        on = f"{s['callsign']}, {s['op_name']}"
+        ident = self.want_identity
+        on = ident["on"] if ident else f"{s['callsign']}, {s['op_name']}"
+        ds = ident["ds"] if ident else s["description"]
         login = ("CT:" + f"<VX>{s.get('version', '2014003')}</VX>" + f"<EA>{s['email']}</EA>"
                  + f"<PW>{s['password']}</PW>" + f"<ON>{on}</ON>" + f"<CL>{s.get('client_type', 0)}</CL>"
-                 + f"<BC>{s['band']}</BC>" + f"<DS>{s['description']}</DS>" + f"<NN>{s['country']}</NN>"
+                 + f"<BC>{s['band']}</BC>" + f"<DS>{ds}</DS>" + f"<NN>{s['country']}</NN>"
                  + f"<CT>{s['city']}</CT>" + f"<NT>{s['net']}</NT>")
-        self.set_state(False, "Login", s["net"])
+        if not self.switching:
+            self.set_state(False, "Login", s["net"])
         self.cmd(login)
         ver = (await asyncio.wait_for(reader.readline(), 20)).decode("latin-1").strip()
         resp = (await asyncio.wait_for(reader.readline(), 20)).decode("latin-1").strip()
@@ -202,14 +241,33 @@ class FrnPort(Port):
         self.server_version = tags.get("SV", ver)
         self.net_info = re.sub(r"<[^>]+>", " ", tags.get("MT", "")).strip()[:300]
         if self.access in ("WRONG", "BLOCK", ""):
+            if ident:
+                self._ident_result(False, self.access or resp[:60])
+                if not ident.get("test"):
+                    self.override_blocked = True
+                    self.router.event("warn", f"FRN: Anmeldung als „{on}“ abgelehnt ({self.access or resp[:60]}) – "
+                                      "Operator-Wechsel bis zum nächsten Neustart abgeschaltet, melde mit eigenem Operator an")
+                self.want_identity = None
+                self.switching = True       # sofort mit eigenem Operator neu anmelden
+                raise _Relogin()
             self.router.event("warn", f"FRN-Login abgelehnt ({self.access or resp[:60]}) – E-Mail/Passwort/Raum prüfen")
+            self.switching = False
             await asyncio.sleep(25)
             raise ConnectionError(f"Login {self.access or 'fehlgeschlagen'}")
-        self.router.event("info", f"FRN verbunden mit Raum „{s['net']}“ ({self.access})")
-        self.set_state(True, "online", f"Raum {s['net']}")
+        self.identity = ident
+        was_switch = self.switching
+        self.switching = False
+        self._switch_tries = 0
+        if ident:
+            self._ident_result(True, self.access)
+        if not was_switch:
+            self.router.event("info", f"FRN verbunden mit Raum „{s['net']}“ ({self.access})")
+        self.set_state(True, "online", f"Raum {s['net']}" + (f" · als {on}" if ident else ""))
         self.cmd("RX0")
         self.cmd("ST:0")
         self.cmd("P")
+        if self.tx_state == "waiting":
+            self._send_tx_request()
         self.last_rx = time.time()
         ka = asyncio.create_task(self._keepalive())
         try:
@@ -326,10 +384,148 @@ class FrnPort(Port):
         self.tx_pending = []
         self.tx_packets = 0
         self.tx_state = "waiting"
-        if self.section.get("text_messages"):
-            self.cmd(f"TM:<ID></ID><MS>{talker.short()} ({talker.to_dict()['label']})</MS>")
+        self.tx_talker_now = talker
+        if self._restore_h:
+            self._restore_h.cancel()
+            self._restore_h = None
+        want = self.identity_for(talker)
+        if self.switching:                 # Neuanmeldung läuft schon – TX0 folgt nach dem Login
+            if want is not None:
+                self.want_identity = want
+            return
+        cur = (self.identity or {})
+        if want and self.writer and (cur.get("on"), cur.get("ds")) != (want["on"], want["ds"]):
+            # Mit dem Operator der Station neu anmelden; der Ton wird so lange gepuffert
+            self.want_identity = want
+            self._switch()
+            return
+        self._send_tx_request()
+
+    def _send_tx_request(self) -> None:
+        t = getattr(self, "tx_talker_now", None)
+        if self.section.get("text_messages") and t is not None:
+            self.cmd(f"TM:<ID></ID><MS>{t.short()} ({t.to_dict()['label']})</MS>")
         self.cmd("TX0")
         self.state = "TX angefragt"
+        if self.tx_late_grant:
+            gen = self.tx_gen
+            asyncio.get_running_loop().call_later(3.0, lambda: self._tx_give_up(gen))
+
+    # ------------------------------------------------------------ Operator-Wechsel
+    def identity_for(self, talker: Talker) -> dict | None:
+        """Operator (<ON>) und Beschreibung (<DS>) für eine Station – None, wenn die Option aus ist."""
+        s = self.section
+        if not s.get("id_override") or self.override_blocked:
+            return None
+        label = talker.to_dict()["label"]
+        cs = _clean(talker.callsign, 20).replace(",", " ")
+        name = talker.name or ""
+        if cs and name.upper().startswith(cs.upper()):
+            op = name[len(cs):].strip()
+        else:
+            op = name if not cs else ""
+        if not cs:
+            parts = name.split()
+            cs = _clean(parts[0] if parts else "", 20).replace(",", " ") or label
+            op = " ".join(parts[1:])
+        op = _clean(op.replace(",", " "), 30) or label
+        ds = s.get("description", "")
+        if s.get("id_override_desc", True):
+            tpl = str(s.get("id_desc_template") or "via {quelle} {detail}")
+            ds = tpl.format_map(_SafeDict(quelle=label, detail=talker.detail or "", id=talker.dmr_id or "",
+                                          call=cs, name=op, ort=talker.city or ""))
+            ds = re.sub(r"\s+", " ", ds)
+        return {"on": f"{cs}, {op}", "ds": _clean(ds, 60)}
+
+    def _switch(self) -> None:
+        """Verbindung gezielt trennen – _run meldet sofort mit want_identity neu an."""
+        self.switching = True
+        self._switch_tries = 0
+        self.state = "meldet neu an"
+        if self.writer:
+            try:
+                self.writer.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _switch_error(self, why: str) -> None:
+        """Fehler während einer Neuanmeldung. Der erste gehört zum gewollten Trennen."""
+        self._switch_tries += 1
+        if self._switch_tries > 3:
+            self._switch_failed(why)
+
+    def _switch_failed(self, why: str) -> None:
+        self._switch_tries = 0
+        self.router.event("warn", f"FRN: {why} – melde mit eigenem Operator an")
+        self._ident_result(False, why)
+        self.want_identity = None
+        self.switching = False
+        if self.tx_state != "idle":
+            self.tx_state = "idle"
+            self.tx_pending.clear()
+            self.router.finished_tx(self)
+
+    def _ident_result(self, ok: bool, info: str) -> None:
+        w = self._ident_waiter
+        if w is not None and not w.done():
+            w.set_result((ok, info))
+
+    def _schedule_restore(self) -> None:
+        if self.identity is None or self.want_identity is not None and self.want_identity is not self.identity:
+            return
+        delay = float(self.section.get("id_restore_s", 10) or 10)
+        gen = self.tx_gen
+        if self._restore_h:
+            self._restore_h.cancel()
+        self._restore_h = asyncio.get_running_loop().call_later(delay, lambda: self._restore(gen))
+
+    def _restore(self, gen: int) -> None:
+        self._restore_h = None
+        if gen != self.tx_gen or self.identity is None or self.tx_state != "idle":
+            return
+        if self.rx_active:           # jemand spricht auf FRN – später zurückwechseln
+            self._restore_h = asyncio.get_running_loop().call_later(2.0, lambda: self._restore(gen))
+            return
+        self.want_identity = None
+        self._switch()
+
+    async def test_identity(self) -> tuple[bool, str, str]:
+        """Einmal mit einem fremden Testoperator an- und danach wieder normal anmelden."""
+        s = self.section
+        if not self.online or self.writer is None:
+            return False, "FRN nicht verbunden", "Die Bridge ist gerade nicht mit dem FRN-Server verbunden."
+        if self.tx_state != "idle" or self.rx_active or self.switching:
+            return False, "Gerade belegt", "Es läuft ein Durchgang – bitte gleich noch einmal versuchen."
+        test = {"on": "DL0TEST, N8 Crosslink Test", "ds": "Test Operator-Wechsel", "test": True}
+        loop = asyncio.get_running_loop()
+        self._ident_waiter = loop.create_future()
+        self.want_identity = test
+        self._switch()
+        try:
+            ok, info = await asyncio.wait_for(self._ident_waiter, 25)
+        except asyncio.TimeoutError:
+            ok, info = False, "keine Antwort"
+        finally:
+            self._ident_waiter = None
+        await asyncio.sleep(2.5 if ok else 0)
+        self.want_identity = None
+        if self.identity is not None:
+            self._switch()
+        for _ in range(100):
+            if self.online and not self.switching and self.identity is None:
+                break
+            await asyncio.sleep(0.2)
+        back = self.online and self.identity is None
+        if ok:
+            if s.get("id_override"):
+                self.override_blocked = False
+            return True, "Server nimmt fremden Operator an", (
+                f"Anmeldung als „{test['on']}“ wurde angenommen ({info}). "
+                + ("Danach wieder mit eigenem Operator angemeldet." if back else "Rückwechsel läuft noch – siehe Status.")
+                + " Der Operator-Wechsel kann eingeschaltet werden.")
+        return False, "Server lehnt fremden Operator ab", (
+            f"Anmeldung als „{test['on']}“ wurde abgelehnt ({info}). Der Operator-Wechsel funktioniert mit diesem "
+            "Server/Konto nicht. " + ("Die Bridge ist wieder normal angemeldet." if back else "Die Bridge meldet sich wieder normal an."))
 
     def _on_do_tx(self) -> None:
         if self.tx_state == "waiting":
@@ -368,10 +564,11 @@ class FrnPort(Port):
             else:
                 self.tx_pending.append(rest)
         if self.tx_state == "waiting":
-            # Noch keine Freigabe: kurz warten, danach verwerfen
+            # Noch keine Freigabe: kurz warten, danach verwerfen (bei Neuanmeldung erst nach TX0)
             self.tx_late_grant = True
-            gen = self.tx_gen
-            asyncio.get_running_loop().call_later(2.0, lambda: self._tx_give_up(gen))
+            if not self.switching:
+                gen = self.tx_gen
+                asyncio.get_running_loop().call_later(2.0, lambda: self._tx_give_up(gen))
             return
         self._tx_close()
 
@@ -387,9 +584,12 @@ class FrnPort(Port):
         self.tx_pending.clear()
         self.state = "online" if self.online else self.state
         self.router.finished_tx(self)
+        if self.identity is not None:
+            self._schedule_restore()
 
     def extra_info(self) -> dict:
         return {"clients": self.clients, "access": self.access, "server_version": self.server_version,
                 "net": self.section.get("net"), "net_info": self.net_info,
                 "server": f"{self.section.get('server')}:{self.section.get('port')}",
-                "tx_state": self.tx_state}
+                "tx_state": self.tx_state,
+                "identity": (self.identity or {}).get("on", ""), "override_blocked": self.override_blocked}

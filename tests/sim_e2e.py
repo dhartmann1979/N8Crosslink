@@ -20,6 +20,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from n8crosslink.app import Bridge  # noqa: E402
+from n8crosslink.frn import parse_tags  # noqa: E402
 from n8crosslink.audio import gsm  # noqa: E402
 from n8crosslink.audio.dsp import level_dbfs  # noqa: E402
 from n8crosslink.audio.opus import OpusEncoder  # noqa: E402
@@ -189,6 +190,10 @@ class FakeFRN:
         self.texts: list[str] = []
         self.sent_list = False
         self.dec = None
+        self.logins: list[str] = []
+        self.reject_foreign = False
+        self.tx_by_on: dict[str, int] = {}
+        self.cur_on = ""
 
     def drop(self) -> None:
         if self.writer:
@@ -198,7 +203,15 @@ class FakeFRN:
     async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         self.writer = writer
         self.connects = getattr(self, "connects", 0) + 1
-        self.login = (await reader.readline()).decode()
+        self.login = (await reader.readline()).decode("latin-1")
+        self.logins.append(self.login)
+        on = parse_tags(self.login).get("ON", "")
+        if self.reject_foreign and not on.startswith("N8XLINK"):
+            writer.write(b"2014003\r\n<SV>2014x</SV><AL>WRONG</AL>\r\n")
+            await writer.drain()
+            writer.close()
+            return
+        self.cur_on = on
         writer.write(b"2014003\r\n<SV>2014x</SV><AL>OK</AL><MT>Testraum</MT>\r\n")
         try:
             while True:
@@ -220,6 +233,7 @@ class FakeFRN:
                 elif line == "TX1":
                     data = await reader.readexactly(325)
                     self.tx_pkts += 1
+                    self.tx_by_on[self.cur_on] = self.tx_by_on.get(self.cur_on, 0) + 1
                     self.tx_levels.append(level_dbfs(self.dec.decode_packet(data)))
                 elif line == "RX0":
                     self.rx0 += 1
@@ -586,6 +600,60 @@ async def main() -> int:
     check("Update jetzt ohne systemd-Unit sauber abgelehnt", not rq["ok"], rq["message"][:50])
 
     # ---------------- FRN: Passwort anfordern
+    # ---------------- Operator-Wechsel per Neuanmeldung
+    print("\n▶ FRN: Operator-Wechsel (Neuanmeldung mit Stationsname)")
+    fp = r.ports["frn"]
+    fp.section.update({"id_override": True, "id_restore_s": 1.5})
+    ev0 = len(db.events(1000))
+    n_login = len(frn.logins)
+    await asyncio.sleep(1.0)
+    await hb.send_stream(2621234, 262, 1.5, "DO1TEST Test")
+    await asyncio.sleep(1.5)
+    new = [parse_tags(x) for x in frn.logins[n_login:]]
+    ons = [x.get("ON") for x in new]
+    check("Neuanmeldung mit Operator der DMR-Station", len(ons) >= 1 and ons[0] != "N8XLINK, Crosslink" and "," in ons[0],
+          f"ON={ons[0] if ons else '-'} · DS={new[0].get('DS') if new else '-'}")
+    check("Beschreibung zeigt Quelle", bool(new) and new[0].get("DS", "").startswith("via DMR"), new[0].get("DS", "") if new else "")
+    check("Ton unter fremdem Operator gesendet (gepuffert)", frn.tx_by_on.get(ons[0] if ons else "", 0) >= 6,
+          f"{frn.tx_by_on.get(ons[0] if ons else '', 0)} Pakete")
+    await asyncio.sleep(2.5)
+    check("Danach zurück zum eigenen Operator", parse_tags(frn.logins[-1]).get("ON") == "N8XLINK, Crosslink" and fp.identity is None
+          and fp.online, f"{len(frn.logins) - n_login} Anmeldungen")
+    lost = [e for e in db.events(1000)[: len(db.events(1000)) - ev0] if "Verbindung verloren" in e.get("message", "")]
+    check("Kein „Verbindung verloren“ beim Wechsel", not lost, lost[0]["message"] if lost else "")
+    # Server lehnt fremden Operator ab -> Rückfall, Ton trotzdem raus
+    frn.reject_foreign = True
+    own0 = frn.tx_by_on.get("N8XLINK, Crosslink", 0)
+    await hb.send_stream(2621234, 262, 1.5, "DO1TEST Test")
+    await asyncio.sleep(2.5)
+    check("Abgelehnt -> Rückfall auf eigenen Operator, Option aus", fp.override_blocked and fp.online and fp.identity is None)
+    check("Ton trotzdem gesendet (eigener Operator)", frn.tx_by_on.get("N8XLINK, Crosslink", 0) - own0 >= 6,
+          f"{frn.tx_by_on.get('N8XLINK, Crosslink', 0) - own0} Pakete")
+    ok_t, title_t, _ = await fp.test_identity()
+    check("Testknopf: Ablehnung erkannt", not ok_t and fp.online and fp.identity is None, title_t)
+    frn.reject_foreign = False
+    ok_t, title_t, _ = await fp.test_identity()
+    check("Testknopf: Annahme erkannt + zurück", ok_t and fp.online and fp.identity is None
+          and parse_tags(frn.logins[-1]).get("ON") == "N8XLINK, Crosslink", title_t)
+    fp.section["id_override"] = False
+
+    # ---------------- Sprachansage
+    print("\n▶ Sprachansage des Rufzeichens")
+    from n8crosslink import announce as ann
+    if ann.available():
+        bridge.cfg["general"].update({"announce_enabled": True, "announce_frn": True})
+        await asyncio.sleep(1.0)
+        p0 = frn.tx_pkts
+        await hb.send_stream(2621234, 262, 1.5, "DO1TEST Test")
+        await asyncio.sleep(3.5)
+        base = 7   # 1,5 s Ton ≈ 7–8 Pakete à 200 ms
+        check("Ansage vor dem Ton (mehr Pakete)", frn.tx_pkts - p0 >= base + 4, f"{frn.tx_pkts - p0} Pakete statt ~{base + 1}")
+        txt = ann.speech_text("DO1TEST", "DO1TEST Test", {"announce_spell": "nato"})
+        check("NATO-Buchstabiertext", txt.startswith("Delta, Oscar, Eins"), txt)
+        bridge.cfg["general"]["announce_enabled"] = False
+    else:
+        print("  (espeak-ng fehlt – Ansage-Test übersprungen)")
+
     print("\n▶ FRN: Passwort anfordern (System Manager)")
     from n8crosslink.frn import request_password
     sm = FakeSysman()

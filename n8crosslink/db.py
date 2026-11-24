@@ -21,6 +21,15 @@ DEFAULTS: dict = {
         "tot_s": 180,               # Time-Out-Timer pro Durchgang
         "jitter_ms": 240,           # Vorpuffer für DMR-/Zello-Ausgang
         "announcement": "",
+        # Sprachansage des Rufzeichens am Anfang eines Durchgangs (espeak-ng)
+        "announce_enabled": False,
+        "announce_frn": True, "announce_dmr": False, "announce_zello": False,
+        "announce_spell": "letters",     # letters | nato
+        "announce_text": "{call}",
+        "announce_repeat_min": 0,        # 0 = jedes Mal, sonst je Station höchstens alle X Minuten
+        "announce_without_call": False,  # auch ohne Rufzeichen (Name) ansagen
+        "announce_voice": "de", "announce_speed": 165,
+        "announce_level_db": -6.0, "announce_pause_ms": 250,
         "keep_days": 90,
         "watchdog_offline_s": 120,   # Netz so lange offline -> Watchdog baut es komplett neu auf
         "update_check": True,        # stündlich zur vollen Stunde auf GitHub prüfen
@@ -50,6 +59,10 @@ DEFAULTS: dict = {
         "version": "2014003",
         "rx_timeout_ms": 1000,
         "text_messages": False,     # experimentell: Sprechername als FRN-Textnachricht
+        "id_override": False,       # Operator (ON) je Durchgang per Neuanmeldung auf die Station setzen
+        "id_override_desc": True,   # dabei auch die Beschreibung (DS) setzen
+        "id_desc_template": "via {quelle} {detail}",
+        "id_restore_s": 10,         # so lange nach dem Durchgang warten, dann eigener Operator
         "sysman_server": "sysman.freeradionetwork.eu",   # System Manager für „Passwort anfordern“
         "sysman_port": 10025,
         "rx_gain_db": 0.0, "tx_gain_db": 0.0,

@@ -14,11 +14,37 @@ Anmelden über **🔐 Login** oben rechts – Standard **n8schicht / n8schicht**
 
 Diese Werte wirken sofort; Web-Adresse und -Port erst nach *Dienst neu starten*.
 
+### 🔊 Sprachansage des Rufzeichens (Standard: aus)
+Am Anfang eines Durchgangs sagt eine Computerstimme (espeak-ng, offline, wird vom Installer mitinstalliert) das Rufzeichen der Station an; danach folgt der Ton. Das hören alle – egal mit welchem Programm sie zuhören.
+
+| Feld | Bedeutung |
+|---|---|
+| Ansage nach FRN / DMR / Zello | in welche Netze angesagt wird (Standard nur FRN) |
+| Rufzeichen sprechen als | Buchstaben („De O Eins Te E Es Te“) oder NATO-Alphabet („Delta, Oscar, Eins …“) |
+| Ansagetext | `{call}` = Rufzeichen, `{name}` = Name, z. B. `{call} {name}` |
+| Je Station höchstens alle … Minuten | 0 = bei jedem Durchgang; z. B. 10 = nur beim ersten Durchgang nach 10 Minuten Pause |
+| Auch ohne Rufzeichen | Stationen ohne Rufzeichen (z. B. Zello-Namen) mit dem Namen ansagen |
+| Tempo, Lautstärke, Pause | Feinabstimmung; mit **▶ Ansage anhören** sofort im Browser probehören |
+
+Wichtig: Der ganze Durchgang läuft um die Länge der Ansage verzögert (Buchstaben bei 7 Zeichen ≈ 2 s, NATO länger). Die Ansage wird im 20-ms-Takt vor den Ton gesetzt; folgt gleich der nächste Durchgang, wird der Rest sofort ausgegeben. Ohne bekanntes Rufzeichen (und ohne „Auch ohne Rufzeichen“) gibt es keine Ansage.
+
+![Allgemein – Sprachansage](screenshots/admin-allgemein-ansage.png)
+
 ## 🔀 Routing
 Matrix mit allen sechs Richtungen. Wirkt sofort, ohne Neustart.
 
 ## 📻 FRN
 Server, Backup-Server, Konto, Rufzeichen/Name (erscheint im FRN-Raum als „Rufzeichen, Name“), Client-Typ (0 = Crosslink, 1 = Gateway, 2 = PC Only), Band/Kanal, Raum. *Ende-Erkennung RX* ist die Zeit ohne Sprachpaket, nach der ein Durchgang als beendet gilt. Die FRN-Textnachricht mit dem Sprechernamen ist experimentell (nicht jeder FRN-Server/Client zeigt sie an).
+
+### 🔁 Operator-Wechsel (Standard: aus)
+FRN überträgt Operator (`<ON>Rufzeichen, Name</ON>`) und Beschreibung (`<DS>`) **nur bei der Anmeldung** – während der Verbindung lassen sie sich nicht ändern. Mit dieser Option meldet sich die Bridge bei jedem Durchgang aus DMR/Zello **neu an**, mit Rufzeichen und Name der sprechenden Station, z. B. `DO1TEST, Tobias` und Beschreibung `via DMR TG 262 Deutschland · TS2`. Der Ton wird währenddessen gepuffert und danach vollständig gesendet. Nach *Zurück zum eigenen Operator nach … s Ruhe* (Standard 10 s) meldet sie sich wieder mit dem eigenen Operator an; spricht dieselbe Station vorher erneut, bleibt die Anmeldung bestehen.
+
+* **Vorher testen:** **„🧪 Operator-Wechsel testen“** meldet einmal als `DL0TEST, N8 Crosslink Test` an und danach wieder normal; das Popup zeigt, ob der Server das mit deinem Konto annimmt.
+* **Automatischer Rückfall:** Lehnt der Server die Anmeldung mit fremdem Operator ab, meldet sich die Bridge sofort wieder mit dem eigenen Operator an, sendet den gepufferten Ton und schaltet den Operator-Wechsel bis zum nächsten Neustart ab (Ereignis im Log).
+* **Nachteile:** 1–2 s Verzögerung am Anfang des Durchgangs; im Raum erscheint die Bridge bei jedem Wechsel als gehend/kommend (Statistik, Benachrichtigungen der Clients).
+![FRN – Operator-Wechsel](screenshots/admin-frn.png)
+
+* Beschreibung: Platzhalter `{quelle}` (DMR/Zello), `{detail}` (TG/Kanal), `{id}` (DMR-ID), `{call}`, `{name}`, `{ort}`. Am besten ohne Umlaute.
 
 ### 📧 FRN-Passwort anfordern
 Wer noch kein FRN-Konto hat: Rufzeichen, Name, E-Mail, Band/Kanal, Land und Ort („Ort - Ortsteil“) ausfüllen und **„📧 Passwort anfordern“** klicken. Die Werte aus dem Formular werden auch ohne Speichern genommen. Die Bridge registriert die Station beim **System Manager** (Standard `sysman.freeradionetwork.eu:10025`, einstellbar für eigene FRN-Netze), genauso wie das SvxLink-Skript `frn-register`. Ein Popup zeigt das Ergebnis:

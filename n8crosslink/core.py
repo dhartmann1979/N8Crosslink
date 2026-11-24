@@ -25,6 +25,7 @@ import logging
 import time
 from dataclasses import asdict, dataclass, field
 
+from .announce import Announcer, Feed
 from .audio.dsp import level_dbfs
 
 log = logging.getLogger("router")
@@ -168,6 +169,9 @@ class Router:
         self.db = db
         self.cfg = cfg
         self.ports: dict[str, Port] = {}
+        self.announcer = Announcer()
+        self.feeds: dict[str, Feed] = {}         # Ziele mit Ansage im laufenden Durchgang
+        self.draining: dict[str, Feed] = {}      # Ansage-Ziele, die nach dem Durchgang noch ausspielen
         self.active: Session | None = None
         self.guard_until: dict[str, float] = {}
         self.blocked: dict[str, tuple[int, float]] = {}
@@ -262,12 +266,19 @@ class Router:
                                 "callsign": talker.callsign, "detail": talker.detail,
                                 "dmr_id": talker.dmr_id, "targets": [t.key for t in targets], "status": "live"})
         self.active = Session(port, talker, targets, now, lh, now)
+        self.feeds = {}
         for t in targets:
+            old = self.draining.pop(t.key, None)
+            if old is not None:
+                old.finish_now()           # Rest des vorigen Durchgangs mit Ansage sofort ausgeben
             try:
                 t.tx_active = True
                 t.tx_talker = talker
                 t.counters["tx"] += 1
                 t.tx_begin(talker)
+                if self.announcer.wanted(t.key, talker, self.g):
+                    fut = asyncio.ensure_future(self.announcer.pcm(talker, self.g))
+                    self.feeds[t.key] = Feed(t, fut)
             except Exception as e:  # noqa: BLE001
                 log.exception("tx_begin %s: %s", t.key, e)
         dest = ", ".join(t.label for t in targets) or "– (kein Ziel online)"
@@ -292,6 +303,10 @@ class Router:
                 q.put_nowait(pcm)
         for t in s.targets:
             t.tx_level = lvl
+            f = self.feeds.get(t.key)
+            if f is not None and not f.closed:
+                f.push(pcm)
+                continue
             try:
                 t.tx_audio(pcm)
             except Exception as e:  # noqa: BLE001
@@ -321,6 +336,11 @@ class Router:
         dur = now - s.started
         hang = float(self.g.get("hang_time_ms", 600)) / 1000.0
         for t in s.targets:
+            f = self.feeds.pop(t.key, None)
+            if f is not None and not f.closed:
+                f.end()                    # Feed spielt den Rest aus und ruft dann tx_end()
+                self.draining[t.key] = f
+                continue
             try:
                 t.tx_end()
             except Exception as e:  # noqa: BLE001

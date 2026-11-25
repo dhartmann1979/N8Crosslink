@@ -12,7 +12,7 @@ import threading
 import time
 
 DEFAULTS: dict = {
-    "https": {"email": "", "staging": False},   # Domains & HTTPS (Let's Encrypt) – Werte des letzten Antrags
+    "https": {"email": "", "staging": False, "http_port": 80, "https_port": 443},   # Domains & HTTPS (Let's Encrypt) – Werte des letzten Antrags
     "general": {
         "title": "N8 Crosslink",
         "theme": {},
@@ -69,6 +69,7 @@ DEFAULTS: dict = {
     "dmr": {
         "enabled": True,
         "host": "dmr.die-n8schicht.de", "port": 62031,
+        "local_port": 0,            # eigener UDP-Port der Bridge (0 = beliebig; fest z. B. für Firewall-Regeln)
         "password": "passw0rd",
         "peer_id": 262000101,
         "callsign": "N8XLINK",

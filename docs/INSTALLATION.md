@@ -111,5 +111,7 @@ Am einfachsten im Webinterface: Die Bridge prüft **stündlich zur vollen Stunde
 
 Im letzten Schritt kann der Installer nginx als Reverse-Proxy mit Let's Encrypt einrichten. Weitere Domains, Erneuern und Entfernen gehen
 danach jederzeit im Webinterface unter **⚙️ Admin → 🔒 Domains & HTTPS** (ab 1.12.0) – siehe [KONFIGURATION.md](KONFIGURATION.md#-domains--https).
+Der Installer nimmt dafür die Standard-Ports 80/443; andere HTTP-/HTTPS-Ports, Web-Port und alle übrigen Ports stellt man danach unter
+**⚙️ Admin → 🔌 Ports** ein (ab 1.13.0, siehe [KONFIGURATION.md](KONFIGURATION.md#-ports)).
 Beides nutzt denselben Helfer `n8x-certs.sh` (inkl. WebSocket-Weiterleitung für die Live-Daten). Voraussetzung: DNS zeigt auf den Server
 und Port 80/443 sind erreichbar.

@@ -410,7 +410,7 @@ const SCHEMA = {
   ], extra: `<div class="banner" style="margin:12px 4px 0">🔑 <span class="grow">Noch kein FRN-Passwort? Rufzeichen, Name, E-Mail, Band/Kanal, Land und Ort ausfüllen und anfordern – das Passwort kommt per E-Mail.</span>
       <button class="btn" type="button" id="frnPwBtn">📧 Passwort anfordern</button></div>` },
   dmr: { title: '📡 DMR', fields: [
-    F('enabled', 'DMR aktiv', 'bool'), F('host', 'Server (HBlink4 / FreeDMR)'), F('port', 'Port', 'number'),
+    F('enabled', 'DMR aktiv', 'bool'), F('host', 'Server (HBlink4 / FreeDMR)'), F('port', 'Port', 'number'), F('local_port', 'Eigener UDP-Port', 'number', { help: '0 = beliebiger freier Port · fest z. B. für Firewall-Regeln (alle Ports: 🔌 Ports)' }),
     F('password', 'Passwort (Passphrase)', 'password', { help: 'leer lassen = unverändert · Bei HBlink4-FreeRadioID: persönliches FreeRadioID-Passwort – mit der Server-Passphrase ist die Bridge nur Gast und darf nicht in TG 262 senden' }),
     F('peer_id', 'Peer-/Repeater-ID', 'number', { help: '7- oder 9-stellig, muss am Server erlaubt sein' }),
     F('callsign', 'Rufzeichen'), F('src_id', 'Quell-ID für Sendungen ins DMR', 'number'),
@@ -445,6 +445,7 @@ const SCHEMA = {
   update: { title: '⬆️ Updates', custom: renderUpdate },
   backup: { title: '💾 Backup & Neuanfang', custom: renderBackup },
   users: { title: '👥 Benutzer', custom: renderUsers },
+  ports: { title: '🔌 Ports', custom: renderPorts },
   domains: { title: '🔒 Domains & HTTPS', custom: renderDomains },
   system: { title: '🛠️ System', custom: renderSystem },
 };
@@ -584,6 +585,59 @@ async function renderUsers() {
   };
 }
 
+// ---------------------------------------------------------------- 🔌 Ports – alles an einer Stelle (wie „HTTPS & web“ bei HBlink4)
+async function renderPorts() {
+  let d; try { d = await api('/api/admin/ports'); } catch (e) { $('#adminBody').innerHTML = `<div class="empty">⚠️ ${esc(e.message)}</div>`; return; }
+  const v = d.values;
+  const row = (key, label, dir, proto, help, min = 1) => `<tr><td><b>${esc(label)}</b><div class="lh-name">${help}</div></td>
+      <td><span class="badge ${dir === 'ein' ? 'warn' : ''}">${dir === 'ein' ? '⬇ eingehend' : '⬆ ausgehend'}</span> <span class="badge">${proto}</span></td>
+      <td class="num"><input type="number" class="pt-in" data-k="${key}" min="${min}" max="65535" value="${esc(v[key] ?? '')}"></td></tr>`;
+  const zport = (() => { try { const u = new URL(d.zello_server); return u.port || (u.protocol === 'wss:' ? '443' : '80'); } catch (e) { return '443'; } })();
+  const restartNote = d.running.web_port !== v['general.web_port'] || d.running.web_host !== v['general.web_host']
+    ? `<div class="banner">♻️ <span class="grow">Gespeichert, aber noch nicht aktiv: Das Webinterface läuft noch auf ${esc(d.running.web_host)}:${esc(d.running.web_port)}. Dienst neu starten, damit ${esc(v['general.web_host'])}:${esc(v['general.web_port'])} gilt.</span><button class="btn" id="ptSvc">♻️ Dienst neu starten</button></div>` : '';
+  $('#adminBody').innerHTML = `<h2 class="section-header">🔌 Ports</h2>
+    <p style="padding:0 4px;color:var(--text-dim);font-size:13px">Alle Ports von N8 Crosslink an einer Stelle. <b>Eingehend</b> heißt: in Firewall/Router freigeben, wenn von außen erreichbar sein soll. <b>Ausgehend</b>: die Gegenstelle muss erreichbar sein. Gespeichert wird alles mit einem Knopf; was einen Neustart braucht, steht danach oben.</p>
+    ${restartNote}
+    <h2 class="section-header">🌐 Webinterface</h2>
+    <div class="card"><table class="tbl"><tbody>
+      <tr><td><b>Web-Adresse (Bind)</b><div class="lh-name">0.0.0.0 = alle Schnittstellen (IPv4) · :: = alle (IPv4 und IPv6) · 127.0.0.1 = nur dieser Rechner (dann nur über die Domain bzw. das HobbyRadioPortal)</div></td>
+        <td><span class="badge warn">⬇ eingehend</span></td><td class="num"><input type="text" class="pt-in" data-k="general.web_host" value="${esc(v['general.web_host'] || '0.0.0.0')}" style="width:150px"></td></tr>
+      ${row('general.web_port', 'Web-Port', 'ein', 'TCP', 'Webinterface und Live-Daten (http://IP:Port). Unter 1024 (z. B. 80) geht ohne root – nginx braucht dann andere Ports. Neustart des Dienstes.')}
+    </tbody></table></div>
+    <h2 class="section-header">🔒 Domains &amp; HTTPS (nginx)</h2>
+    <div class="card"><table class="tbl"><tbody>
+      ${row('https.http_port', 'HTTP-Port', 'ein', 'TCP', 'http:// der Domains und Let\'s-Encrypt-Prüfung. Let\'s Encrypt kommt immer auf Port 80 – ein anderer Port nur mit Weiterleitung im Router (außen 80 → innen dieser Port).')}
+      ${row('https.https_port', 'HTTPS-Port', 'ein', 'TCP', 'https:// der Domains (Standard 443; sonst https://domain:Port). Wird sofort auf alle Domains angewandt.')}
+    </tbody></table></div>
+    <h2 class="section-header">📻 FRN · 📡 DMR · 🎛️ Vocoder · 💬 Zello</h2>
+    <div class="card"><table class="tbl"><tbody>
+      ${row('frn.port', 'FRN-Server-Port', 'aus', 'TCP', `zu ${esc(d.frn_server || '–')} (Standard 10024)`)}
+      ${row('frn.backup_port', 'FRN-Backup-Port', 'aus', 'TCP', 'zum Backup-Server, falls eingetragen')}
+      ${row('frn.sysman_port', 'FRN-System-Manager-Port', 'aus', 'TCP', 'Anmeldung/Passwort beim SystemManager (Standard 10025)')}
+      ${row('dmr.port', 'DMR-Server-Port', 'aus', 'UDP', `zu ${esc(d.dmr_host || '–')} (HBlink4/FreeDMR, Standard 62031)`)}
+      ${row('dmr.local_port', 'DMR – eigener UDP-Port', 'aus', 'UDP', 'Absender-Port der Brücke · 0 = beliebig (Standard) · fest für Firewall-Regeln oder NAT', 0)}
+      ${row('vocoder.ambeserver_port', 'AMBEserver-Port', 'aus', 'UDP', `nur Betriebsart AMBEserver (${esc(d.ambeserver_host || '127.0.0.1')}, Standard 2460)${d.vocoder_mode === 'ambeserver' ? '' : ' – gerade nicht in Gebrauch'}`)}
+      <tr><td><b>Zello</b><div class="lh-name">WebSocket ${esc(d.zello_server || '–')} – Port steht in der Adresse (💬 Zello)</div></td><td><span class="badge">⬆ ausgehend</span> <span class="badge">TCP</span></td><td class="num"><code>${esc(zport)}</code></td></tr>
+    </tbody></table></div>
+    <div class="form-actions" style="justify-content:flex-start"><button class="btn" id="ptSave">💾 Ports speichern</button></div>
+    <pre id="ptOut" style="font-size:11.5px;white-space:pre-wrap;color:var(--text-dim);padding:0 4px"></pre>`;
+  if ($('#ptSvc')) $('#ptSvc').onclick = async () => { await api('/api/admin/service-restart', { method: 'POST' }); toast('♻️ Dienst startet neu – danach unter der neuen Adresse öffnen'); };
+  $('#ptSave').onclick = async (e) => {
+    const body = {};
+    $$('.pt-in').forEach(i => { body[i.dataset.k] = i.type === 'number' ? Number(i.value) : i.value.trim(); });
+    e.target.disabled = true;
+    try {
+      const r = await api('/api/admin/ports', { method: 'POST', body });
+      const lines = [r.changed && r.changed.length ? 'Geändert: ' + r.changed.join(', ') : (r.message || 'Nichts geändert')];
+      if (r.nginx) lines.push('nginx: ' + (r.nginx.message || ''));
+      if (r.restart_bridge) { lines.push('FRN/DMR/Vocoder: gilt nach einem Neustart der Brücke.'); $('#restartBanner').hidden = false; }
+      $('#ptOut').textContent = lines.join('\n'); toast('✅ Ports gespeichert');
+      if (r.restart_service) renderPorts();
+    } catch (err) { toast('⚠️ ' + err.message); }
+    e.target.disabled = false;
+  };
+}
+
 // ---------------------------------------------------------------- Domains & HTTPS (Let's Encrypt)
 async function renderDomains() {
   $('#adminBody').innerHTML = '<div class="empty">Lade Domains …</div>';
@@ -594,25 +648,28 @@ async function renderDomains() {
   const certBadge = s => !s.cert ? '<span class="badge warn">kein Zertifikat</span>'
     : s.cert.staging ? '<span class="badge warn">Test-Zertifikat</span>'
     : s.cert.days != null && s.cert.days < 14 ? `<span class="badge off">${esc(days(s.cert))}</span>` : `<span class="badge ok">gültig · ${esc(days(s.cert))}</span>`;
-  const conflict = [80, 443].includes(Number(d.web_port));
+  const conflict = [Number(d.http_port || 80), Number(d.https_port || 443)].includes(Number(d.web_port));
   const deps = d.nginx && d.certbot;
   const hint = d.missing ? `<div class="banner">⚠️ <span class="grow">${esc(d.message)}</span></div>`
     : !d.ok ? `<div class="banner">⚠️ <span class="grow">${esc(d.message || 'Status nicht lesbar')}</span></div>`
-    : conflict ? `<div class="banner">⚠️ <span class="grow">N8 Crosslink lauscht selbst auf Port ${esc(d.web_port)}. Für HTTPS braucht nginx die Ports 80 und 443 – zuerst unter <b>🏠 Allgemein → Web-Port</b> z. B. 8070 eintragen und den Dienst neu starten.</span></div>`
+    : conflict ? `<div class="banner">⚠️ <span class="grow">N8 Crosslink lauscht selbst auf Port ${esc(d.web_port)}, den nginx für HTTP/HTTPS braucht – unter <b>🔌 Ports</b> den Web-Port (z. B. 8070) oder die nginx-Ports ändern.</span></div>`
     : !deps ? `<div class="banner">📦 <span class="grow">Für Let's Encrypt braucht es <b>nginx</b> und <b>certbot</b> auf diesem Rechner.</span><button class="btn" id="dmDeps">📦 Benötigte Pakete installieren</button></div>`
-    : d.port80 && d.port80 !== 'nginx' ? `<div class="banner">⚠️ <span class="grow">Port 80 belegt <b>${esc(d.port80)}</b> – nginx kann dort nicht lauschen. Let's Encrypt prüft die Domain über Port 80.</span></div>` : '';
+    : d.port80 && d.port80 !== 'nginx' ? `<div class="banner">⚠️ <span class="grow">Port ${esc(d.http_port || 80)} belegt <b>${esc(d.port80)}</b> – nginx kann dort nicht lauschen. Let's Encrypt prüft die Domain über Port 80.</span></div>` : '';
   const portal = d.portal ? `<p style="padding:0 4px;color:var(--text-dim);font-size:13px">ℹ️ Auf diesem Rechner läuft das <b>HobbyRadioPortal</b>. Steht N8 Crosslink dahinter, verwaltet das Portal Domain und Zertifikat (Admin → Domains &amp; Zertifikate) – dann hier nichts anlegen.</p>` : '';
   const rows = (d.sites || []).map(s => `<tr><td><b>${esc(s.domain)}</b>${s.legacy ? ' <span class="badge">vom Installer</span>' : ''}
-      <div class="lh-name">${s.dns && s.dns.length ? 'DNS: ' + s.dns.map(esc).join(', ') : '⚠️ DNS: kein Eintrag gefunden'} · → 127.0.0.1:${esc(s.upstream || '?')}</div></td>
+      <div class="lh-name">${s.dns && s.dns.length ? 'DNS: ' + s.dns.map(esc).join(', ') : '⚠️ DNS: kein Eintrag gefunden'} · Ports ${esc((s.listen || []).join('/'))} → 127.0.0.1:${esc(s.upstream || '?')}${s.ports_ok === false ? ' · <b style="color:#ffd60a">passt nicht zu den Ports</b>' : ''}</div></td>
       <td>${s.https ? '<span class="badge ok">HTTPS</span>' : '<span class="badge warn">nur HTTP</span>'} ${certBadge(s)}
         ${s.cert ? `<div class="lh-name">${esc(s.cert.issuer || '')} · bis ${esc(s.cert.expires || '')}</div>` : ''}</td>
       <td class="num"><a class="btn secondary" href="https://${esc(s.domain)}/" target="_blank" rel="noopener">↗</a>
         ${s.cert ? `<button class="btn secondary" data-renew="${esc(s.domain)}">🔄 Erneuern</button>` : `<button class="btn secondary" data-retry="${esc(s.domain)}">🔒 Zertifikat holen</button>`}
         <button class="btn secondary" data-rm="${esc(s.domain)}">Entfernen</button></td></tr>`).join('');
   const anyHttps = (d.sites || []).some(s => s.https);
+  const mismatch = (d.sites || []).some(s => s.ports_ok === false);
   $('#adminBody').innerHTML = `<h2 class="section-header">🔒 Domains &amp; HTTPS ${d.renew_timer ? '<span class="badge ok">automatische Erneuerung an</span>' : deps ? '<span class="badge warn">Erneuerung nicht geplant</span>' : ''}</h2>
-    <p style="padding:0 4px;color:var(--text-dim);font-size:13px">Eigene Domains für dieses Webinterface mit kostenlosem Zertifikat von <b>Let's Encrypt</b>. nginx nimmt die Domain auf Port 80/443 an und leitet zu N8 Crosslink (127.0.0.1:${esc(d.web_port)}) weiter; certbot holt das Zertifikat und erneuert es automatisch rechtzeitig vor Ablauf. Voraussetzung: Die Domain zeigt per DNS auf diesen Server und Port 80 und 443 sind aus dem Internet erreichbar.</p>
+    <p style="padding:0 4px;color:var(--text-dim);font-size:13px">Eigene Domains für dieses Webinterface mit kostenlosem Zertifikat von <b>Let's Encrypt</b>. nginx nimmt die Domain auf Port ${esc(d.http_port || 80)}/${esc(d.https_port || 443)} an und leitet zu N8 Crosslink (127.0.0.1:${esc(d.web_port)}) weiter; certbot holt das Zertifikat und erneuert es automatisch rechtzeitig vor Ablauf. Voraussetzung: Die Domain zeigt per DNS auf diesen Server und Port 80 (Let's Encrypt prüft immer dort – sonst Weiterleitung im Router) und ${esc(d.https_port || 443)} sind aus dem Internet erreichbar.</p>
     ${hint}${portal}
+    <p style="padding:0 4px;color:var(--text-dim);font-size:13px">nginx lauscht auf <b>HTTP ${esc(d.http_port || 80)}</b> und <b>HTTPS ${esc(d.https_port || 443)}</b> und leitet zu 127.0.0.1:${esc(d.web_port)} – ändern unter <a href="#" id="dmPorts">🔌 Ports</a>.</p>
+    ${mismatch ? `<div class="banner warn">⚠️ <span class="grow">Mindestens eine Domain nutzt noch andere Ports als eingestellt.</span><button class="btn" id="dmApply">🔁 Ports auf alle Domains anwenden</button></div>` : ''}
     <div class="card">${rows ? `<table class="tbl"><thead><tr><th>Domain</th><th>Zertifikat</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">Noch keine Domain.</div>'}</div>
     <h2 class="section-header">➕ Domain hinzufügen</h2>
     <div class="form"><div class="field"><label>Domain</label><input type="text" id="dmName" placeholder="crosslink.example.org" autocomplete="off"></div>
@@ -624,6 +681,8 @@ async function renderDomains() {
       <small>Danach ist http://IP:${esc(d.web_port)} von außen zu. Ein HobbyRadioPortal auf diesem Rechner erreicht N8 Crosslink weiter über 127.0.0.1. Der Dienst startet dafür neu.</small></div></div>` : ''}`;
   const out = (r) => { $('#dmOut').textContent = (r.message || '') + (r.log ? '\n\n' + r.log : ''); toast((r.ok ? '✅ ' : '⚠️ ') + (r.message || '')); };
   const busy = (b, t) => { b.disabled = true; b.textContent = t; $('#dmOut').textContent = 'Läuft – das kann bis zu einer Minute dauern …'; };
+  $('#dmPorts').onclick = (e) => { e.preventDefault(); S.adminSec = 'ports'; loadAdmin(); };
+  if ($('#dmApply')) $('#dmApply').onclick = async (e) => { busy(e.target, '🔁 …'); out(await api('/api/admin/ports/apply', { method: 'POST' })); renderDomains(); };
   if ($('#dmDeps')) $('#dmDeps').onclick = async (e) => { busy(e.target, '📦 Installiere …'); out(await api('/api/admin/domains/deps', { method: 'POST' })); renderDomains(); };
   const add = async (domain, btn) => {
     const email = $('#dmMail').value.trim();

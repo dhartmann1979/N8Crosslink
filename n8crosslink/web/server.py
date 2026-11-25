@@ -338,10 +338,15 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         except OSError:
             return []
 
+    def _nginx_ports() -> tuple[str, str, str]:
+        """Web-Port von N8 Crosslink (aus der Datenbank, auch vor dem Neustart) und die Ports von nginx."""
+        c = db.load_config()
+        h = c.get("https") or {}
+        return (str(int(c["general"].get("web_port") or 8080)), str(int(h.get("http_port") or 80)), str(int(h.get("https_port") or 443)))
+
     @app.get("/api/admin/domains")
     async def domains_get(_: str = Depends(require_human)) -> dict:
-        port = int(bridge.cfg["general"].get("web_port") or 8080)
-        st = await bridge.system.certs("status", str(port), timeout=60)
+        st = await bridge.system.certs("status", *_nginx_ports(), timeout=60)
         for s_ in st.get("sites") or []:
             s_["dns"] = await asyncio.to_thread(_resolve, s_["domain"])
         st["settings"] = db.load_config().get("https") or {}
@@ -358,8 +363,7 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
             raise HTTPException(400, "Bitte eine gültige E-Mail-Adresse für Let's Encrypt angeben")
         staging = bool(data.get("staging"))
         db.save_section("https", {"email": email, "staging": staging})
-        port = int(bridge.cfg["general"].get("web_port") or 8080)
-        args = ["add", domain, email, str(port)] + (["staging"] if staging else [])
+        args = ["add", domain, email, *_nginx_ports()] + (["staging"] if staging else [])
         r = await bridge.system.certs(*args, timeout=420)
         r["dns"] = await asyncio.to_thread(_resolve, domain)
         bridge.router.event("info" if r.get("ok") else "warn", f"Domain {domain} von {user}: {r.get('message', '')[:160]}")
@@ -385,6 +389,72 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
             raise HTTPException(400, "Ungültige Domain")
         r = await bridge.system.certs("remove", domain, timeout=120)
         bridge.router.event("info" if r.get("ok") else "warn", f"Domain {domain} entfernt ({user}): {r.get('message', '')[:160]}")
+        return r
+
+    # ---- 🔌 Ports: alle Ports an einer Stelle (wie „HTTPS & web“ bei HBlink4)
+    PORT_KEYS = {  # Abschnitt.Schlüssel -> (kleinster Wert, Neustart: "service" = Dienst, "bridge" = Brücke, "nginx")
+        "general.web_port": (1, "service"), "https.http_port": (1, "nginx"), "https.https_port": (1, "nginx"),
+        "frn.port": (1, "bridge"), "frn.backup_port": (1, "bridge"), "frn.sysman_port": (1, "bridge"),
+        "dmr.port": (1, "bridge"), "dmr.local_port": (0, "bridge"), "vocoder.ambeserver_port": (1, "bridge"),
+    }
+
+    @app.get("/api/admin/ports")
+    async def ports_get(_: str = Depends(require_human)) -> dict:
+        c = db.load_config()
+        vals = {k: c[k.split(".")[0]].get(k.split(".")[1]) for k in PORT_KEYS}
+        vals["general.web_host"] = c["general"].get("web_host", "0.0.0.0")
+        return {"values": vals, "running": {"web_host": bridge.cfg["general"].get("web_host"), "web_port": bridge.cfg["general"].get("web_port")},
+                "zello_server": c["zello"].get("server", ""), "frn_server": c["frn"].get("server", ""), "dmr_host": c["dmr"].get("host", ""),
+                "vocoder_mode": c["vocoder"].get("vocoder_mode", ""), "ambeserver_host": c["vocoder"].get("ambeserver_host", "")}
+
+    @app.post("/api/admin/ports")
+    async def ports_save(data: dict = Body(...), user: str = Depends(require_human)) -> dict:
+        import ipaddress
+        c = db.load_config()
+        changes: dict = {}
+        for k, (lo, _) in PORT_KEYS.items():
+            if k not in data:
+                continue
+            try:
+                v = int(data[k])
+            except (TypeError, ValueError):
+                raise HTTPException(400, f"{k}: bitte eine Zahl") from None
+            if not lo <= v <= 65535:
+                raise HTTPException(400, f"{k}: {lo}–65535")
+            sec, key = k.split(".")
+            if c[sec].get(key) != v:
+                changes[k] = v
+        host = str(data.get("general.web_host", c["general"].get("web_host", "0.0.0.0"))).strip()
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            raise HTTPException(400, "Web-Adresse: eine IP-Adresse, z. B. 0.0.0.0 (alle), 127.0.0.1 (nur lokal) oder :: (alle, IPv6)") from None
+        if host != c["general"].get("web_host", "0.0.0.0"):
+            changes["general.web_host"] = host
+        merged = {k: changes.get(k, c[k.split(".")[0]].get(k.split(".")[1])) for k in ("general.web_port", "https.http_port", "https.https_port")}
+        if len({merged["general.web_port"], merged["https.http_port"], merged["https.https_port"]}) < 3:
+            raise HTTPException(400, "Web-Port, HTTP-Port und HTTPS-Port (nginx) müssen verschieden sein")
+        if not changes:
+            return {"ok": True, "changed": [], "message": "Nichts geändert"}
+        by_sec: dict = {}
+        for k, v in changes.items():
+            sec, key = k.split(".")
+            by_sec.setdefault(sec, {})[key] = v
+        for sec, vals in by_sec.items():
+            db.save_section(sec, vals)
+        kinds = {PORT_KEYS.get(k, (0, "service"))[1] for k in changes}
+        res = {"ok": True, "changed": sorted(changes), "restart_bridge": "bridge" in kinds, "restart_service": "service" in kinds}
+        if kinds & {"nginx", "service"}:      # Domains auf die neuen Ports umschreiben (nur wenn es welche gibt)
+            st = await bridge.system.certs("status", *_nginx_ports(), timeout=60)
+            if st.get("ok") and st.get("sites"):
+                res["nginx"] = await bridge.system.certs("ports", *_nginx_ports(), timeout=180)
+        bridge.router.event("info", f"Ports geändert von {user}: " + ", ".join(f"{k}={v}" for k, v in sorted(changes.items()))[:240])
+        return res
+
+    @app.post("/api/admin/ports/apply")
+    async def ports_apply(user: str = Depends(require_human)) -> dict:
+        r = await bridge.system.certs("ports", *_nginx_ports(), timeout=180)
+        bridge.router.event("info" if r.get("ok") else "warn", f"nginx-Ports angewandt ({user}): {r.get('message', '')[:160]}")
         return r
 
     @app.post("/api/admin/domains/local-only")

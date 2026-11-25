@@ -2,6 +2,48 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.13.0] – 2026-11-25
+
+**🔌 Alle Ports einstellbar – an einer Stelle, wie beim DMR-Server.**
+
+### 🔌 Neue Seite ⚙️ Admin → Ports
+- Ein Bereich für alle Ports von N8 Crosslink, aufgebaut wie *HTTPS & web* bei HBlink4-FreeRadioID:
+  - **🌐 Webinterface:** Web-Adresse (Bind, `0.0.0.0` / `::` / `127.0.0.1`) und Web-Port.
+  - **🔒 nginx:** **HTTP-Port** und **HTTPS-Port** der Domains (Standard 80/443). Bei einem HTTPS-Port ≠ 443 leitet http:// auf
+    `https://domain:Port` um.
+  - **📻 FRN:** Server-, Backup- und System-Manager-Port. **📡 DMR:** Server-Port und neu der **eigene UDP-Port** der Brücke
+    (`dmr.local_port`, 0 = beliebig wie bisher; fest z. B. für Firewall-Regeln oder NAT). **🎛️ Vocoder:** AMBEserver-Port.
+    **💬 Zello:** Port aus der WebSocket-Adresse (Anzeige).
+  - Je Zeile **⬇ eingehend / ⬆ ausgehend** und **TCP/UDP** – direkt als Liste für die Firewall.
+- **💾 Ports speichern** prüft alles vorher (1–65535, Web-/HTTP-/HTTPS-Port verschieden, Web-Adresse als IP), speichert in einem Rutsch,
+  schreibt vorhandene Domains sofort auf die neuen nginx-Ports um und sagt danach, ob die Brücke oder der Dienst neu starten muss
+  (mit Knopf **♻️ Dienst neu starten**, solange Web-Adresse/-Port noch nicht aktiv sind). Jede Änderung im Ereignisprotokoll.
+- API: `GET/POST /api/admin/ports`, `POST /api/admin/ports/apply` – nur angemeldete Admins, nicht das HobbyRadioPortal.
+
+### 🔒 Domains & HTTPS
+- Domains nutzen die eingestellten Ports; die Liste zeigt je Domain `Ports 80/443 → 127.0.0.1:8080` und warnt, wenn eine Domain noch andere
+  Ports nutzt (**🔁 Ports auf alle Domains anwenden**). Link zu *🔌 Ports* direkt auf der Seite.
+- Zertifikate holt certbot jetzt über eine **Prüfdatei (webroot, `/var/www/n8crosslink-acme`)** statt über das nginx-Plugin – N8 Crosslink
+  schreibt die nginx-Seite selbst (HTTP-Block mit ACME-Pfad und Umleitung, HTTPS-Block mit TLS 1.2/1.3, HTTP/2, HSTS, WebSocket) und
+  certbot fasst sie nicht mehr an. Dadurch funktionieren eigene Ports, und `python3-certbot-nginx` wird nicht mehr gebraucht.
+- Hinweis auf der Seite: Let's Encrypt prüft immer über Port 80 – ein anderer HTTP-Port braucht eine Weiterleitung im Router.
+- Belegungs- und Konflikt-Hinweise beziehen sich auf den eingestellten HTTP-/HTTPS-Port.
+
+### 🛠️ root-Helfer `n8x-certs.sh`
+- Neue Aufrufe: `status PORT HTTP HTTPS`, `add DOMAIN EMAIL PORT HTTP HTTPS [staging]`, **`ports PORT HTTP HTTPS`** (alle Domains umschreiben).
+  Alle Ports werden geprüft (Zahl 1–65535, Web-, HTTP- und HTTPS-Port verschieden).
+- Löschen nur noch über geprüfte Namen (`n8crosslink` bzw. `n8crosslink-<domain>`) und feste Pfade unter `/etc/nginx`.
+- Die nginx-Seite des alten Installers wird beim nächsten Schreiben ins neue Format übernommen (alte Datei bleibt als `.bak`).
+- Status liefert je Domain die Ports (`listen`, `ports_ok`) sowie `http_port`/`https_port`.
+
+### 🧰 Installer
+- Die HTTPS-Frage im Installer ruft den Helfer mit den Standard-Ports 80/443 auf; Berechtigungen des Helfers prüft `fix_perms` wie bisher.
+
+### ✅ Tests
+- `tests/test_domains.py`: Ports-API (Konflikte, ungültige Werte, Neustart-Hinweise, nginx-Umstellung), eigener DMR-UDP-Port, Eingabeprüfung
+  des Helfers für `add`/`ports`/`status` mit Ports. Helfer zusätzlich gegen nginx/certbot-Stubs geprüft (Anlegen mit 8081/8443, Umstellen
+  auf 80/443, Übernahme der alten Installer-Seite, Entfernen).
+
 ## [1.12.0] – 2026-11-25
 
 **🔒 Domains & HTTPS mit Let's Encrypt im Adminportal – und neue LED-Farben: Rot = Senden, Magenta = Empfangen, Grün = Dienst ok.**

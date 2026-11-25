@@ -348,3 +348,7 @@ footer a { color: var(--text-dim); text-decoration: underline; text-decoration-c
 /* Kurz-/Langtext in der Statusleiste (übersetzbar, N8 Kit) */
 .hdr-sl { display: none; }
 @media (max-width: 760px) { .status-strip .hdr-sl { display: inline; } }
+
+/* 🔌 Ports */
+.pt-in { width: 96px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border, rgba(255,255,255,.15)); background: var(--input-bg, rgba(0,0,0,.25)); color: inherit; font: inherit; text-align: right; }
+.pt-in:focus { outline: 2px solid var(--accent, #0a84ff); outline-offset: 1px; }

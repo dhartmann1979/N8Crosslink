@@ -124,7 +124,9 @@ class DmrPort(Port):
                 infos = await loop.getaddrinfo(host, port, type=socket.SOCK_DGRAM, family=socket.AF_INET)
                 self.addr = infos[0][4]
                 if self.transport is None:
-                    self.transport, _ = await loop.create_datagram_endpoint(lambda: _Proto(self), remote_addr=self.addr)
+                    lp = int(self.section.get("local_port") or 0)       # 0 = beliebiger freier Port (Standard)
+                    self.transport, _ = await loop.create_datagram_endpoint(
+                        lambda: _Proto(self), remote_addr=self.addr, local_addr=("0.0.0.0", lp) if lp else None)
                 self._login()
                 # Keepalive / Login-Wiederholung
                 while True:

@@ -101,6 +101,8 @@ SECTIONS: list[dict] = [
         _f("dmr.enabled", "DMR aktiv", "bool", restart=True),
         _f("dmr.host", "Server (HBlink4 / FreeDMR)", depends="dmr.enabled", restart=True),
         _f("dmr.port", "Port", "int", depends="dmr.enabled", restart=True, **PORT),
+        _f("dmr.local_port", "Eigener UDP-Port", "int", "0 = beliebiger freier Port · fest z. B. für Firewall-Regeln",
+           depends="dmr.enabled", advanced=True, restart=True, min=0, max=65535),
         _f("dmr.password", "Passwort (Passphrase)", "password",
            "leer lassen = unverändert · Bei HBlink4-FreeRadioID: persönliches FreeRadioID-Passwort – mit der Server-Passphrase ist die Bridge nur Gast "
            "und darf nicht in TG 262 senden", depends="dmr.enabled", restart=True),
@@ -190,7 +192,7 @@ FIELDS = {f["key"]: f for s in SECTIONS for f in s["fields"]}
 # Für API-Token gesperrt: Netzwerk-Bindung und Update-Quelle des Dienstes
 LOCKED_FOR_TOKEN = {"general.web_host", "general.web_port", "general.update_check", "general.update_repo", "general.update_branch"}
 # Nicht über die Beschreibung: Aussehen (eigener Editor) und Klang-Regler (eigene Route)
-NOT_DESCRIBED = {("general", "theme"), ("https", "email"), ("https", "staging"), ("vocoder", "n8vocoder_profile"), ("vocoder", "n8vocoder_options")}
+NOT_DESCRIBED = {("general", "theme"), ("https", "email"), ("https", "staging"), ("https", "http_port"), ("https", "https_port"), ("vocoder", "n8vocoder_profile"), ("vocoder", "n8vocoder_options")}
 
 
 def _split(key: str) -> tuple[str, str]:

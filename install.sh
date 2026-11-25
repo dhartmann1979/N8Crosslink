@@ -597,7 +597,7 @@ if [[ "$MODE" == "neu" ]]; then
     # dasselbe Skript wie im Webinterface (Admin → 🔒 Domains & HTTPS) – weitere Domains kommen dort dazu
     "$APP_DIR/n8x-certs.sh" deps >/dev/null || warn "nginx/certbot nicht installierbar"
     ask LE_MAIL "E-Mail für Let's Encrypt" ""
-    R=$("$APP_DIR/n8x-certs.sh" add "$SERVER_NAME" "$LE_MAIL" "$PORT" 2>&1 || true)
+    R=$("$APP_DIR/n8x-certs.sh" add "$SERVER_NAME" "$LE_MAIL" "$PORT" 80 443 2>&1 || true)
     if [[ "$R" == *'"ok": true'* ]]; then ok "HTTPS aktiv: https://${SERVER_NAME}"
     else warn "Zertifikat fehlgeschlagen – DNS/Port 80 prüfen, dann im Webinterface unter 🔒 Domains & HTTPS erneut"; fi
   fi

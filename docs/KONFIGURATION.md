@@ -142,11 +142,13 @@ Eigene Domains für das Webinterface mit kostenlosem **Let's-Encrypt-Zertifikat*
 
 ![Domains & HTTPS](screenshots/admin-domains.png)
 
-1. Fehlen nginx und certbot, steht oben **📦 Benötigte Pakete installieren** – ein Klick installiert `nginx`, `certbot` und
-   `python3-certbot-nginx` und schaltet die automatische Erneuerung (certbot-Timer) ein.
+1. Fehlen nginx und certbot, steht oben **📦 Benötigte Pakete installieren** – ein Klick installiert `nginx` und `certbot` und
+   schaltet die automatische Erneuerung (certbot-Timer) ein.
 2. Unter **➕ Domain hinzufügen** die Domain (z. B. `crosslink.example.org`) und die **E-Mail für Let's Encrypt** eintragen →
-   **🔒 Domain anlegen & Zertifikat holen**. nginx nimmt die Domain auf Port 80/443 an und leitet zu N8 Crosslink
-   (`127.0.0.1:<Web-Port>`, mit WebSocket) weiter; certbot holt das Zertifikat und stellt http:// auf https:// um.
+   **🔒 Domain anlegen & Zertifikat holen**. nginx nimmt die Domain auf dem **HTTP-** und **HTTPS-Port** aus
+   [🔌 Ports](#-ports) an (Standard 80/443) und leitet zu N8 Crosslink (`127.0.0.1:<Web-Port>`, mit WebSocket) weiter; certbot holt das
+   Zertifikat über eine Prüfdatei (webroot) und http:// leitet danach auf https:// um. Die Zeile je Domain zeigt die Ports; passen sie nicht
+   mehr zu den Einstellungen, erscheint **🔁 Ports auf alle Domains anwenden**.
 3. Die Liste zeigt je Domain, wohin der DNS-Eintrag zeigt, ob HTTPS aktiv ist, das Zertifikat (Aussteller, Ablaufdatum, Resttage –
    rot unter 14 Tagen) und die Knöpfe **🔄 Erneuern**, **🔒 Zertifikat holen** (falls es beim ersten Mal nicht geklappt hat) und **Entfernen**
    (Weiterleitung und Zertifikat).
@@ -157,15 +159,41 @@ Eigene Domains für das Webinterface mit kostenlosem **Let's-Encrypt-Zertifikat*
 
 Voraussetzungen und Hinweise:
 
-* Die Domain zeigt per DNS (A/AAAA) auf diesen Server, **Port 80 und 443** sind aus dem Internet erreichbar (Let's Encrypt prüft über Port 80).
-* Lauscht N8 Crosslink selbst auf Port 80 oder 443, warnt die Seite: zuerst unter *Allgemein → Web-Port* einen anderen Port (z. B. 8070) eintragen.
-* Belegt ein anderes Programm Port 80, steht das als Hinweis da.
+* Die Domain zeigt per DNS (A/AAAA) auf diesen Server, **Port 80** und der HTTPS-Port sind aus dem Internet erreichbar. Let's Encrypt prüft
+  immer über Port 80 – ist der HTTP-Port ein anderer, braucht es eine Weiterleitung im Router (außen 80 → innen HTTP-Port).
+* Lauscht N8 Crosslink selbst auf dem HTTP- oder HTTPS-Port, warnt die Seite: unter *🔌 Ports* den Web-Port (z. B. 8070) oder die nginx-Ports ändern.
+* Belegt ein anderes Programm den HTTP- oder HTTPS-Port, steht das als Hinweis da.
 * Läuft auf dem Rechner das **HobbyRadioPortal** und steht N8 Crosslink dahinter, verwaltet das Portal Domain und Zertifikat
   (*Domains & Zertifikate* dort) – dann hier nichts anlegen.
 * Die Seite des alten Installers (`/etc/nginx/sites-available/n8crosslink`) wird erkannt und lässt sich hier erneuern oder entfernen.
-* Technisch: root-Helfer `/opt/n8crosslink/n8x-certs.sh` (`status`, `deps`, `add`, `renew`, `remove`) über sudo – er prüft Domain, E-Mail
-  und Port selbst, schreibt nur `/etc/nginx/sites-available/n8crosslink-<domain>`, prüft mit `nginx -t` und stellt bei Fehlern den alten
+* Technisch: root-Helfer `/opt/n8crosslink/n8x-certs.sh` (`status`, `deps`, `add`, `ports`, `renew`, `remove`) über sudo – er prüft Domain,
+  E-Mail und alle Ports selbst, schreibt nur `/etc/nginx/sites-available/n8crosslink-<domain>`, prüft mit `nginx -t` und stellt bei Fehlern den alten
   Stand wieder her. Siehe [SICHERHEIT.md](SICHERHEIT.md#reverse-proxy-davor-empfohlen).
+
+## 🔌 Ports
+
+Alle Ports an einer Stelle – wie *HTTPS & web* beim DMR-Server (ab 1.13.0). **⚙️ Admin → 🔌 Ports** zeigt je Port, ob er **eingehend**
+(in Firewall/Router freigeben) oder **ausgehend** (Gegenstelle muss erreichbar sein) ist, und das Protokoll (TCP/UDP).
+
+![Ports](screenshots/admin-ports.png)
+
+| Bereich | Einstellung | Standard | Richtung | Gilt nach |
+|---|---|---|---|---|
+| 🌐 Webinterface | Web-Adresse (Bind): `0.0.0.0` alle, `::` alle inkl. IPv6, `127.0.0.1` nur lokal | `0.0.0.0` | ⬇ ein | Neustart Dienst |
+| 🌐 Webinterface | Web-Port (TCP) | `8080` | ⬇ ein | Neustart Dienst (nginx-Domains werden sofort umgestellt) |
+| 🔒 nginx | HTTP-Port (TCP) – http:// und Let's-Encrypt-Prüfung | `80` | ⬇ ein | sofort |
+| 🔒 nginx | HTTPS-Port (TCP) – https://, bei ≠ 443 als `https://domain:Port` | `443` | ⬇ ein | sofort |
+| 📻 FRN | Server-, Backup-, System-Manager-Port (TCP) | `10024` / – / `10025` | ⬆ aus | Neustart Brücke |
+| 📡 DMR | Server-Port (UDP) | `62031` | ⬆ aus | Neustart Brücke |
+| 📡 DMR | **Eigener UDP-Port** – Absender-Port der Brücke, `0` = beliebig; fest z. B. für Firewall-Regeln oder NAT | `0` | ⬆ aus | Neustart Brücke |
+| 🎛️ Vocoder | AMBEserver-Port (UDP) | `2460` | ⬆ aus | Neustart Brücke |
+| 💬 Zello | steht in der WebSocket-Adresse (nur Anzeige, ändern unter 💬 Zello) | `443` | ⬆ aus | – |
+
+**💾 Ports speichern** übernimmt alles mit einem Knopf und prüft vorher: Zahlen 1–65535 (eigener DMR-Port 0–65535), Web-, HTTP- und
+HTTPS-Port verschieden, Web-Adresse eine IP-Adresse. Sind Domains angelegt, schreibt N8 Crosslink deren nginx-Seiten sofort auf die neuen
+Ports um (`nginx -t` vorher, sonst bleibt der alte Stand). Danach steht oben, was noch einen Neustart der Brücke oder des Dienstes braucht.
+API: `GET/POST /api/admin/ports`, `POST /api/admin/ports/apply` (nur angemeldete Admins). Der eigene DMR-Port steht zusätzlich unter
+*📡 DMR → Erweitert* (`dmr.local_port`).
 
 ## 👥 Benutzer · 🛠️ System
 Benutzer anlegen/löschen/Passwort ändern. System: **Dienste** (N8 Crosslink, erkannte alte Dienste wie svxlink/mmdvm_bridge/Zello-Bridge) mit Start, Stopp, Neustart, Autostart an/aus; **Berechtigungen prüfen & korrigieren**; **Server neu starten** (falls bei der Installation erlaubt); Bridge neu starten (nur die Netze), Dienst neu starten, ID-Listen aktualisieren, Konfiguration exportieren/importieren (ohne Passwörter), Ereignisprotokoll. Siehe [BETRIEB.md](BETRIEB.md).

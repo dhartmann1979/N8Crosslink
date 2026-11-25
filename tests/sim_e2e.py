@@ -223,6 +223,7 @@ class FakeFRN:
                         self.sent_list = True
                         body = f"{len(self.CLIENTS)}\r\n" + "\r\n".join(self.CLIENTS) + "\r\n"
                         writer.write(bytes([3, 0, 0]) + body.encode())
+                        writer.write(bytes([5]) + b"4\r\nTest\r\nKrabbelgruppe\r\nLagerfeuer\r\nTechsupport\r\n")   # Raumliste
                     else:
                         await asyncio.sleep(0.05)
                         writer.write(b"\x00")
@@ -433,6 +434,11 @@ async def main() -> int:
     await asyncio.sleep(0.5)
     check("FRN-Raumliste gelesen", len(r.ports["frn"].clients) == 2,
           ", ".join(c["callsign"] + " " + c["name"] for c in r.ports["frn"].clients))
+    from n8crosslink import frn_rooms
+    fp = r.ports["frn"]
+    rl = await frn_rooms.rooms(fp.target[0], fp.target[1], {}, fp)
+    check("FRN-Räume für das Auswahlmenü (aus der Verbindung)", rl["source"] == "live" and
+          [x["name"] for x in rl["rooms"]] == ["Test", "Krabbelgruppe", "Lagerfeuer", "Techsupport"], rl.get("note", ""))
 
     # ---------------- ID-Listen & Avatare
     print("\n▶ ID-Listen (FreeRadioID-Format) und Talkgroups")

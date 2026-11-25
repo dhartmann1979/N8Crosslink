@@ -706,6 +706,16 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         return {"ok": True, "relogin": scope == "all"}
 
     # ---- FRN: öffentliches Fehlerprotokoll von freeradionetwork.de (Grund für abgelehnte Anmeldungen)
+    @app.get("/api/admin/frn/rooms")
+    async def frn_rooms(server: str = "", port: int = 0, _: str = Depends(require_admin)) -> dict:
+        """Räume des FRN-Servers für das Auswahlmenü (live, Dashboard oder kurze Anmeldung)."""
+        from .. import frn_rooms
+        s = db.load_config()["frn"]
+        host = (server or s.get("server") or "").strip()
+        if len(host) > 253 or not re.fullmatch(r"[A-Za-z0-9.\-]+", host or "-"):
+            raise HTTPException(400, "Ungültiger Servername")
+        return await frn_rooms.rooms(host, int(port or s.get("port") or 10024), s, bridge.router.ports.get("frn"))
+
     @app.get("/api/admin/frn/errorlog")
     async def frn_errorlog(force: bool = False, _: str = Depends(require_admin)) -> dict:
         from .. import frn_errorlog as el

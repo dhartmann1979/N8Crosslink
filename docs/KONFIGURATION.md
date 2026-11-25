@@ -71,6 +71,17 @@ drei FRN-Werte auf 0.
 ## 📻 FRN
 Server, Backup-Server, Konto, Rufzeichen/Name (erscheint im FRN-Raum als „Rufzeichen, Name“), Client-Typ (0 = Crosslink, 1 = Gateway, 2 = PC Only), Band/Kanal, Raum. *Ende-Erkennung RX* ist die Zeit ohne Sprachpaket, nach der ein Durchgang als beendet gilt. 
 
+### 🏠 Raum aus dem Auswahlmenü
+**Raum (Net)** ist ein Auswahlmenü mit den Räumen des eingetragenen FRN-Servers (mit Anzahl der Stationen, wenn bekannt).
+Die Liste wird beim Öffnen von *FRN* und nach jeder Änderung von Server/Port ausgelesen, **🔄** liest sie neu. Quellen:
+
+1. **aktuelle Verbindung** – ist der Crosslink mit diesem Server verbunden, nimmt er die Raumliste, die der Server nach dem Login schickt;
+2. **Dashboard** – hat der Server ein ADN-FRN-Server-Dashboard, kommt die Liste von dort (mit Stationszahl, ohne versteckte Räume);
+3. **kurze FRN-Anmeldung** – sonst meldet sich der Crosslink mit dem eingetragenen Konto kurz an, liest die Liste und meldet sich ab.
+   Das passiert nicht, solange er mit demselben Konto schon online ist (der System Manager erlaubt jedes Konto nur einmal).
+
+Ein versteckter oder neuer Raum, der nicht in der Liste steht: **✏️ Anderer Raum …** wählen und den Namen eintippen.
+
 ### 🔁 FRN Master & Backup – Master hat immer Vorrang
 
 Mit **„Master & Backup erkennen, Master hat Vorrang“** (Standard an) fragt der Crosslink das Dashboard des FRN-Servers

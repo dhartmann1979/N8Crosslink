@@ -2,6 +2,24 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.25.0] – 2026-11-26
+
+### 🏠 FRN: Raum aus dem Auswahlmenü
+- **Raum (Net)** ist jetzt ein **Auswahlmenü** mit den Räumen des FRN-Servers – mit Anzahl der Stationen je Raum, wenn bekannt.
+- Ausgelesen wird automatisch beim Öffnen von *Admin → FRN* und nach jeder Änderung von Server oder Port; **🔄** daneben liest neu.
+- Drei Quellen, die beste gewinnt:
+  1. **aktuelle Verbindung** – die Raumliste, die der FRN-Server nach dem Login schickt;
+  2. **ADN-FRN-Server-Dashboard** (`/api/live`) – ohne Anmeldung, mit Stationszahl, versteckte Räume bleiben verborgen;
+  3. **kurze FRN-Anmeldung** mit dem eingetragenen Konto (Liste lesen, sofort abmelden) – aber **nie**, solange der Crosslink mit
+     demselben Konto schon online ist: der System Manager erlaubt jedes Konto nur einmal, eine zweite Anmeldung würde die Bridge stören.
+- Unter dem Menü steht, woher die Liste kommt bzw. warum keine kam (Server nicht erreichbar, Anmeldung abgelehnt …).
+- Steht der eingetragene Raum nicht in der Liste, bleibt er erhalten und ist markiert; **✏️ Anderer Raum …** erlaubt jeden Namen
+  (z. B. versteckte Räume).
+- Neuer Admin-Endpunkt `GET /api/admin/frn/rooms?server=…&port=…` (nur Admins, Servername geprüft).
+- Tests: `tests/test_frn_rooms.py` (Anmeldung mit Raumliste, falsches Passwort, Dashboard, laufende Verbindung, keine
+  Doppelanmeldung); End-to-End-Simulation jetzt 56/56 (simulierter FRN-Server schickt eine Raumliste).
+- Doku: [KONFIGURATION.md](docs/KONFIGURATION.md#-raum-aus-dem-auswahlmenü), Screenshot *Admin → FRN* neu.
+
 ## [1.24.0] – 2026-11-25
 
 ### 🎚️ Neu: Audio & AGC – schnelle, einstellbare Pegelregelung in der ganzen Bridge

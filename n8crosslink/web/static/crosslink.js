@@ -544,7 +544,7 @@ const SCHEMA = {
     F('callsign', 'Rufzeichen'), F('op_name', 'Name / Bezeichnung'),
     F('client_type', 'Client-Typ', 'select', { options: [[0, '0 – Crosslink'], [1, '1 – Gateway'], [2, '2 – PC Only']] }),
     F('band', 'Band / Kanal (BC)', 'text', { help: '„Crosslink“ oder z. B. 446.03125FM CTC131.8' }),
-    F('net', 'Raum (Net)'), F('description', 'Beschreibung'), F('country', 'Land'), F('city', 'Ort – Ortsteil / Locator'),
+    F('net', 'Raum (Net)', 'room', { help: 'Liste vom FRN-Server – „🔄“ liest sie neu aus. Fehlt ein Raum (z. B. versteckt), „✏️ Anderer Raum …“ wählen.' }), F('description', 'Beschreibung'), F('country', 'Land'), F('city', 'Ort – Ortsteil / Locator'),
     F('version', 'Protokollversion'), F('rx_timeout_ms', 'Ende-Erkennung RX (ms)', 'number', { help: 'Kein Sprachpaket für diese Zeit = Durchgang beendet (SvxLink: 1000)' }),
     F('rx_gain_db', 'Pegel FRN → Bridge (dB)', 'number', { step: 0.5 }), F('tx_gain_db', 'Pegel Bridge → FRN (dB)', 'number', { step: 0.5 }),
     F('text_messages', 'Sprechername als FRN-Textnachricht', 'bool', { help: 'Vor jedem Durchgang aus DMR/Zello, z. B. „DO1TEST Tobias (DMR)“' }),
@@ -639,15 +639,55 @@ async function loadAdmin() {
   const sec = SCHEMA[S.adminSec];
   if (sec.custom) return sec.custom();
   renderForm(S.adminSec, sec.fields, sec.extra || '');
-  if (S.adminSec === 'frn') { $('#frnPwBtn').onclick = requestFrnPassword; $('#frnElReload').onclick = () => loadFrnErrorlog(true); loadFrnErrorlog(); }
+  if (S.adminSec === 'frn') { initRoomPick();
+    $('#frnPwBtn').onclick = requestFrnPassword; $('#frnElReload').onclick = () => loadFrnErrorlog(true); loadFrnErrorlog(); }
   if (S.adminSec === 'general') $('#annBtn').onclick = previewAnnounce;
+}
+
+// FRN: Raum-Auswahl aus der Raumliste des Servers (live · Dashboard · kurze Anmeldung)
+const ROOM_OTHER = '__other__';
+function initRoomPick() {
+  const sel = $('#f_frn_net'); if (!sel) return;
+  $('#frnRoomsBtn').onclick = () => loadRooms(true);
+  sel.onchange = () => {
+    if (sel.value !== ROOM_OTHER) return;
+    const cur = sel.dataset.prev || '';
+    const v = (prompt('Name des Raums (genau wie auf dem FRN-Server):', cur) || '').trim();
+    if (v && ![...sel.options].some(o => o.value === v)) sel.insertBefore(new Option(v + '  (eigene Eingabe)', v), sel.querySelector(`option[value="${ROOM_OTHER}"]`));
+    sel.value = v || cur;
+  };
+  sel.onfocus = () => { if (sel.value !== ROOM_OTHER) sel.dataset.prev = sel.value; };
+  ['#f_frn_server', '#f_frn_port'].forEach(q => { const el = $(q); if (el) el.addEventListener('change', () => loadRooms(true)); });
+  loadRooms(false);
+}
+async function loadRooms(manual) {
+  const sel = $('#f_frn_net'), note = $('#frnRoomsNote'), btn = $('#frnRoomsBtn'); if (!sel) return;
+  const cur = sel.value, server = ($('#f_frn_server')?.value || '').trim(), port = ($('#f_frn_port')?.value || '').trim();
+  note.textContent = 'Räume werden ausgelesen …'; note.className = 'room-note'; btn.disabled = true;
+  try {
+    const d = await api(`/api/admin/frn/rooms?server=${encodeURIComponent(server)}&port=${encodeURIComponent(port)}`);
+    if ($('#f_frn_net') !== sel) return;
+    const rooms = d.rooms || [];
+    const names = rooms.map(r => r.name);
+    const opts = rooms.map(r => [r.name, r.name + (r.clients != null ? `  · ${r.clients} ${r.clients === 1 ? 'Station' : 'Stationen'}` : '')]);
+    if (cur && !names.includes(cur)) opts.unshift([cur, cur + (rooms.length ? '  (nicht in der Liste)' : '')]);
+    if (!opts.length) opts.push(['', '– Raum wählen –']);
+    sel.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('') + `<option value="${ROOM_OTHER}">✏️ Anderer Raum …</option>`;
+    sel.value = cur || opts[0][0];
+    note.textContent = rooms.length ? `${rooms.length} ${rooms.length === 1 ? 'Raum' : 'Räume'} ${d.note || ''}` : (d.note || 'Keine Räume gefunden');
+    note.className = 'room-note ' + (rooms.length ? 'ok' : 'warn');
+    if (manual && rooms.length) toast(`🔄 ${rooms.length} Räume ausgelesen`);
+  } catch (e) { note.textContent = '⚠️ ' + e.message; note.className = 'room-note warn'; }
+  finally { btn.disabled = false; }
 }
 
 function fieldHtml(sec, f, val) {
   const id = `f_${sec}_${f.key}`, help = f.help ? `<small>${esc(f.help)}</small>` : '';
   if (f.type === 'bool') return `<div class="field ${f.wide ? 'wide' : ''}"><label class="switch"><input type="checkbox" id="${id}" ${val ? 'checked' : ''}><span></span>${esc(f.label)}</label>${help}</div>`;
   let input;
-  if (f.type === 'select') input = `<select id="${id}">${f.options.map(([v, l]) => `<option value="${esc(v)}" ${String(v) === String(val) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+  if (f.type === 'room') input = `<div class="room-pick"><select id="${id}"><option value="${esc(val)}" selected>${esc(val || '– Raum wählen –')}</option></select>
+    <button class="btn secondary" type="button" id="frnRoomsBtn" title="Räume vom FRN-Server auslesen">🔄</button></div><small id="frnRoomsNote" class="room-note">Räume werden ausgelesen …</small>`;
+  else if (f.type === 'select') input = `<select id="${id}">${f.options.map(([v, l]) => `<option value="${esc(v)}" ${String(v) === String(val) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
   else if (f.type === 'textarea') input = `<textarea id="${id}" placeholder="${val === '********' ? 'gesetzt – leer lassen = unverändert' : ''}">${val === '********' ? '' : esc(val)}</textarea>`;
   else if (f.type === 'json') input = `<textarea id="${id}">${esc(JSON.stringify(val, null, 2))}</textarea>`;
   else if (f.type === 'password') input = `<input type="password" id="${id}" autocomplete="new-password" placeholder="${val ? 'gesetzt – leer lassen = unverändert' : ''}">`;
@@ -657,6 +697,7 @@ function fieldHtml(sec, f, val) {
 function readField(sec, f) {
   const el = $(`#f_${sec}_${f.key}`); if (!el) return undefined;
   if (f.type === 'bool') return el.checked;
+  if (f.type === 'room' && el.value === ROOM_OTHER) return el.dataset.prev || '';
   if (f.type === 'json') { try { return JSON.parse(el.value); } catch { throw new Error(f.label + ': ungültiges JSON'); } }
   return el.value;
 }

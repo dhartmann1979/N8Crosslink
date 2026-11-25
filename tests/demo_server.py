@@ -82,7 +82,7 @@ async def main(port: int) -> None:
     db = Database(os.path.join(tempfile.mkdtemp(), "demo.db"))
     db.save_section("general", {"title": "N8 Crosslink", "server_name": "crosslink.die-n8schicht.de", "hang_time_ms": 400})
     db.save_section("frn", {"server": "127.0.0.1", "port": sim.FRN_PORT, "email": "n8xlink@die-n8schicht.de", "password": "x",
-                            "net": "Nachtschicht", "sysman_server": "127.0.0.1", "sysman_port": 20025})
+                            "net": "Krabbelgruppe", "sysman_server": "127.0.0.1", "sysman_port": 20025})
     db.save_section("dmr", {"host": "127.0.0.1", "port": sim.HB_PORT, "password": sim.FakeHB.PASS, "peer_id": 262000101,
                             "src_id": 2620001, "tg_rx": 262, "tg_tx": 262, "userdb_url": "", "userdb_fallback_url": ""})
     db.save_section("zello", {"enabled": True, "server": f"ws://127.0.0.1:{sim.ZELLO_PORT}/ws", "channel": "N8schicht",

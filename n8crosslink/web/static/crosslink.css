@@ -532,3 +532,10 @@ tr.perm-ok td:last-child { color: var(--text-dim); }
 .xl-radio .lcd-chart .oa-canvas { flex: none; height: 150px; min-height: 0; }
 .xl-radio .rd-inst .oa-canvas { height: 70px; }
 .xl-radio .rd-main { align-items: stretch; }
+
+/* FRN: Raum-Auswahl */
+.room-pick { display: flex; gap: 8px; align-items: stretch; }
+.room-pick select { flex: 1; min-width: 0; }
+.room-pick .btn { padding: 0 14px; flex: none; }
+.room-note.ok { color: #6ee7a0; }
+.room-note.warn { color: #fbbf24; }

@@ -77,10 +77,12 @@ Bei jeder Installation und jedem Update (auch „Update jetzt“ aus dem Webinte
 | `install.sh`, `update.sh`, `uninstall.sh` | root | 755 – **nicht** vom Dienst änderbar (sie laufen als root) |
 | `/opt/n8crosslink/data` | n8crosslink | 750, Datenbank 640 |
 | `/etc/systemd/system/n8crosslink*` | root | 644 |
-| `/etc/sudoers.d/n8crosslink` | root | 440, mit `visudo` geprüft |
+| `/etc/sudoers.d/n8crosslink` | root | 440, mit `visudo` geprüft, aktuell und wirksam (`sudo -l`) |
+| `/opt/n8crosslink/data/system.json` | n8crosslink | 640 – was das Webinterface darf |
 | USB-Stick | Gruppe `dialout` (bzw. Gerätegruppe) | Dienstbenutzer wird ergänzt |
 
-Von Hand: `sudo /opt/n8crosslink/install.sh --fix-perms` oder Admin → 🛠️ System → „Berechtigungen prüfen & korrigieren“.
+Von Hand: `sudo /opt/n8crosslink/install.sh --check-perms` (nur prüfen) bzw. `--fix-perms` (prüfen, korrigieren inkl. sudo, erneut prüfen)
+oder Admin → 🛠️ System → **🔐 Berechtigungen & sudo**. Alle Prüfungen im Einzelnen: [BETRIEB.md](BETRIEB.md#berechtigungen--sudo-prüfen-und-korrigieren).
 
 ## Wichtige Befehle
 

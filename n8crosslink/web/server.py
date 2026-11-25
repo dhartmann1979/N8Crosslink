@@ -484,11 +484,18 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         ok, out = await bridge.system.reboot()
         return {"ok": ok, "message": out[:300]}
 
+    @app.get("/api/admin/system/perms")
+    async def system_perms(_: str = Depends(require_admin)) -> dict:
+        return await bridge.system.check_perms()
+
     @app.post("/api/admin/system/fix-perms")
     async def system_fix_perms(user: str = Depends(require_admin)) -> dict:
         ok, out = await bridge.system.fix_perms()
-        bridge.router.event("info" if ok else "warn", f"Berechtigungsprüfung durch {user}: {'ok' if ok else 'Fehler'}")
-        return {"ok": ok, "message": out}
+        bridge.router.event("info" if ok else "warn", f"Berechtigungen geprüft und korrigiert durch {user}: {'alles in Ordnung' if ok else 'Fehler bleiben'}")
+        res = {"ok": ok, "message": out}
+        if bridge.system.config().get("check_perms"):
+            res["check"] = await bridge.system.check_perms()
+        return res
 
     # ---- ID-Listen & Avatare
     @app.get("/api/admin/ids")

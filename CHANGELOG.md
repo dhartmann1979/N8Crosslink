@@ -2,6 +2,39 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.14.0] – 2026-11-25
+
+**🔐 Berechtigungsprüfer mit Korrektur – und sudo wird mitgeprüft und eingerichtet.**
+
+### 🔐 Berechtigungen & sudo prüfen und korrigieren
+- Neuer Prüfer im Installer: **`install.sh --check-perms`** prüft, ohne etwas zu ändern, und meldet jede Regel einzeln (✔/⚠/✖, Rückgabe 1 bei
+  Fehlern); **`install.sh --fix-perms`** prüft, korrigiert gezielt und prüft danach erneut („alle 3 Fehler korrigiert – erneut geprüft, alles in
+  Ordnung“ oder was übrig bleibt). Mit `--check-perms --json` als Liste für das Webinterface.
+- Geprüft werden (Details in BETRIEB.md): Dienstbenutzer (vorhanden, Gruppe `dialout`, keine Login-Shell), Programmdateien (`root:root`, nicht
+  beschreibbar, Ordner 755, Skripte 755, venv, keine lesbaren Schlüsseldateien, kein `.cache`), Daten (`n8crosslink`, 750, Datenbank 640,
+  `update.log` 644), systemd-Units (vorhanden, `root:root` 644, Dienst nicht als root, „Update jetzt“ aktiv), Quellordner (root), USB-Vocoder
+  (Gerätegruppe), Domains & HTTPS (Prüfordner, nginx-Seiten).
+- **sudo wird mitgeprüft und eingerichtet:** sudo installiert, `/etc/sudoers` bindet `/etc/sudoers.d` ein (fehlt es, wird `@includedir` ergänzt –
+  vorher mit `visudo` geprüft), `/etc/sudoers.d/n8crosslink` `root:root` 440, gültig, **aktuell** (Vergleich mit den Freigaben, die der Installer
+  jetzt schreiben würde) und **wirksam** (`sudo -l -U n8crosslink`), `system.json` vollständig. Bei einem Fehler werden Freigaben und
+  `system.json` neu geschrieben; fehlt sudo, wird es installiert.
+- Fehlende systemd-Units spielt die Korrektur aus `/opt/n8crosslink/systemd/` wieder ein (der Installer legt die Vorlagen dort jetzt ab) und
+  aktiviert `n8crosslink-update.path`.
+- Installer und Update prüfen am Ende automatisch noch einmal und korrigieren, was übrig ist.
+
+### 🛠️ Webinterface: Admin → System → 🔐 Berechtigungen & sudo
+- Neue Liste aller Prüfungen nach Bereichen, oben ein Abzeichen („alles in Ordnung“ / „2 Fehler“). Wird beim Öffnen geprüft;
+  **🔍 Erneut prüfen** und **🛠️ Korrigieren** (zeigt die Ausgabe und das Ergebnis der zweiten Prüfung). Ersetzt den alten Knopf
+  „Berechtigungen prüfen & korrigieren“.
+- Ist sudo nicht eingerichtet oder verweigert, steht der Konsolenbefehl `sudo /opt/n8crosslink/install.sh --fix-perms` da.
+- Neue sudo-Freigabe genau für `install.sh --check-perms --json` (andere Argumente verweigert sudo). API: `GET /api/admin/system/perms`;
+  `POST /api/admin/system/fix-perms` liefert jetzt zusätzlich das Prüfergebnis. Nur Admins, Ereignisprotokoll.
+
+### 🧰 Intern
+- `setup_sudo` aufgeteilt in `sudo_rules` (Freigaben erzeugen) und `system_json`, damit Einrichten und Prüfen dieselben Regeln nutzen.
+- Doku: Freigaben-Beschreibung in BETRIEB.md korrigiert (`n8x-certs.sh *` ist der einzige Platzhalter).
+- Tests: `tests/test_perms.py` (API, nicht freigegeben, sudo verweigert, Freigaben decken jeden sudo-Aufruf ab, `--check-perms --json` als root).
+
 ## [1.13.0] – 2026-11-25
 
 **🔌 Alle Ports einstellbar – an einer Stelle, wie beim DMR-Server.**

@@ -109,7 +109,7 @@ async def main(port: int) -> None:
     bridge.updater.raw_url = lambda path: f"{base}/raw/{path}"
     await bridge.updater.check()
     import json as _j
-    open(os.path.join(os.path.dirname(db.path), "system.json"), "w").write(_j.dumps({"sudo": False, "systemctl": "/usr/bin/systemctl", "reboot": True, "fix_perms": True, "build_vocoder": True, "certs": True, "units": [
+    open(os.path.join(os.path.dirname(db.path), "system.json"), "w").write(_j.dumps({"sudo": True, "systemctl": "/usr/bin/systemctl", "reboot": True, "fix_perms": True, "build_vocoder": True, "certs": True, "check_perms": True, "units": [
         {"unit": "n8crosslink.service", "label": "N8 Crosslink", "actions": ["restart"]},
         {"unit": "svxlink.service", "label": "svxlink (alt)", "actions": ["start", "stop", "restart", "enable", "disable"]}]}))
     server = uvicorn.Server(uvicorn.Config(create_app(bridge), host="127.0.0.1", port=port, log_level="warning"))

@@ -60,7 +60,7 @@ class System:
             units.append({**u, "active": a if a in known_a else "unbekannt",
                           "enabled": e if e in known_e else "unbekannt"})
         return {"sudo": await self.sudo_ok(), "units": units, "reboot": c.get("reboot", False),
-                "fix_perms": c.get("fix_perms", False)}
+                "fix_perms": c.get("fix_perms", False), "check_perms": c.get("check_perms", False)}
 
     def allowed(self, unit: str, action: str) -> bool:
         for u in self.config().get("units", []):
@@ -91,6 +91,21 @@ class System:
                            "einmal sudo /opt/n8crosslink/update.sh ausführen")
         rc, out = await self.sudo("/opt/n8crosslink/install.sh", "--build-vocoder", timeout=1200)
         return rc == 0, out[-3000:]
+
+    async def check_perms(self) -> dict:
+        """Berechtigungen und sudo prüfen (ändert nichts) – Liste aus install.sh --check-perms --json."""
+        if not self.config().get("check_perms"):
+            return {"ok": False, "missing": True, "checks": [],
+                    "message": "Prüfung im Webinterface noch nicht freigegeben – einmal sudo /opt/n8crosslink/install.sh --fix-perms ausführen"}
+        rc, out = await self.sudo("/opt/n8crosslink/install.sh", "--check-perms", "--json", timeout=120)
+        for line in reversed(out.strip().splitlines()):
+            if line.startswith("{"):
+                try:
+                    return json.loads(line)
+                except ValueError:
+                    break
+        return {"ok": False, "checks": [], "message": ("sudo verweigert – auf der Konsole: sudo /opt/n8crosslink/install.sh --fix-perms"
+                                                     if "password" in out or "sudo" in out else out[-300:] or f"Fehler {rc}")}
 
     async def fix_perms(self) -> tuple[bool, str]:
         if not self.config().get("fix_perms"):

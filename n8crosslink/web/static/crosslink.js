@@ -717,8 +717,13 @@ async function renderSystem() {
   $('#adminBody').innerHTML = `<h2 class="section-header">Dienste ${sy.sudo ? '<span class="badge ok">sudo bereit</span>' : '<span class="badge warn">sudo nicht eingerichtet – einmal sudo /opt/n8crosslink/update.sh ausführen</span>'}</h2>
     <div class="card">${unitsHtml}</div>
     <div class="form-actions" style="justify-content:flex-start">
-      <button class="btn secondary" id="sysPerm" ${sy.sudo && sy.fix_perms ? '' : 'disabled'}>🔐 Berechtigungen prüfen &amp; korrigieren</button>
       ${sy.reboot ? `<button class="btn danger" id="sysReboot" ${sy.sudo ? '' : 'disabled'}>⏻ Server neu starten</button>` : ''}</div>
+    <h2 class="section-header">🔐 Berechtigungen &amp; sudo <span id="permBadge"></span></h2>
+    <p style="padding:0 4px;color:var(--text-dim);font-size:13px">Prüft Dienstbenutzer, Programm- und Datenrechte, systemd, Quellordner, USB-Vocoder, Domains und die sudo-Freigaben. Fehler korrigiert <b>🛠️ Korrigieren</b> – danach wird erneut geprüft. Auf der Konsole: <code>sudo /opt/n8crosslink/install.sh --check-perms</code> bzw. <code>--fix-perms</code>.</p>
+    <div class="card" id="permList"><div class="empty">prüfe …</div></div>
+    <div class="form-actions" style="justify-content:flex-start">
+      <button class="btn secondary" id="permCheck" ${sy.sudo && sy.check_perms ? '' : 'disabled'}>🔍 Erneut prüfen</button>
+      <button class="btn" id="sysPerm" ${sy.sudo && sy.fix_perms ? '' : 'disabled'}>🛠️ Korrigieren</button></div>
     <pre id="sysOut" style="font-size:11.5px;white-space:pre-wrap;color:var(--text-dim);padding:0 4px"></pre>
     <h2 class="section-header">Bridge</h2>
     <div class="form-actions" style="justify-content:flex-start">
@@ -735,7 +740,26 @@ async function renderSystem() {
     const r = await api('/api/admin/system/unit', { method: 'POST', body: { unit: b.dataset.unit, action: b.dataset.act } });
     toast((r.ok ? '✅ ' : '⚠️ ') + (r.message || '')); if (!self) setTimeout(renderSystem, 1500);
   });
-  if ($('#sysPerm')) $('#sysPerm').onclick = async () => { $('#sysOut').textContent = 'prüfe …'; const r = await api('/api/admin/system/fix-perms', { method: 'POST' }); $('#sysOut').textContent = r.message; toast(r.ok ? '✅ Berechtigungen geprüft' : '⚠️ Fehler'); };
+  const AREA = { user: '👤 Dienstbenutzer', prog: '📦 Programm', data: '💾 Daten', systemd: '⚙️ systemd', source: '🧬 Quellordner', usb: '🔌 USB-Vocoder', https: '🔒 Domains & HTTPS', sudo: '🛡️ sudo' };
+  const showPerms = (r) => {
+    const rows = r.checks || [];
+    $('#permBadge').innerHTML = !rows.length ? '<span class="badge warn">nicht geprüft</span>' : r.bad ? `<span class="badge off">${r.bad} Fehler</span>` : `<span class="badge ok">alles in Ordnung${r.warn ? ' · ' + r.warn + ' Hinweis(e)' : ''}</span>`;
+    if (!rows.length) { $('#permList').innerHTML = `<div class="empty">${esc(r.message || 'keine Daten')}</div>`; return; }
+    const order = [...new Set(rows.map(c => c.area))];
+    $('#permList').innerHTML = `<table class="tbl"><tbody>${order.map(a => rows.filter(c => c.area === a).map((c, i) => `<tr class="perm-${c.status}">
+      <td style="width:170px">${i ? '' : `<b>${esc(AREA[a] || a)}</b>`}</td>
+      <td style="width:28px">${c.status === 'ok' ? '✅' : c.status === 'warn' ? '⚠️' : '❌'}</td><td>${esc(c.text)}</td></tr>`).join('')).join('')}</tbody></table>`;
+  };
+  const loadPerms = async () => { if (!(sy.sudo && sy.check_perms)) { showPerms({ checks: [], message: sy.sudo ? 'Prüfung im Webinterface noch nicht freigegeben – einmal auf der Konsole: sudo /opt/n8crosslink/install.sh --fix-perms' : 'sudo ist nicht eingerichtet – auf der Konsole: sudo /opt/n8crosslink/install.sh --fix-perms (richtet sudo ein und korrigiert alle Rechte)' }); return; }
+    $('#permList').innerHTML = '<div class="empty">prüfe …</div>'; try { showPerms(await api('/api/admin/system/perms')); } catch (e) { showPerms({ checks: [], message: e.message }); } };
+  loadPerms();
+  if ($('#permCheck')) $('#permCheck').onclick = loadPerms;
+  if ($('#sysPerm')) $('#sysPerm').onclick = async (e) => {
+    e.target.disabled = true; $('#sysOut').textContent = 'prüfe und korrigiere …';
+    try { const r = await api('/api/admin/system/fix-perms', { method: 'POST' }); $('#sysOut').textContent = (r.message || '').replace(/\x1b\[[0-9;]*m/g, ''); if (r.check) showPerms(r.check); toast(r.ok ? '✅ Berechtigungen in Ordnung' : '⚠️ Nicht alles ließ sich korrigieren'); }
+    catch (err) { toast('⚠️ ' + err.message); }
+    e.target.disabled = false;
+  };
   if ($('#sysReboot')) $('#sysReboot').onclick = async () => { if (!confirm('Den ganzen Server jetzt neu starten?')) return; const r = await api('/api/admin/system/reboot', { method: 'POST' }); toast(r.message); };
   $('#sysRestart').onclick = async () => { await api('/api/admin/restart', { method: 'POST' }); toast('🔄 Bridge startet neu …'); };
   $('#sysSvc').onclick = async () => { if (!confirm('Dienst komplett neu starten? Das Dashboard ist ein paar Sekunden weg.')) return; await api('/api/admin/service-restart', { method: 'POST' }); toast('♻️ Dienst startet neu …'); };

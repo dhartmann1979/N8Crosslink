@@ -27,20 +27,46 @@ Hinweis, Updates-Seite und Fortschritt kommen aus dem **N8 Kit** und sehen in N8
 
 ## sudo – alles über das Webinterface
 
-Die Bridge läuft als eigener Benutzer **ohne** root-Rechte. Damit trotzdem alles im Webinterface geht, schreibt der Installer `/etc/sudoers.d/n8crosslink` mit **einzelnen, vollständigen Befehlen** (keine Platzhalter, keine Shell), z. B.
+Die Bridge läuft als eigener Benutzer **ohne** root-Rechte. Damit trotzdem alles im Webinterface geht, schreibt der Installer `/etc/sudoers.d/n8crosslink` mit **einzelnen, vollständigen Befehlen** (keine Shell; einziger Platzhalter ist `n8x-certs.sh *`, der Helfer prüft jede Eingabe selbst), z. B.
 
 ```
 n8crosslink ALL=(root) NOPASSWD: /usr/bin/systemctl --no-block restart n8crosslink.service
 n8crosslink ALL=(root) NOPASSWD: /usr/bin/systemctl --no-block start n8crosslink-update.service
 n8crosslink ALL=(root) NOPASSWD: /opt/n8crosslink/install.sh --build-vocoder
 n8crosslink ALL=(root) NOPASSWD: /opt/n8crosslink/install.sh --fix-perms
+n8crosslink ALL=(root) NOPASSWD: /opt/n8crosslink/install.sh --check-perms --json
 ```
 
-Freigegeben werden: Neustart der Bridge, Bauen des N8schicht-Vocoders (`install.sh --build-vocoder`), Update-Dienst und die bei der Installation erkannten alten Dienste (Start/Stopp/Neustart/Autostart), Berechtigungsprüfung und – nur wenn bei der Installation bestätigt – `systemctl reboot`. Die Datei wird vor dem Einspielen mit `visudo` geprüft und bei jedem Update neu erzeugt. Alles andere (Shell, andere Dienste) ist verboten.
+Freigegeben werden: Neustart der Bridge, Bauen des N8schicht-Vocoders (`install.sh --build-vocoder`), Update-Dienst und die bei der Installation erkannten alten Dienste (Start/Stopp/Neustart/Autostart), Berechtigungsprüfung (`--check-perms --json`) und -korrektur (`--fix-perms`), Domains & HTTPS (`n8x-certs.sh`) und – nur wenn bei der Installation bestätigt – `systemctl reboot`. Die Datei wird vor dem Einspielen mit `visudo` geprüft und bei jedem Update neu erzeugt. Alles andere (Shell, andere Dienste) ist verboten.
 
-## Berechtigungen
+## Berechtigungen & sudo prüfen und korrigieren
 
-Programm, venv und Skripte gehören root und sind für den Dienst nur lesbar – wichtig, weil `update.sh` als root läuft. Nur `data/` gehört dem Dienst. Geprüft und korrigiert wird bei jeder Installation, jedem Update und auf Knopfdruck (siehe [INSTALLATION.md](INSTALLATION.md#berechtigungen)).
+Programm, venv und Skripte gehören root und sind für den Dienst nur lesbar – wichtig, weil `update.sh` als root läuft. Nur `data/` gehört dem Dienst.
+Ab 1.14.0 gibt es dafür einen **Berechtigungsprüfer**, der jede Regel einzeln meldet, gezielt korrigiert und danach erneut prüft:
+
+```bash
+sudo /opt/n8crosslink/install.sh --check-perms     # nur prüfen, ändert nichts (Rückgabe 1 = Fehler gefunden)
+sudo /opt/n8crosslink/install.sh --fix-perms       # prüfen → korrigieren (auch sudo) → erneut prüfen
+```
+
+Im Webinterface: **⚙️ Admin → 🛠️ System → 🔐 Berechtigungen & sudo** – die Liste wird beim Öffnen geprüft, **🛠️ Korrigieren** repariert
+und zeigt das Ergebnis der zweiten Prüfung.
+
+![Berechtigungen & sudo](screenshots/admin-perms.png)
+
+| Bereich | Geprüft wird | Korrektur |
+|---|---|---|
+| 👤 Dienstbenutzer | `n8crosslink` vorhanden, in Gruppe `dialout`, ohne Login-Shell (nur Hinweis) | Gruppe ergänzen |
+| 📦 Programm | alles unter `/opt/n8crosslink` außer `data/` gehört `root:root`, nicht für Gruppe/andere beschreibbar; Ordner 755; `install.sh`, `update.sh`, `uninstall.sh`, `n8x-certs.sh` 755; venv ausführbar; keine lesbaren `*.key`/`*.pem`; kein `.cache` | Besitzer/Rechte setzen, Schlüsseldateien in die Datenbank übernehmen |
+| 💾 Daten | `data/` gehört `n8crosslink`, 750; Datenbank 640; `update.log` 644 | Besitzer/Rechte setzen |
+| ⚙️ systemd | `n8crosslink.service`, `-update.path`, `-update.service` vorhanden, `root:root` 644; Dienst läuft als `n8crosslink`; „Update jetzt“ aktiv | fehlende Units einspielen, Rechte setzen, `n8crosslink-update.path` aktivieren |
+| 🧬 Quellordner | Git-Quelle (daraus installiert `update.sh` als root) gehört root, nicht beschreibbar | Besitzer setzen |
+| 🔌 USB-Vocoder | Betriebsart USB: Gerät vorhanden, Dienstbenutzer in dessen Gruppe | Gruppe ergänzen |
+| 🔒 Domains & HTTPS | `/var/www/n8crosslink-acme` 755, nginx-Seiten `n8crosslink*` `root:root` 644 | Rechte setzen |
+| 🛡️ sudo | sudo installiert; `/etc/sudoers` bindet `/etc/sudoers.d` ein; `/etc/sudoers.d/n8crosslink` `root:root` 440, gültig (`visudo`), **aktuell** (Vergleich mit den Freigaben, die der Installer jetzt schreiben würde), **wirksam** (`sudo -l -U n8crosslink`); `data/system.json` vorhanden, 640, vollständig | sudo installieren, `@includedir` ergänzen (mit `visudo` geprüft), Freigaben und `system.json` neu schreiben |
+
+Installer und Update rufen am Ende dieselbe Prüfung auf. Ist sudo noch gar nicht eingerichtet (z. B. von Hand gelöscht), kann das
+Webinterface nichts reparieren – dann einmal auf der Konsole `sudo /opt/n8crosslink/install.sh --fix-perms`; die Seite zeigt diesen Hinweis.
 
 ## LEDs in Statusleiste und Netzkarten
 

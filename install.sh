@@ -205,50 +205,223 @@ remove_md380() {
 
 # ---------------------------------------------------------------- sudo fürs Webinterface
 # Nur exakt aufgezählte Befehle, geprüft mit visudo. Die Bridge selbst bleibt ohne root-Rechte.
-setup_sudo() {
-  local SC; SC=$(type -P systemctl || echo /usr/bin/systemctl)
-  local allow_reboot="${1:-true}" units=() u acts line json="" sep=""
-  local F=/etc/sudoers.d/n8crosslink TMP; TMP=$(mktemp)
-  command -v sudo >/dev/null || apt-get install -y -qq sudo >/dev/null
+SUDOERS=/etc/sudoers.d/n8crosslink
+reboot_pref() { grep -q '"reboot": false' "$DATA_DIR/system.json" 2>/dev/null && echo false || echo true; }
+sudo_rules() {   # sudo_rules DATEI [reboot] – schreibt die Freigaben nach DATEI, setzt SUDO_JSON (Dienste fürs Webinterface)
+  local out="$1" allow_reboot="${2:-true}" u SC sep=""
+  SC=$(type -P systemctl || echo /usr/bin/systemctl); SUDO_SC="$SC"; SUDO_JSON=""
   add_unit() {  # add_unit unit "label" "aktionen…"
-    local unit="$1" label="$2"; shift 2
+    local unit="$1" label="$2" a al; shift 2
     for a in "$@"; do
-      case "$a" in start|restart) echo "$SVC_USER ALL=(root) NOPASSWD: $SC --no-block $a $unit" >> "$TMP" ;;
-                   *)             echo "$SVC_USER ALL=(root) NOPASSWD: $SC $a $unit" >> "$TMP" ;; esac
+      case "$a" in start|restart) echo "$SVC_USER ALL=(root) NOPASSWD: $SC --no-block $a $unit" >> "$out" ;;
+                   *)             echo "$SVC_USER ALL=(root) NOPASSWD: $SC $a $unit" >> "$out" ;; esac
     done
-    local al; al=$(printf '"%s",' "$@"); al="[${al%,}]"
-    json+="${sep}{\"unit\": \"$unit\", \"label\": \"$label\", \"actions\": $al}"; sep=", "
+    al=$(printf '"%s",' "$@"); al="[${al%,}]"
+    SUDO_JSON+="${sep}{\"unit\": \"$unit\", \"label\": \"$label\", \"actions\": $al}"; sep=", "
   }
-  echo "# N8 Crosslink – vom Installer erzeugt, nicht von Hand ändern (wird bei jedem Update neu geschrieben)" > "$TMP"
-  echo "Defaults:$SVC_USER !requiretty" >> "$TMP"
+  echo "# N8 Crosslink – vom Installer erzeugt, nicht von Hand ändern (wird bei jedem Update neu geschrieben)" > "$out"
+  echo "Defaults:$SVC_USER !requiretty" >> "$out"
   add_unit n8crosslink.service "N8 Crosslink" restart
   add_unit n8crosslink-update.service "Update-Dienst" start
-  for u in $(systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}' | grep -Ei '^(svxlink|mmdvm_bridge|analog_bridge|ambeserver|.*zello.*)\.service$' | grep -v n8crosslink); do
+  for u in $(systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}' | grep -Ei '^(svxlink|mmdvm_bridge|analog_bridge|ambeserver|.*zello.*)\.service$' | grep -v n8crosslink | sort -u); do
     add_unit "$u" "${u%.service} (alt)" start stop restart enable disable
   done
-  [[ "$allow_reboot" == "true" ]] && echo "$SVC_USER ALL=(root) NOPASSWD: $SC reboot" >> "$TMP"
-  echo "$SVC_USER ALL=(root) NOPASSWD: $APP_DIR/install.sh --fix-perms" >> "$TMP"
-  echo "$SVC_USER ALL=(root) NOPASSWD: $APP_DIR/install.sh --build-vocoder" >> "$TMP"
+  [[ "$allow_reboot" == "true" ]] && echo "$SVC_USER ALL=(root) NOPASSWD: $SC reboot" >> "$out"
+  echo "$SVC_USER ALL=(root) NOPASSWD: $APP_DIR/install.sh --fix-perms" >> "$out"
+  echo "$SVC_USER ALL=(root) NOPASSWD: $APP_DIR/install.sh --check-perms --json" >> "$out"
+  echo "$SVC_USER ALL=(root) NOPASSWD: $APP_DIR/install.sh --build-vocoder" >> "$out"
   # Domains & HTTPS (Let's Encrypt) im Webinterface – das Skript prüft jede Eingabe selbst
-  echo "$SVC_USER ALL=(root) NOPASSWD: $APP_DIR/n8x-certs.sh" >> "$TMP"
-  echo "$SVC_USER ALL=(root) NOPASSWD: $APP_DIR/n8x-certs.sh *" >> "$TMP"
+  echo "$SVC_USER ALL=(root) NOPASSWD: $APP_DIR/n8x-certs.sh" >> "$out"
+  echo "$SVC_USER ALL=(root) NOPASSWD: $APP_DIR/n8x-certs.sh *" >> "$out"
+  return 0
+}
+system_json() {  # Inhalt von data/system.json (was das Webinterface darf)
+  printf '{"sudo": true, "systemctl": "%s", "reboot": %s, "fix_perms": true, "check_perms": true, "build_vocoder": true, "certs": true, "units": [%s]}\n' \
+    "$SUDO_SC" "$1" "$SUDO_JSON"
+}
+sudo_includedir() {   # /etc/sudoers muss /etc/sudoers.d einbinden (fehlt auf manchen Minimal-Images)
+  grep -Eq '^[[:space:]]*[@#]includedir[[:space:]]+/etc/sudoers\.d[[:space:]]*$' /etc/sudoers 2>/dev/null && return 0
+  local T; T=$(mktemp); cat /etc/sudoers > "$T" 2>/dev/null || true; echo "@includedir /etc/sudoers.d" >> "$T"
+  if visudo -cf "$T" >/dev/null 2>&1; then install -o root -g root -m 0440 "$T" /etc/sudoers; warn "/etc/sudoers band /etc/sudoers.d nicht ein – ergänzt"
+  else warn "/etc/sudoers ließ sich nicht ergänzen (visudo) – bitte von Hand „@includedir /etc/sudoers.d“ eintragen"; fi
+  rm -f "$T"
+}
+setup_sudo() {
+  local allow_reboot="${1:-true}" TMP; TMP=$(mktemp)
+  command -v sudo >/dev/null || { info "sudo fehlt – wird installiert"; apt-get install -y -qq sudo >/dev/null 2>&1 || warn "sudo nicht installierbar"; }
+  command -v sudo >/dev/null || { rm -f "$TMP"; return 0; }
+  [[ -f /etc/sudoers ]] && sudo_includedir
+  install -d -o root -g root -m 0750 /etc/sudoers.d
+  sudo_rules "$TMP" "$allow_reboot"
   if visudo -cf "$TMP" >/dev/null 2>&1; then
-    install -o root -g root -m 0440 "$TMP" "$F"
-    printf '{"sudo": true, "systemctl": "%s", "reboot": %s, "fix_perms": true, "build_vocoder": true, "certs": true, "units": [%s]}\n' "$SC" "$allow_reboot" "$json" > "$DATA_DIR/system.json"
-    chown "$SVC_USER:$SVC_USER" "$DATA_DIR/system.json"; chmod 640 "$DATA_DIR/system.json"
-    ok "sudo fürs Webinterface eingerichtet ($(grep -c NOPASSWD "$F") freigegebene Befehle, mit visudo geprüft)"
+    install -o root -g root -m 0440 "$TMP" "$SUDOERS"
+    mkdir -p "$DATA_DIR"; system_json "$allow_reboot" > "$DATA_DIR/system.json"
+    id "$SVC_USER" &>/dev/null && chown "$SVC_USER:$SVC_USER" "$DATA_DIR/system.json"; chmod 640 "$DATA_DIR/system.json"
+    ok "sudo fürs Webinterface eingerichtet ($(grep -c NOPASSWD "$SUDOERS") freigegebene Befehle, mit visudo geprüft)"
   else
     warn "sudoers-Datei ungültig – nicht übernommen"; visudo -cf "$TMP" || true
   fi
   rm -f "$TMP"
 }
 
+# ---------------------------------------------------------------- Berechtigungsprüfung (ändert nichts)
+# Jede Prüfung ergibt eine Zeile „ok|warn|bad · Bereich · Text“. bad = Fehler, den --fix-perms korrigiert.
+CK=()
+ck() { CK+=("$1|$2|$3"); }
+ck_mode() {   # ck_mode Bereich Datei besitzer:gruppe modus Beschreibung
+  local is; is=$(stat -c '%U:%G %a' "$2" 2>/dev/null) || { ck bad "$1" "$5 fehlt ($2)"; return; }
+  if [[ "$is" == "$3 $4" ]]; then ck ok "$1" "$5 ($3, $4)"; else ck bad "$1" "$5: $is statt $3 $4 ($2)"; fi
+}
+first_of() { head -1 | sed "s|^$APP_DIR/||"; }
+check_perms() {
+  local -; set +e +o pipefail      # nur prüfen: einzelne fehlgeschlagene Befehle sind Befunde, kein Abbruch
+  CK=()
+  local f n x mode="" dev=""
+  # Dienstbenutzer
+  if id "$SVC_USER" &>/dev/null; then
+    ck ok user "Dienstbenutzer $SVC_USER vorhanden"
+    if id -nG "$SVC_USER" | grep -qw dialout; then ck ok user "$SVC_USER ist in der Gruppe dialout (USB-Vocoder)"
+    else ck bad user "$SVC_USER ist nicht in der Gruppe dialout (USB-Vocoder)"; fi
+    [[ "$(getent passwd "$SVC_USER" | cut -d: -f7)" == */nologin || "$(getent passwd "$SVC_USER" | cut -d: -f7)" == /bin/false ]] \
+      && ck ok user "$SVC_USER hat keine Login-Shell" || ck warn user "$SVC_USER hat eine Login-Shell ($(getent passwd "$SVC_USER" | cut -d: -f7))"
+  else ck bad user "Dienstbenutzer $SVC_USER fehlt – bitte den Installer neu starten"; fi
+  [[ -d "$APP_DIR" ]] || { ck bad prog "$APP_DIR fehlt – N8 Crosslink ist nicht installiert"; return 0; }
+  # Programm: root:root, für den Dienst nicht beschreibbar
+  n=$(find "$APP_DIR" -path "$DATA_DIR" -prune -o ! -type l \( ! -user root -o ! -group root -o -perm /022 \) -print 2>/dev/null | wc -l)
+  if (( n == 0 )); then ck ok prog "Programmdateien gehören root und sind für den Dienst schreibgeschützt"
+  else ck bad prog "$n Programmdateien gehören nicht root:root oder sind für Gruppe/andere beschreibbar (z. B. $(find "$APP_DIR" -path "$DATA_DIR" -prune -o ! -type l \( ! -user root -o ! -group root -o -perm /022 \) -print 2>/dev/null | first_of))"; fi
+  n=$(find "$APP_DIR" -path "$DATA_DIR" -prune -o -type d ! -perm 755 -print 2>/dev/null | wc -l)
+  (( n == 0 )) && ck ok prog "Ordner 755" || ck bad prog "$n Ordner nicht 755 (z. B. $(find "$APP_DIR" -path "$DATA_DIR" -prune -o -type d ! -perm 755 -print 2>/dev/null | first_of))"
+  for f in install.sh update.sh uninstall.sh n8x-certs.sh; do [[ -f "$APP_DIR/$f" ]] && ck_mode prog "$APP_DIR/$f" root:root 755 "$f"; done
+  if [[ -x "$APP_DIR/venv/bin/python" ]]; then ck ok prog "Python-Umgebung (venv) ausführbar"; else ck bad prog "venv/bin/python fehlt oder ist nicht ausführbar"; fi
+  n=$(find "$APP_DIR/venv/bin" -maxdepth 1 -type f ! -perm 755 2>/dev/null | wc -l)
+  (( n == 0 )) || ck bad prog "$n Programme in venv/bin nicht 755"
+  [[ -e "$APP_DIR/.cache" ]] && ck bad prog "Zwischenspeicher $APP_DIR/.cache gehört nicht ins Programmverzeichnis"
+  n=$(find "$APP_DIR" -path "$DATA_DIR" -prune -o -path "$APP_DIR/venv" -prune -o -type f \( -name '*.key' -o -name '*.pem' -o -name '*.p12' \) -perm /044 -print 2>/dev/null | wc -l)
+  (( n == 0 )) && ck ok prog "keine lesbaren Schlüsseldateien" || ck bad prog "$n Schlüsseldateien (*.key/*.pem) für andere lesbar"
+  # Daten: gehören dem Dienst
+  if [[ -d "$DATA_DIR" ]]; then
+    ck_mode data "$DATA_DIR" "$SVC_USER:$SVC_USER" 750 "Datenordner"
+    n=$(find "$DATA_DIR" \( ! -user "$SVC_USER" ! -name update.log \) -print 2>/dev/null | wc -l)
+    (( n == 0 )) && ck ok data "alle Daten gehören $SVC_USER" || ck bad data "$n Dateien im Datenordner gehören nicht $SVC_USER (z. B. $(find "$DATA_DIR" \( ! -user "$SVC_USER" ! -name update.log \) -print 2>/dev/null | first_of))"
+    if [[ -f "$DB" ]]; then
+      n=$(find "$DATA_DIR" -type f -name '*.db*' ! -perm 640 2>/dev/null | wc -l)
+      (( n == 0 )) && ck ok data "Datenbank nur für $SVC_USER lesbar (640)" || ck bad data "$n Datenbankdateien nicht 640 (Passwörter und Schlüssel liegen darin)"
+    else ck warn data "Datenbank $DB fehlt noch (wird beim ersten Start angelegt)"; fi
+    [[ -f "$DATA_DIR/update.log" ]] && { [[ "$(stat -c %a "$DATA_DIR/update.log")" == 644 ]] && ck ok data "update.log lesbar (644)" || ck bad data "update.log nicht 644"; }
+  else ck bad data "Datenordner $DATA_DIR fehlt"; fi
+  # systemd
+  for f in n8crosslink.service n8crosslink-update.path n8crosslink-update.service; do
+    [[ -f "/etc/systemd/system/$f" ]] && ck_mode systemd "/etc/systemd/system/$f" root:root 644 "$f" || ck bad systemd "$f fehlt in /etc/systemd/system"
+  done
+  x=$(sed -n 's/^User=//p' /etc/systemd/system/n8crosslink.service 2>/dev/null | head -1)
+  [[ -f /etc/systemd/system/n8crosslink.service ]] && { [[ "$x" == "$SVC_USER" ]] && ck ok systemd "Dienst läuft als $SVC_USER (ohne root)" || ck bad systemd "Dienst läuft als ${x:-root} statt $SVC_USER"; }
+  systemctl is-enabled n8crosslink-update.path >/dev/null 2>&1 && ck ok systemd "„Update jetzt“ (n8crosslink-update.path) aktiv" || ck bad systemd "n8crosslink-update.path ist nicht aktiv – „Update jetzt“ im Adminportal geht nicht"
+  # Quelle (daraus installiert update.sh als root)
+  if [[ -f "$APP_DIR/.source" ]]; then
+    x=$(cat "$APP_DIR/.source")
+    if [[ -d "$x" ]]; then
+      n=$(find "$x" ! -type l \( ! -user root -o -perm /022 \) -print 2>/dev/null | wc -l)
+      (( n == 0 )) && ck ok source "Quellordner $x gehört root" || ck bad source "$n Dateien im Quellordner $x gehören nicht root oder sind beschreibbar (daraus wird als root installiert)"
+    fi
+  fi
+  # USB-Vocoder (Einstellung über den Dienstbenutzer lesen – root legt so keine Datenbankdateien an)
+  if [[ -f "$DB" && -x "$APP_DIR/venv/bin/python" ]] && id "$SVC_USER" &>/dev/null; then
+    x=$(cli show vocoder 2>/dev/null || true)
+    mode=$(grep -oP '"vocoder_mode": "\K[^"]*' <<<"$x" || true); dev=$(grep -oP '"usb_device": "\K[^"]*' <<<"$x" || true)
+    if [[ "$mode" == usb && -n "$dev" ]]; then
+      if [[ -e "$dev" ]]; then
+        x=$(stat -c %G "$(readlink -f "$dev")")
+        id -nG "$SVC_USER" | grep -qw "$x" && ck ok usb "USB-Stick $dev erreichbar (Gruppe $x)" || ck bad usb "kein Zugriff auf $dev (Gruppe $x fehlt bei $SVC_USER)"
+      else ck warn usb "USB-Stick $dev ist gerade nicht angeschlossen"; fi
+    fi
+  fi
+  # Domains & HTTPS
+  [[ -d /var/www/n8crosslink-acme ]] && ck_mode https /var/www/n8crosslink-acme root:root 755 "Let's-Encrypt-Prüfordner"
+  for f in /etc/nginx/sites-available/n8crosslink /etc/nginx/sites-available/n8crosslink-*; do
+    [[ -f "$f" && "$f" != *.bak && "$f" != *.tmp ]] && ck_mode https "$f" root:root 644 "nginx-Seite ${f##*/}"
+  done
+  check_sudo
+  return 0
+}
+check_sudo() {
+  local -; set +e +o pipefail
+  local T x
+  if ! command -v sudo >/dev/null; then ck bad sudo "sudo ist nicht installiert – Dienste, Updates und HTTPS im Webinterface gehen nicht"; return 0; fi
+  ck ok sudo "sudo installiert"
+  if grep -Eq '^[[:space:]]*[@#]includedir[[:space:]]+/etc/sudoers\.d[[:space:]]*$' /etc/sudoers 2>/dev/null; then ck ok sudo "/etc/sudoers bindet /etc/sudoers.d ein"
+  else ck bad sudo "/etc/sudoers bindet /etc/sudoers.d nicht ein – die Freigaben wirken nicht"; fi
+  if [[ ! -f "$SUDOERS" ]]; then ck bad sudo "Freigaben $SUDOERS fehlen"; return 0; fi
+  ck_mode sudo "$SUDOERS" root:root 440 "Freigaben $SUDOERS"
+  if visudo -cf "$SUDOERS" >/dev/null 2>&1; then ck ok sudo "Freigaben gültig (visudo)"; else ck bad sudo "Freigaben ungültig (visudo meldet Fehler)"; fi
+  T=$(mktemp); sudo_rules "$T" "$(reboot_pref)"
+  x=$(diff <(grep -v '^#' "$T" | sort) <(grep -v '^#' "$SUDOERS" | sort) | grep -c '^[<>]' || true); rm -f "$T"
+  [[ "$x" == 0 ]] && ck ok sudo "Freigaben aktuell ($(grep -c NOPASSWD "$SUDOERS") Befehle)" || ck bad sudo "Freigaben veraltet oder von Hand geändert ($x Zeilen weichen ab)"
+  if id "$SVC_USER" &>/dev/null && sudo -l -U "$SVC_USER" 2>/dev/null | grep -qF "$APP_DIR/install.sh --fix-perms"; then ck ok sudo "Freigaben wirksam für $SVC_USER (sudo -l)"
+  else ck bad sudo "Freigaben wirken nicht für $SVC_USER (sudo -l zeigt sie nicht)"; fi
+  if [[ -f "$DATA_DIR/system.json" ]]; then
+    ck_mode sudo "$DATA_DIR/system.json" "$SVC_USER:$SVC_USER" 640 "system.json (was das Webinterface darf)"
+    grep -q '"check_perms": true' "$DATA_DIR/system.json" && grep -q '"certs": true' "$DATA_DIR/system.json" \
+      && ck ok sudo "system.json vollständig" || ck bad sudo "system.json veraltet – Webinterface kennt nicht alle Freigaben"
+  else ck bad sudo "system.json fehlt – das Webinterface weiß nicht, was es darf"; fi
+  return 0
+}
+perm_bad() { local l n=0; for l in "${CK[@]}"; do [[ "$l" == bad\|* ]] && n=$((n + 1)); done; echo "$n"; }
+perm_bad_in() { local l; for l in "${CK[@]}"; do [[ "$l" == "bad|$1|"* ]] && return 0; done; return 1; }
+perm_report() {   # perm_report [alle|fehler]
+  local l st ar tx last="" icon
+  declare -A NAME=([user]="Dienstbenutzer" [prog]="Programm $APP_DIR" [data]="Daten $DATA_DIR" [systemd]="systemd" [source]="Quellordner"
+                   [usb]="USB-Vocoder" [https]="Domains & HTTPS" [sudo]="sudo")
+  for l in "${CK[@]}"; do
+    IFS='|' read -r st ar tx <<<"$l"
+    [[ "${1:-alle}" == fehler && "$st" == ok ]] && continue
+    [[ "$ar" != "$last" ]] && { echo "  ${B}${NAME[$ar]:-$ar}${R}"; last="$ar"; }
+    case "$st" in ok) icon="${G}✔${R}" ;; warn) icon="${Y}⚠${R}" ;; *) icon="${E}✖${R}" ;; esac
+    echo "    $icon $tx"
+  done
+}
+perm_json() {
+  printf '%s\n' "${CK[@]}" | python3 -c 'import json,sys
+rows = [dict(zip(("status", "area", "text"), l.rstrip("\n").split("|", 2))) for l in sys.stdin if l.strip()]
+print(json.dumps({"ok": not any(r["status"] == "bad" for r in rows), "bad": sum(r["status"] == "bad" for r in rows),
+                  "warn": sum(r["status"] == "warn" for r in rows), "checks": rows}, ensure_ascii=False))'
+}
+repair_perms() {   # prüfen → gezielt korrigieren → erneut prüfen; Rückgabe 0 = alles in Ordnung
+  local before after f
+  check_perms; before=$(perm_bad)
+  if (( before == 0 )); then ok "Berechtigungen und sudo geprüft – $((${#CK[@]})) Prüfungen, alles in Ordnung"; perm_report fehler; return 0; fi
+  warn "$before Fehler gefunden:"; perm_report fehler
+  info "korrigiere …"
+  if id "$SVC_USER" &>/dev/null && perm_bad_in user && ! id -nG "$SVC_USER" | grep -qw dialout; then usermod -a -G dialout "$SVC_USER"; fi
+  import_zello_keys; fix_perms
+  if perm_bad_in systemd; then
+    for f in n8crosslink.service n8crosslink-update.path n8crosslink-update.service; do
+      local src="$APP_DIR/systemd/$f"; [[ -f "$src" ]] || src="$SRC_DIR/systemd/$f"
+      [[ -f "/etc/systemd/system/$f" || ! -f "$src" ]] || install -o root -g root -m 644 "$src" "/etc/systemd/system/$f"
+    done
+    systemctl daemon-reload >/dev/null 2>&1 || true; systemctl enable --now n8crosslink-update.path >/dev/null 2>&1 || true
+  fi
+  perm_bad_in https && { [[ -d /var/www/n8crosslink-acme ]] && chown root:root /var/www/n8crosslink-acme && chmod 755 /var/www/n8crosslink-acme
+    for f in /etc/nginx/sites-available/n8crosslink /etc/nginx/sites-available/n8crosslink-*; do [[ -f "$f" ]] && chown root:root "$f" && chmod 644 "$f"; done; }
+  perm_bad_in sudo && setup_sudo "$(reboot_pref)"
+  check_perms; after=$(perm_bad)
+  if (( after == 0 )); then ok "alle $before Fehler korrigiert – erneut geprüft, alles in Ordnung"; return 0; fi
+  warn "$after Fehler ließen sich nicht automatisch korrigieren:"; perm_report fehler; return 1
+}
+
 cli() { (cd "$APP_DIR" && runuser -u "$SVC_USER" -- env N8X_DB="$DB" "$APP_DIR/venv/bin/python" -m n8crosslink.cli "$@"); }
 setcfg() { cli set "$1" "$2" "$3" >/dev/null; }
 
-if [[ "${1:-}" == "--fix-perms" ]]; then
+if [[ "${1:-}" == "--check-perms" ]]; then   # nur prüfen, nichts ändern (Rückgabe 1 = Fehler gefunden)
   [[ $EUID -eq 0 ]] || fail "Bitte als root starten"
-  echo "Berechtigungen prüfen (N8 Crosslink) …"; import_zello_keys; fix_perms; exit 0
+  check_perms
+  if [[ "${2:-}" == "--json" ]]; then perm_json; else echo "Berechtigungen und sudo prüfen (N8 Crosslink) …"; perm_report alle
+    n=$(perm_bad); (( n == 0 )) && ok "alles in Ordnung" || warn "$n Fehler – korrigieren: sudo $APP_DIR/install.sh --fix-perms"; fi
+  (( $(perm_bad) == 0 )); exit $?
+fi
+if [[ "${1:-}" == "--fix-perms" ]]; then   # prüfen, Fehler korrigieren (auch sudo), erneut prüfen
+  [[ $EUID -eq 0 ]] || fail "Bitte als root starten"
+  echo "Berechtigungen und sudo prüfen & korrigieren (N8 Crosslink) …"; repair_perms; exit $?
 fi
 if [[ "${1:-}" == "--diagnose" ]]; then
   [[ $EUID -eq 0 ]] || fail "Bitte als root starten"
@@ -349,6 +522,7 @@ rm -rf "$APP_DIR/third_party"; mkdir -p "$APP_DIR/third_party"
 cp -r "$SRC_DIR/third_party/n8schicht-vocoder" "$APP_DIR/third_party/"
 chmod 755 "$APP_DIR/third_party/n8schicht-vocoder/build.sh"
 cp "$SRC_DIR/install.sh" "$SRC_DIR/update.sh" "$SRC_DIR/uninstall.sh" "$SRC_DIR/n8x-certs.sh" "$APP_DIR/" 2>/dev/null || true
+mkdir -p "$APP_DIR/systemd"; cp "$SRC_DIR"/systemd/*.service "$SRC_DIR"/systemd/*.path "$APP_DIR/systemd/" 2>/dev/null || true   # für die Reparatur
 [[ -d "$SRC_DIR/.git" ]] && echo "$SRC_DIR" > "$APP_DIR/.source"
 rm -rf "$APP_DIR/n8crosslink/__pycache__"
 ok "Dateien nach $APP_DIR kopiert"
@@ -573,6 +747,7 @@ setup_sudo "$REBOOT"
 fix_perms
 systemctl enable n8crosslink >/dev/null 2>&1
 systemctl enable --now n8crosslink-update.path >/dev/null 2>&1 && ok "„Update jetzt“ aus dem Adminportal eingerichtet"
+info "Berechtigungen und sudo prüfen …"; repair_perms || warn "Berechtigungen: siehe oben – Prüfung später: sudo $APP_DIR/install.sh --check-perms"
 systemctl restart n8crosslink
 PORT=$(cli show general | grep -oP '"web_port": \K[0-9]+' || echo 8080)
 # Echte Prüfung: antwortet die Weboberfläche (nicht nur „Port offen“)?

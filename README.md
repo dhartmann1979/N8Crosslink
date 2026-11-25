@@ -42,7 +42,7 @@ Alles läuft in **einem** Python-Dienst mit Live-Dashboard und Adminportal – i
 | 🖼️ **Avatare** | In SQLite zwischengespeichert (192 px WebP), 1× täglich oder per Knopf aktualisiert: FreeRadioID-Bilder für DMR, Rufzeichen-Zuordnung für FRN und Zello, eigene Zello-Bilder per Upload |
 | ⬆️ **Updates** | Prüfung stündlich zur vollen Stunde, Banner mit Änderungen, **„Update jetzt“** direkt im Webinterface |
 | 🛠️ **Alles im Webinterface** | Dank eng begrenztem `sudo`: Dienst-Neustart, N8schicht-Vocoder bauen, alte Dienste (Start/Stopp/Autostart), Berechtigungen prüfen, Server-Neustart |
-| 🧭 **Geführter Installer** | Fragt alles Schritt für Schritt ab, prüft und korrigiert bei jeder Installation und jedem Update die Berechtigungen, richtet sudo ein, löst auf Wunsch SvxLink & alte Zello-Bridge ab |
+| 🧭 **Geführter Installer** | Fragt alles Schritt für Schritt ab, prüft und korrigiert bei jeder Installation und jedem Update die Berechtigungen und sudo (Berechtigungsprüfer `install.sh --check-perms` / `--fix-perms`, auch im Webinterface), richtet sudo ein, löst auf Wunsch SvxLink & alte Zello-Bridge ab |
 
 ## Schnellstart
 

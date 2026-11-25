@@ -1,4 +1,4 @@
-# Betrieb: Watchdogs, Keep-Alive, Updates, sudo & Berechtigungen
+# Betrieb: Watchdogs, Keep-Alive, Abstürze, Updates, sudo & Berechtigungen
 
 ## Watchdogs
 
@@ -9,7 +9,8 @@
 | **Zello** | WebSocket-Heartbeat 30 s; Abbruch oder Kanal „offline“ → neu verbinden (mit Refresh-Token) |
 | **Bridge-Watchdog** (alle 10 s) | stirbt die Verbindungsschleife eines Netzes → sofortiger Neuaufbau; ist ein Netz länger als *Watchdog-Zeit* (Standard 120 s) offline → kompletter Neuaufbau (neue Sockets) |
 | **Vocoder** | Gesundheitsprüfung alle 20 s; antwortet er 60 s nicht → wird neu geöffnet (z. B. USB-Stick ab- und wieder angesteckt) |
-| **systemd** | `WatchdogSec=60`: meldet sich die Bridge nicht mehr (Event-Loop hängt), startet systemd den Dienst neu; `Restart=always` bei Absturz |
+| **systemd** | `WatchdogSec=60`: meldet sich die Bridge nicht mehr (Event-Loop hängt), startet systemd den Dienst neu; `Restart=always` bei Absturz. Das Lebenszeichen kommt seit 1.19.0 aus einer eigenen Aufgabe – ein langsamer Neuaufbau hält es nicht mehr auf |
+| **Hintergrundaufgaben** | ID-Listen, Avatare, Update-Prüfung, Aufräumen, Watchdog und Live-Daten werden überwacht und nach einem Fehler nach 5 s neu gestartet (seit 1.19.0) |
 
 Jeder Verbindungsverlust und jede Wiederherstellung steht in den Ereignissen; Zähler (Wiederverbindungen, Neuaufbauten, letzter Grund, online/offline seit) unter **Netze**.
 
@@ -32,6 +33,33 @@ HBlink4-FreeRadioID und N8 Hotspot (N8 Admin-Kit, `scripts/n8-admin.sh`). `n8cro
 
 Einstellungen unter **⚙️ Admin → 🖥️ System → 💓 Keep-Alive**; Dateien `data/keepalive.conf`, `keepalive.json`, `keepalive.log`.
 Eingerichtet von Installer, Update und `install.sh --fix-perms`.
+
+## 💥 Abstürze erkennen und aufklären
+
+![Abstürze](screenshots/admin-abstuerze.png)
+
+Seit **1.19.0** wird jedes unerwartete Ende festgehalten – in allen N8-Systemen gleich (N8 Kit 1.3, `scripts/n8-admin.sh`):
+
+| Ebene | Was festgehalten wird |
+|---|---|
+| **Absturz-Wächter** (systemd, als root) | Drop-in `/etc/systemd/system/n8crosslink.service.d/n8-crashwatch.conf` mit `ExecStopPost=+… crash-hook`. Nach jedem Ende, das nicht geplant war (kein Stoppen/Neustart von Hand, kein Update, kein Keep-Alive, kein Herunterfahren): Art (Signal, Fehlercode, Watchdog, OOM, Zeitüberschreitung), letzte 200 Journal-Zeilen, Coredump-Kurzinfo, Python-Stack. systemd startet den Dienst sofort neu |
+| **Bridge: faulthandler** | `data/crash/fault.log` – Python-Stack aller Threads beim harten Ende (SIGSEGV, SIGABRT vom Watchdog, SIGBUS …) |
+| **Bridge: Hänger-Wächter** | steht die Event-Loop > 8 s, wird ihr Stack festgehalten und einem Teil zugeordnet: **FRN · DMR · Zello · Vocoder · Audio · Datenbank · ID-Listen · Avatare · Update-Prüfung · Ansage · Backup · Router · Webinterface**. Zwei Teile bedeuten „wartet auf“: *Datenbank ← DMR* |
+| **Bridge: Teile** | abgestürzte Verbindungsschleifen, Hintergrundaufgaben, Tasks und Threads (mit Traceback) – der Teil wird neu gestartet, die Bridge läuft weiter |
+| **Vocoder-Prozess** | Absturz (Signal) oder Hänger des N8schicht-Vocoders, mit seiner letzten Ausgabe – wird sofort neu gestartet |
+| **Keep-Alive** | jeder Neustart durch den Keep-Alive (mit Grund), Dienste im Zustand `failed` (werden mit `reset-failed` neu gestartet), Neustarts durch systemd ohne Absturz-Wächter |
+
+**Anzeigen:** ⚙️ Admin → 🖥️ System → **💥 Abstürze** – Liste mit Art, Teil, Ursache und vollständigem Protokoll zum Aufklappen, Zähler je Teil
+(7 Tage, als Filter). Neue Befunde erscheinen **direkt nach der Anmeldung als Hinweisfenster** und als roter Zähler im Menü, bis sie als
+gelesen markiert sind. Konsole: `sudo /opt/n8crosslink/scripts/n8-admin.sh crashes`.
+
+Dateien: `data/crashes.jsonl` (eine Zeile je Befund, die letzten 300), `data/crash/<id>.log`, `data/crash/fault.log`, `data/crash/ack.json`
+(gelesen), `data/crashwatch.json` (überwachte Dienste). Eingerichtet von Installer, Update und `install.sh --fix-perms`
+(von Hand: `sudo /opt/n8crosslink/scripts/n8-admin.sh setup-crashwatch`).
+
+**Auswerten:** Steht im Befund *⏱️ Watchdog* mit *Datenbank ← …*, hing die Event-Loop an der Datenbank; *💥 Absturz durch SIGSEGV* mit
+*Audio (GSM/Opus/DSP)* deutet auf eine C-Bibliothek. Das Protokoll eines Befunds kann unverändert an den Entwickler gehen (es enthält keine
+Passwörter, aber Rufzeichen und Server-Adressen aus dem Journal).
 
 ## Updates
 

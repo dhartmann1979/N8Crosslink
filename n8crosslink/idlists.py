@@ -167,7 +167,8 @@ class IdLists:
                 continue
             try:
                 raw = await _get(url, 60)
-                rows = parse_subscriber_json(raw) if kind == "json" else parse_subscriber_csv(raw.decode(errors="replace"))
+                rows = await asyncio.to_thread(parse_subscriber_json, raw) if kind == "json" else \
+                    await asyncio.to_thread(parse_subscriber_csv, raw.decode(errors="replace"))
                 await asyncio.to_thread(self.db.frid_replace, rows)
                 return len(rows)
             except Exception as e:  # noqa: BLE001
@@ -179,7 +180,7 @@ class IdLists:
         if not url:
             return 0
         try:
-            rows = parse_talkgroups(await _get(url, 60))
+            rows = await asyncio.to_thread(parse_talkgroups, await _get(url, 60))
             if rows:
                 await asyncio.to_thread(self.db.talkgroups_replace, rows)
             return len(rows)

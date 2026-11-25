@@ -296,14 +296,21 @@ class DmrPort(Port):
 
     async def _rx_worker(self, rx: RxStream) -> None:
         g = float(self.section.get("rx_gain_db", 0))
-        while True:
-            item = await rx.queue.get()
-            if item is None:
-                break
-            pcm = await item
-            self.router.rx_audio(self, gain(pcm, g) if pcm else bytes(FRAME_BYTES))
-        # Ende erst melden, wenn alle Rahmen dekodiert und weitergegeben sind
-        self.router.rx_end(self)
+        try:
+            while True:
+                item = await rx.queue.get()
+                if item is None:
+                    break
+                try:
+                    pcm = await item
+                except Exception as e:  # noqa: BLE001 – ein kaputter Rahmen beendet nicht den Durchgang
+                    log.warning("DMR-RX: Rahmen nicht dekodierbar: %r", e)
+                    pcm = None
+                self.router.rx_audio(self, gain(pcm, g) if pcm else bytes(FRAME_BYTES))
+        finally:
+            # Ende erst melden, wenn alle Rahmen dekodiert und weitergegeben sind – auch nach einem Fehler,
+            # sonst bliebe der Durchgang „aktiv“ und sperrte alle anderen Netze
+            self.router.rx_end(self)
 
     def _rx_finish(self) -> None:
         rx = self.rx

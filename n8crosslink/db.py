@@ -390,12 +390,37 @@ class Database:
         return bool(row) and verify_password(DEFAULT_PASSWORD, row["pw_hash"])
 
     # ------------------------------------------------------------ DMR-ID-Listen
-    def userdb_replace(self, rows: list[tuple]) -> None:
+    # Große Listen (≈ 300 000 DMR-IDs) werden in Häppchen in eine Zwischentabelle geschrieben und erst am Ende in
+    # einem Zug ausgetauscht. Zwischen den Häppchen ist die Datenbank frei: vorher hielt das Einlesen die Sperre am
+    # Stück (auf einem Raspberry Pi über eine Minute) – die Bridge wartete bei jedem Zugriff (Ereignis, Last Heard,
+    # Talkgroup-Name) darauf, ihre Event-Loop stand, und der systemd-Watchdog beendete den Dienst („Absturz“).
+    BULK_CHUNK = 5000
+
+    def _bulk_swap(self, table: str, create: str, insert: str, rows: list[tuple], after: list[str]) -> None:
+        tmp = table + "_new"
         with self.lock:
-            self.conn.execute("DELETE FROM dmr_users")
-            self.conn.executemany("INSERT OR REPLACE INTO dmr_users VALUES (?,?,?,?,?)", rows)
-            self.conn.execute("INSERT OR REPLACE INTO meta VALUES ('users_updated', ?)", (str(time.time()),))
+            self.conn.execute(f"DROP TABLE IF EXISTS {tmp}")
+            self.conn.execute(create.format(t=tmp))
             self.conn.commit()
+        for i in range(0, len(rows), self.BULK_CHUNK):
+            with self.lock:
+                self.conn.executemany(insert.format(t=tmp), rows[i:i + self.BULK_CHUNK])
+                self.conn.commit()
+            time.sleep(0.005)          # anderen Zugriffen den Vortritt lassen
+        with self.lock:
+            self.conn.commit()
+            self.conn.execute("BEGIN")          # Austausch in einem Stück – nach einem Absturz ist die alte oder die neue Liste da
+            self.conn.execute(f"DROP TABLE IF EXISTS {table}")
+            self.conn.execute(f"ALTER TABLE {tmp} RENAME TO {table}")
+            for sql in after:
+                self.conn.execute(sql)
+            self.conn.commit()
+
+    def userdb_replace(self, rows: list[tuple]) -> None:
+        self._bulk_swap("dmr_users", "CREATE TABLE {t} (id INTEGER PRIMARY KEY, callsign TEXT, name TEXT, city TEXT, country TEXT)",
+                        "INSERT OR REPLACE INTO {t} VALUES (?,?,?,?,?)", rows,
+                        ["CREATE INDEX IF NOT EXISTS du_cs ON dmr_users(callsign)"])
+        self.meta_set("users_updated", str(time.time()))
 
     def userdb_upsert(self, row: tuple) -> None:
         with self.lock:
@@ -422,13 +447,15 @@ class Database:
         return dict(r) if r else None
 
     def frid_replace(self, rows: list[tuple]) -> None:
-        with self.lock:
-            self.conn.execute("DELETE FROM frid_registered")
-            self.conn.executemany("INSERT OR IGNORE INTO frid_registered VALUES (?)", [(r[0],) for r in rows])
-            # registrierte Nutzer auch in die Gesamtliste übernehmen (falls dort neuer)
-            self.conn.executemany("INSERT OR REPLACE INTO dmr_users VALUES (?,?,?,?,?)", rows)
-            self.conn.execute("INSERT OR REPLACE INTO meta VALUES ('frid_updated', ?)", (str(time.time()),))
-            self.conn.commit()
+        self._bulk_swap("frid_registered", "CREATE TABLE {t} (id INTEGER PRIMARY KEY)",
+                        "INSERT OR IGNORE INTO {t} VALUES (?)", [(r[0],) for r in rows], [])
+        # registrierte Nutzer auch in die Gesamtliste übernehmen (falls dort neuer) – ebenfalls in Häppchen
+        for i in range(0, len(rows), self.BULK_CHUNK):
+            with self.lock:
+                self.conn.executemany("INSERT OR REPLACE INTO dmr_users VALUES (?,?,?,?,?)", rows[i:i + self.BULK_CHUNK])
+                self.conn.commit()
+            time.sleep(0.005)
+        self.meta_set("frid_updated", str(time.time()))
 
     def frid_add(self, dmr_id: int) -> None:
         with self.lock:

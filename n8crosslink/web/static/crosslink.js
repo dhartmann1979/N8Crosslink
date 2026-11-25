@@ -358,6 +358,7 @@ async function loadMe() {
     ? `<button class="hdr-btn" id="logoutBtn" title="Abmelden">👤 ${esc(S.me.user)} · ⎋</button>`
     : `<button class="hdr-btn login" id="loginBtn">🔐 Login</button>`;
   if (S.me.user) $('#logoutBtn').onclick = async () => { await api('/api/logout', { method: 'POST' }); await loadMe(); showTab('live'); };
+  if (S.me.user) checkCrashes(before === false);      // gerade angemeldet: neue Abstürze sofort zeigen
   else $('#loginBtn').onclick = () => openLogin(S.me.setup_required ? 'setup' : 'login');
 }
 async function loadInfo() {
@@ -459,10 +460,11 @@ const SCHEMA = {
   'sys-services': { title: '🧩 Dienste', custom: () => sysView('services') },
   'sys-perms': { title: '🔐 Berechtigungen & sudo', custom: () => sysView('perms') },
   'sys-keepalive': { title: '💓 Keep-Alive', custom: () => sysView('keepalive') },
+  'sys-crashes': { title: '💥 Abstürze', custom: () => sysView('crashes') },
 };
 // Admin-Menü: derselbe Baum wie in allen N8-Systemen (N8 Kit) – Betrieb · Benutzer & Zugang · Darstellung · Netz & Domains · System
 const ADMIN_GROUPS = [['betrieb', ['general', 'routes', 'frn', 'dmr', 'zello', 'vocoder', 'ids']], ['zugang', ['users']], ['darstellung', ['appearance']],
-  ['netz', ['ports', 'domains']], ['system', ['system', 'sys-update', 'sys-services', 'sys-perms', 'sys-keepalive', 'backup']]];
+  ['netz', ['ports', 'domains']], ['system', ['system', 'sys-update', 'sys-services', 'sys-perms', 'sys-keepalive', 'sys-crashes', 'backup']]];
 const ADMIN_OLD = { update: 'sys-update' };
 // System → Update, Dienste, Berechtigungen & sudo, Keep-Alive: die N8-Kit-Ansichten, in allen N8-Systemen gleich
 function sysView(name) {
@@ -471,15 +473,25 @@ function sysView(name) {
     req: (m, u, b) => api(u, m === 'GET' ? {} : { method: m, body: b || {} }), console: 'sudo /opt/n8crosslink/scripts/n8-admin.sh',
     update: { load: async (force) => { if (force) await api('/api/admin/update/check', { method: 'POST' }); return kitUpdate(await api('/api/admin/update')); },
               onInstall: () => startUpdate() },
+    onAck: crashAcked,
   });
 }
+// Abstürze: Hinweisfenster nach der Anmeldung (N8 Kit), Zähler im Admin-Menü
+async function checkCrashes(force) {
+  const d = await N8Kit.sys.crashPopup({ req: (m, u, b) => api(u, m === 'GET' ? {} : { method: m, body: b || {} }), force, onAck: crashAcked,
+    open: () => { S.adminSec = 'sys-crashes'; showTab('admin'); } });
+  const n = d ? d.unacked || 0 : 0;
+  if (n !== (S.crashNew || 0)) { S.crashNew = n; if (!$('#tab-admin')?.classList.contains('hidden') && S.me?.user) loadAdmin(); }
+}
+function crashAcked() { if (S.crashNew) { S.crashNew = 0; if (!$('#tab-admin')?.classList.contains('hidden')) loadAdmin(); } }
 
 async function loadAdmin() {
   if (!S.me?.user) return;
   try { S.cfg = (await api('/api/admin/config')).config; } catch (e) { toast(e.message); return; }
   S.adminSec = ADMIN_OLD[S.adminSec] || S.adminSec;
   if (!SCHEMA[S.adminSec]) S.adminSec = 'general';
-  N8Kit.nav.tree($('#adminNav'), ADMIN_GROUPS.map(([g, ids]) => ({ id: g, label: N8Kit.nav.GROUPS[g], items: ids.map(id => ({ id, label: SCHEMA[id].title })) })),
+  N8Kit.nav.tree($('#adminNav'), ADMIN_GROUPS.map(([g, ids]) => ({ id: g, label: N8Kit.nav.GROUPS[g], items: ids.map(id => ({ id, label: SCHEMA[id].title,
+      ...(id === 'sys-crashes' && S.crashNew ? { badge: String(S.crashNew), badgeClass: 'bad' } : {}) })) })),
     { active: S.adminSec, key: 'n8x-admin', onSelect: id => { S.adminSec = id; loadAdmin(); } });
   $('#adminBody').classList.add('card'); $('#adminBody').classList.remove('n8-sys');
   const sec = SCHEMA[S.adminSec];

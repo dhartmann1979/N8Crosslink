@@ -40,6 +40,19 @@ TYPE_SPEECH = 0x02
 
 SILENCE_PCM = bytes(320)
 
+# Absturz-Melder (n8_crash.CrashWatch.note) – setzt app.py; None = nur ins Log
+CRASH_NOTE = None
+
+
+def _signame(rc: int | None) -> str:
+    if rc is None or rc >= 0:
+        return f"Rückgabewert {rc}"
+    import signal
+    try:
+        return f"Signal {-rc} ({signal.Signals(-rc).name})"
+    except ValueError:
+        return f"Signal {-rc}"
+
 
 def _packet(ptype: int, payload: bytes) -> bytes:
     return struct.pack(">BHB", PKT_START, len(payload), ptype) + payload
@@ -193,12 +206,18 @@ class N8VocoderWorker:
         self.version = ""
         self.restarts = 0
         self.bad_options: list[str] = []
+        self.stderr_tail: deque[str] = deque(maxlen=80)
+        self._err_task: asyncio.Task | None = None
+        self._killed_by_us = False
 
     async def _spawn(self) -> None:
+        # -X faulthandler: stürzt der C-Code ab, schreibt Python den Stack nach stderr – wird mitgeschnitten
+        self._killed_by_us = False
         self.proc = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "n8crosslink.ambe_worker", self.lib,
-            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            sys.executable, "-X", "faulthandler", "-m", "n8crosslink.ambe_worker", self.lib,
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        self._err_task = asyncio.ensure_future(self._read_err(self.proc))
         r = await self._xfer(b"O", json.dumps(self.options).encode(), 10.0)
         if r is not None:
             self.bad_options = json.loads(r or b"{}").get("bad", [])
@@ -206,6 +225,32 @@ class N8VocoderWorker:
                 log.warning("N8schicht-Vocoder: unbekannte Optionen %s", self.bad_options)
         v = await self._xfer(b"V", b"", 5.0)
         self.version = (v or b"").decode(errors="replace")
+
+    async def _read_err(self, p: asyncio.subprocess.Process) -> None:
+        try:
+            while True:
+                line = await p.stderr.readline()
+                if not line:
+                    return
+                t = line.decode(errors="replace").rstrip()
+                self.stderr_tail.append(t)
+                log.warning("N8schicht-Vocoder (Prozess): %s", t)
+        except Exception:  # noqa: BLE001
+            return
+
+    def _report(self, why: str) -> None:
+        """Abgestürzten oder hängenden Vocoder-Prozess festhalten (System → 💥 Abstürze)."""
+        p = self.proc
+        rc = p.returncode if p is not None else None
+        reason = (f"Vocoder-Prozess abgestürzt: {_signame(rc)} – wird neu gestartet" if rc is not None and not self._killed_by_us
+                  else f"Vocoder-Prozess antwortet nicht ({why}) – beendet und neu gestartet")
+        detail = f"Bibliothek: {self.lib}\nVersion: {self.version}\nNeustarts bisher: {self.restarts}\n\nAusgabe des Prozesses (stderr):\n" \
+                 + ("\n".join(self.stderr_tail) or "(keine)")
+        if CRASH_NOTE is not None:
+            try:
+                CRASH_NOTE("Vocoder", reason, detail, kind="helper")
+            except Exception:  # noqa: BLE001
+                pass
 
     async def _xfer(self, op: bytes, data: bytes, timeout: float) -> bytes | None:
         p = self.proc
@@ -219,12 +264,19 @@ class N8VocoderWorker:
             return await asyncio.wait_for(p.stdout.readexactly(n), timeout) if n else b""
         except (asyncio.TimeoutError, asyncio.IncompleteReadError, BrokenPipeError, ConnectionResetError) as e:
             log.error("N8schicht-Vocoder: Prozess antwortet nicht (%s) – wird neu gestartet", type(e).__name__)
+            try:
+                await asyncio.wait_for(p.wait(), 0.3)          # schon tot? Dann den Grund (Signal) mitnehmen
+            except asyncio.TimeoutError:
+                pass
+            await asyncio.sleep(0.05)                          # letzte stderr-Zeilen (faulthandler) einsammeln
+            self._report(type(e).__name__)
             await self._kill()
             return None
 
     async def _kill(self) -> None:
         p, self.proc = self.proc, None
         if p is not None and p.returncode is None:
+            self._killed_by_us = True
             try:
                 p.kill()
                 await asyncio.wait_for(p.wait(), 2)
@@ -234,6 +286,8 @@ class N8VocoderWorker:
     async def call(self, op: bytes, data: bytes = b"", timeout: float = 2.0) -> bytes | None:
         async with self.lock:
             if self.proc is None or self.proc.returncode is not None:
+                if self.proc is not None and self.proc.returncode not in (0, None):
+                    self._report("beendet")                   # zwischen zwei Aufrufen gestorben
                 if self.proc is not None or self.version:
                     self.restarts += 1
                 await self._kill()

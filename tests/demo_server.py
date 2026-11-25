@@ -140,6 +140,32 @@ async def main(port: int) -> None:
             return 0, ""
         return 1, ""
     bridge.system._run = _fake_run
+    # Abstürze (Demo): Absturz-Wächter eingerichtet, ein paar typische Befunde
+    from n8crosslink.app import SERVICES
+    from n8crosslink.n8_crash import CrashWatch
+    ddir = os.path.dirname(db.path)
+    bridge.crash = CrashWatch(ddir, app="N8 Crosslink", unit="n8crosslink.service", services=SERVICES)
+    bridge.crash.install()
+    open(os.path.join(ddir, "crashwatch.json"), "w").write(_j.dumps({"version": 1, "time": _t.time(), "units": [
+        {"unit": "n8crosslink.service", "label": "N8 Crosslink", "restart": "always"}]}))
+    _demo_crashes = [
+        (_t.time() - 26 * 3600, "watchdog", "Datenbank ← ID-Listen", "systemd-Watchdog: keine Rückmeldung mehr – der Prozess hing und wurde beendet (SIGABRT) – "
+         "Event-Loop steht seit 64 s (hängt in Datenbank ← ID-Listen)", "systemd"),
+        (_t.time() - 5 * 3600, "keepalive", "N8 Crosslink", "Keep-Alive: Zello verbunden – Zello: getrennt – Kanal offline (seit 5 min) – neu gestartet", "keepalive"),
+        (_t.time() - 3 * 3600, "stall", "Datenbank ← DMR", "Event-Loop 19 s blockiert – Webinterface und Verbindungen standen still", "app"),
+        (_t.time() - 40 * 60, "helper", "Vocoder", "Vocoder-Prozess abgestürzt: Signal 11 (SIGSEGV) – wird neu gestartet", "app"),
+    ]
+    for ts, kind, svc, reason, src in _demo_crashes:
+        cid = _t.strftime("%Y%m%d-%H%M%S", _t.localtime(ts)) + "-" + kind[:2] + "01"
+        open(os.path.join(ddir, "crash", cid + ".log"), "w").write(
+            f"N8 Crosslink – Befund {cid}\nZeit:     {_t.strftime('%Y-%m-%d %H:%M:%S', _t.localtime(ts))}\nDienst:   n8crosslink.service\n"
+            f"Teil:     {svc}\nUrsache:  {reason}\nQuelle:   {src}\n\n=== Python-Stack ===\n"
+            '  File "/opt/n8crosslink/n8crosslink/db.py", line 430 in userdb_lookup\n'
+            '  File "/opt/n8crosslink/n8crosslink/dmr/port.py", line 290 in _talker\n  File "/opt/n8crosslink/n8crosslink/dmr/port.py", line 244 in _on_dmrd\n'
+            "\n=== Journal des Dienstes (Auszug) ===\n2026-11-25T03:12:40+0100 crosslink systemd[1]: n8crosslink.service: Watchdog timeout (limit 1min)!\n")
+        with open(os.path.join(ddir, "crashes.jsonl"), "a") as f:
+            f.write(_j.dumps({"id": cid, "time": ts, "unit": "n8crosslink.service", "app": "N8 Crosslink", "service": svc, "kind": kind,
+                              "reason": reason, "source": src, "restarted": True, "log": cid + ".log"}, ensure_ascii=False) + "\n")
     server = uvicorn.Server(uvicorn.Config(create_app(bridge), host="127.0.0.1", port=port, log_level="warning"))
 
     async def scenario() -> None:

@@ -39,6 +39,7 @@ Alles läuft in **einem** Python-Dienst mit Live-Dashboard und Adminportal – i
 | ⚙️ **Adminportal** | Baum-Menü und Bereich *System* wie in allen N8-Systemen, alle Einstellungen in SQLite, Benutzerverwaltung, Bridge-/Dienst-Neustart, ID-Datenbank-Update, Export/Import |
 | 🔊 **Sprachansage & Sprechername** | Optional: Computerstimme sagt das Rufzeichen am Anfang des Durchgangs an (espeak-ng, Buchstaben oder NATO, je Zielnetz). Sprechername als FRN-Textnachricht – öffentlich oder **privat nur an ausgewählte Stationen** |
 | 🐕 **Watchdogs** | Jede Verbindung (FRN, DMR, Zello) baut sich nach einem Abbruch selbst neu auf; zusätzlich baut ein Watchdog ein Netz komplett neu auf, wenn es zu lange offline bleibt oder seine Verbindungsschleife stirbt. Der Vocoder wird bei Ausfall neu geöffnet (AMBEserver im Lockstep mit neuem Socket nach jedem Timeout), und der systemd-Watchdog startet den Dienst neu, falls er hängt. **💓 Keep-Alive** von außen (jede Minute als root): prüft jedes Netz, startet nach 5 Minuten Ausfall neu, erkennt Internet-Ausfälle, meldet sich bei Uptime Kuma / Healthchecks.io |
+| 💥 **Absturz-Erkennung** | Jeder Absturz, Hänger und Notfall-Neustart wird mit Ursache, betroffenem Teil (FRN, DMR, Zello, Vocoder, Datenbank …) und vollständigem Protokoll festgehalten, der Dienst automatisch neu gestartet; neue Befunde erscheinen nach dem Admin-Login als Hinweisfenster (System → 💥 Abstürze) |
 | 🗂️ **ID-Listen** | Alle Listen der FreeRadioID.net-API (alle DMR-IDs, registrierte IDs, Einzelabfrage unbekannter IDs) plus Talkgroup-Namen aus `n8schicht/talkgroup_ids.json` – 1× täglich und per Knopf |
 | 🖼️ **Avatare** | In SQLite zwischengespeichert (192 px WebP), 1× täglich oder per Knopf aktualisiert: FreeRadioID-Bilder für DMR, Rufzeichen-Zuordnung für FRN und Zello, eigene Zello-Bilder per Upload |
 | ⬆️ **Updates** | Prüfung stündlich zur vollen Stunde, Banner mit Änderungen, **„Update jetzt“** direkt im Webinterface (ohne Passwort, mit Update-Protokoll) |
@@ -104,6 +105,8 @@ Senden in die Netze:
 | Admin – System → 💓 Keep-Alive | Admin – DMR |
 |---|---|
 | ![Keep-Alive](docs/screenshots/admin-keepalive.png) | ![DMR](docs/screenshots/admin-dmr.png) |
+| **Admin – System → 💥 Abstürze** | **Hinweis nach der Anmeldung** |
+| ![Abstürze](docs/screenshots/admin-abstuerze.png) | ![Absturz-Hinweis](docs/screenshots/absturz-hinweis.png) |
 
 | Hinweise: Update & Standard-Login | Mobil |
 |---|---|
@@ -117,7 +120,7 @@ Senden in die Netze:
 * [Zello verbinden – Schritt für Schritt](docs/ZELLO.md)
 * [Umstieg von SvxLink und der alten Zello-Bridge](docs/MIGRATION.md)
 * [Technik & Protokolle](docs/TECHNIK.md)
-* [Betrieb: Watchdogs, Keep-Alive, Updates, sudo & Berechtigungen](docs/BETRIEB.md)
+* [Betrieb: Watchdogs, Keep-Alive, Abstürze, Updates, sudo & Berechtigungen](docs/BETRIEB.md)
 * [Sicherheit, Sprache DE/EN & N8 Kit (gemeinsam mit HBlink4, adn-frn-server, N8-HotSpot)](docs/SICHERHEIT.md)
 * [Backup & Wiederherstellung](docs/BACKUP.md)
 * [Deinstallation & von vorn beginnen](docs/DEINSTALLATION.md)

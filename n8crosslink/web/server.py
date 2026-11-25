@@ -502,6 +502,23 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         bridge.router.event("info", f"Keep-Alive geändert von {user}: " + ", ".join(f"{k}={'…' if 'url' in k and v else v}" for k, v in c.items()))
         return _ka().keepalive()
 
+    # ---- Abstürze (N8 Kit 1.3 / n8-admin.sh crash-hook, Keep-Alive, n8_crash.CrashWatch) – gleiche Adressen in allen N8-Systemen
+    @app.get("/api/admin/crashes")
+    async def crashes_get(_: str = Depends(require_admin)) -> dict:
+        return await asyncio.to_thread(_ka().crashes)
+
+    @app.get("/api/admin/crashes/{cid}")
+    async def crash_get(cid: str, _: str = Depends(require_admin)) -> dict:
+        txt = await asyncio.to_thread(_ka().crash_log, cid)
+        if txt is None:
+            raise HTTPException(404, "Befund nicht gefunden")
+        return {"id": cid, "log": txt}
+
+    @app.post("/api/admin/crashes/ack")
+    async def crashes_ack(data: dict = Body(...), _: str = Depends(require_admin)) -> dict:
+        ids = data.get("ids") if isinstance(data.get("ids"), list) else None
+        return await asyncio.to_thread(_ka().crash_ack, [str(i) for i in ids or []][:500], bool(data.get("all")))
+
     @app.get("/api/n8/health")
     async def n8_health(request: Request) -> dict:
         """Für den Keep-Alive: Zustand jedes Netzes – nur direkt von diesem Rechner, nie über einen Proxy."""

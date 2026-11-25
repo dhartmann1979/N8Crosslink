@@ -4,6 +4,7 @@
 
 | Symptom | Ursache / Lösung |
 |---|---|
+| **Bridge stürzt ab / startet immer wieder neu** | Admin → System → **💥 Abstürze** (ab 1.19.0): jeder Befund nennt Art (Absturz, Watchdog, Speicher voll, Hänger …), den **Teil** (z. B. *Datenbank ← DMR*, *Vocoder*, *Zello*) und hat das vollständige Protokoll. Auf der Konsole: `sudo /opt/n8crosslink/scripts/n8-admin.sh crashes`. Fehlt der Absturz-Wächter: `sudo /opt/n8crosslink/scripts/n8-admin.sh setup-crashwatch`. Häufigste Ursache bis 1.18.x: Einlesen der ID-Listen sperrte die Datenbank → Watchdog (behoben in 1.19.0) |
 | Vocoder offline: „N8schicht-Vocoder nicht gebaut“ | `sudo /opt/n8crosslink/install.sh --build-vocoder` oder Admin → Vocoder → „🔨 Vocoder bauen“. Die Quellen liegen im Programmordner, gebraucht wird nur `g++` (installiert der Installer). Bei Fehlern zeigt der Installer die letzten Compiler-Zeilen |
 | DMR-Ton klingt gepresst, dumpf oder zu scharf | Admin → Vocoder → 🎚️ Klang-Einstellungen: Grundabstimmung „N8schicht“, dann einzelne Regler; mit Probehören (auch eigene WAV) Eingang und Ausgang vergleichen. Alle Regler sind in [VOCODER.md](VOCODER.md) erklärt |
 | md380-emu läuft noch / Dienst `md380-emu` fehlerhaft | Ab 1.4.0 nicht mehr gebraucht – `sudo /opt/n8crosslink/update.sh` entfernt ihn |

@@ -15,12 +15,24 @@ from .db import Database
 from .dmr.port import DmrPort
 from .frn import FrnPort
 from .idlists import IdLists
+from .n8_crash import CrashWatch
 from .system import System
 from .updater import Updater
+from . import vocoder as _vocoder_mod
 from .vocoder import Vocoder
 from .zello import ZelloPort
 
 log = logging.getLogger("app")
+
+# Welcher Teil der Bridge steckt in einem Stack? (Absturz-Befunde: „hängt in Datenbank ← DMR“)
+SERVICES = [
+    (r"/n8crosslink/frn(_errorlog)?\.py$", "FRN"), (r"/n8crosslink/zello\.py$", "Zello"), (r"/n8crosslink/dmr/", "DMR"),
+    (r"/n8crosslink/(vocoder|ambe_worker)\.py$", "Vocoder"), (r"/n8crosslink/audio/", "Audio (GSM/Opus/DSP)"),
+    (r"/n8crosslink/db\.py$", "Datenbank"), (r"/n8crosslink/idlists\.py$", "ID-Listen"), (r"/n8crosslink/avatars\.py$", "Avatare"),
+    (r"/n8crosslink/updater\.py$", "Update-Prüfung"), (r"/n8crosslink/(announce|preview)\.py$", "Ansage (espeak)"),
+    (r"/n8crosslink/backup\.py$", "Backup"), (r"/n8crosslink/core\.py$", "Router"), (r"/n8crosslink/web/", "Webinterface"),
+    (r"/(uvicorn|starlette|fastapi|websockets)/", "Webinterface"), (r"/n8crosslink/(app|system|n8_admin)\.py$", "Bridge"),
+]
 
 
 def sd_notify(msg: str) -> None:
@@ -57,6 +69,11 @@ class Bridge:
         self.voc_offline_since: float | None = None
         self.wd_interval = 10.0
         self.bg_tasks: list[asyncio.Task] = []
+        self.crash: CrashWatch | None = None
+
+    def crash_note(self, service: str, reason: str, detail: str = "", kind: str = "task") -> None:
+        if self.crash is not None:
+            self.crash.note(service, reason, detail, kind=kind)
 
     async def start(self) -> None:
         async with self.lock:
@@ -121,7 +138,6 @@ class Bridge:
         import time as _t
         while True:
             await asyncio.sleep(self.wd_interval)
-            sd_notify("WATCHDOG=1")
             if self.lock.locked():
                 continue
             limit = float(self.cfg["general"].get("watchdog_offline_s", 120))
@@ -132,9 +148,15 @@ class Bridge:
                     t = p.main_task
                     if t is not None and t.done():
                         exc = None if t.cancelled() else t.exception()
-                        await self.restart_port(key, f"Verbindungsschleife beendet: {exc!r}" if exc else "Verbindungsschleife beendet")
+                        if exc is not None and self.crash is not None:
+                            self.crash.note_exc(exc, f"Verbindungsschleife {p.label} abgestürzt: {type(exc).__name__}: {exc}"[:300],
+                                                service=p.label)
+                        elif self.crash is not None:
+                            self.crash_note(p.label, f"Verbindungsschleife {p.label} unerwartet beendet")
+                        await asyncio.wait_for(self.restart_port(key, f"Verbindungsschleife beendet: {exc!r}" if exc else
+                                                                 "Verbindungsschleife beendet"), 45)
                     elif not p.online and p.offline_since and _t.time() - p.offline_since > limit:
-                        await self.restart_port(key, f"seit {int(_t.time() - p.offline_since)} s offline")
+                        await asyncio.wait_for(self.restart_port(key, f"seit {int(_t.time() - p.offline_since)} s offline"), 45)
                 v = self.vocoder
                 if v is not None and v.running is not None and self.cfg["dmr"].get("enabled") and v.mode != "none":
                     if v.online:
@@ -143,11 +165,20 @@ class Bridge:
                         self.voc_offline_since = _t.time()
                     elif _t.time() - self.voc_offline_since > float(self.cfg["vocoder"].get("vocoder_restart_s", 20)):
                         self.voc_offline_since = _t.time()
-                        await self.recover_vocoder(v)
+                        await asyncio.wait_for(self.recover_vocoder(v), 45)
+                if self.pub_task is not None and self.pub_task.done():
+                    exc = None if self.pub_task.cancelled() else self.pub_task.exception()
+                    self.crash_note("Router", f"Live-Daten (Publisher) beendet: {exc!r}" if exc else "Live-Daten (Publisher) beendet")
+                    self.pub_task = asyncio.create_task(self.router.publisher())
                 online = [p.label for p in self.router.ports.values() if p.enabled and p.online]
                 sd_notify("STATUS=" + (", ".join(online) + " online" if online else "keine Verbindung"))
+            except asyncio.TimeoutError:
+                self.crash_note("Bridge", "Watchdog: Neuaufbau dauerte länger als 45 s – abgebrochen, nächster Versuch folgt",
+                                kind="stall")
             except Exception as e:  # noqa: BLE001
                 log.exception("Watchdog: %s", e)
+                if self.crash is not None:
+                    self.crash.note_exc(e, f"Watchdog: {type(e).__name__}: {e}"[:300], service="Bridge", kind="intern")
 
     async def recover_vocoder(self, v: Vocoder) -> None:
         """Hängender oder ausgefallener Vocoder: komplett neu öffnen."""
@@ -155,13 +186,36 @@ class Bridge:
         await v.reopen()
 
     def start_background(self) -> None:
-        for coro in (self.housekeeping(), self.watchdog(), self.idlists.loop(), self.avatars.loop(), self.updater.loop()):
-            self.bg_tasks.append(asyncio.create_task(coro))
+        self.bg_tasks.append(asyncio.create_task(self.sd_ping(), name="systemd-watchdog"))
+        for name, factory in (("Aufräumen", self.housekeeping), ("Watchdog", self.watchdog), ("ID-Listen", self.idlists.loop),
+                              ("Avatare", self.avatars.loop), ("Update-Prüfung", self.updater.loop)):
+            self.bg_tasks.append(asyncio.create_task(self.supervise(name, factory), name=name))
+
+    async def sd_ping(self) -> None:
+        """Lebenszeichen für den systemd-Watchdog – eigene, schlanke Aufgabe: ein langsamer Neuaufbau einer Verbindung
+        hält es nicht mehr auf. Bleibt es trotzdem 60 s aus, steht die Event-Loop wirklich (der Hänger-Wächter hält fest, wo)."""
+        while True:
+            sd_notify("WATCHDOG=1")
+            await asyncio.sleep(10)
+
+    async def supervise(self, name: str, factory) -> None:  # noqa: ANN001
+        """Hintergrundaufgabe am Leben halten: stirbt sie, wird das festgehalten und sie startet nach 5 s neu."""
+        while True:
+            try:
+                await factory()
+                self.crash_note(name, f"Hintergrundaufgabe {name} hat sich beendet – wird neu gestartet")
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:  # noqa: BLE001
+                log.exception("%s: %s", name, e)
+                if self.crash is not None:
+                    self.crash.note_exc(e, f"Hintergrundaufgabe {name} abgestürzt: {type(e).__name__}: {e}"[:300], service=name)
+            await asyncio.sleep(5)
 
     async def housekeeping(self) -> None:
         while True:
             try:
-                self.db.cleanup(int(self.cfg["general"].get("keep_days", 90)))
+                await asyncio.to_thread(self.db.cleanup, int(self.cfg["general"].get("keep_days", 90)))
             except Exception as e:  # noqa: BLE001
                 log.warning("Aufräumen: %s", e)
             await asyncio.sleep(6 * 3600)
@@ -196,6 +250,10 @@ def main() -> None:
     server = uvicorn.Server(config)
 
     async def runner() -> None:
+        bridge.crash = CrashWatch(os.path.dirname(os.path.abspath(db.path)), app="N8 Crosslink", unit="n8crosslink.service",
+                                  services=SERVICES)
+        bridge.crash.install()
+        _vocoder_mod.CRASH_NOTE = bridge.crash.note
         await bridge.start()
         bridge.start_background()
         log.info("N8 Crosslink %s – Dashboard auf http://%s:%s", __version__, host, port)

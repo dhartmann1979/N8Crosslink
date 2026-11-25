@@ -2,6 +2,49 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.19.0] – 2026-11-25
+
+### 💥 Neu: Absturz-Erkennung – jeder Absturz wird mit Ursache und Protokoll festgehalten, gemeldet und der Dienst neu gestartet
+Die Bridge stürzte im Betrieb häufig ab, ohne dass erkennbar war, **welcher Teil** (FRN, DMR, Zello, Vocoder, Datenbank …) schuld war.
+Ab jetzt wird jedes unerwartete Ende festgehalten – auf derselben Grundlage in allen N8-Systemen (N8 Kit 1.3 / `scripts/n8-admin.sh`):
+
+- **Absturz-Wächter (systemd, als root):** `n8crosslink.service` bekommt ein Drop-in `n8-crashwatch.conf` mit `ExecStopPost=+… crash-hook`.
+  Nach **jedem** Ende des Dienstes prüft er, ob es geplant war (Stoppen/Neustart von Hand, Update, Keep-Alive, Herunterfahren). Alles andere
+  wird festgehalten: **Absturz durch ein Signal** (z. B. SIGSEGV in einer C-Bibliothek), **Fehlercode**, **systemd-Watchdog** (Prozess hing 60 s),
+  **Speicher voll (OOM)**, **Zeitüberschreitung**, **unerwartetes Ende** – mit den letzten 200 Zeilen des Journals, Coredump-Kurzinfo und
+  dem Python-Stack. systemd startet den Dienst dabei sofort neu; bleibt er ausgefallen (`failed`), startet ihn der Keep-Alive neu
+  (`reset-failed`, höchstens 4× je Stunde).
+- **Welcher Teil war es?** Die Bridge selbst trägt bei:
+  - **faulthandler** → `data/crash/fault.log`: der Python-Stack **aller Threads**, wenn der Prozess hart stirbt (auch beim Watchdog-SIGABRT).
+  - **Hänger-Wächter:** steht die Event-Loop länger als 8 s, wird ihr Stack festgehalten und zugeordnet, z. B. **„Datenbank ← DMR“**
+    (= DMR wartete auf die Datenbank). Beendet systemd den Dienst danach, nennt der Befund genau diese Stelle. Auch kürzere Hänger
+    (ab 16 s) werden als ⏳ *Hänger* festgehalten.
+  - **Teile, die abstürzen, ohne den Prozess mitzureißen:** Verbindungsschleife von FRN/DMR/Zello, Hintergrundaufgaben (ID-Listen, Avatare,
+    Update-Prüfung, Aufräumen, Watchdog), Live-Daten, unbehandelte Ausnahmen in Tasks und Threads – jeweils mit Traceback und Neustart des Teils.
+  - **Vocoder-Prozess:** stürzt der N8schicht-Vocoder (C-Code im eigenen Prozess) ab oder hängt er, steht das Signal (z. B. *Signal 11 SIGSEGV*)
+    und seine letzte Ausgabe samt Python-Stack im Befund; er wird wie bisher sofort neu gestartet.
+- **⚙️ Admin → 🖥️ System → 💥 Abstürze:** alle Befunde mit Zeit, Art (💥 Absturz · ⏱️ Watchdog · 🧠 Speicher voll · ⏳ Hänger · 🧩 Teil abgestürzt ·
+  ⚙️ Hilfsprozess · 💓 Keep-Alive-Neustart …), betroffenem Teil, Ursache und dem **vollständigen Protokoll** zum Aufklappen; Zähler je Teil
+  für die letzten 7 Tage (anklickbar als Filter) und welche Dienste der Absturz-Wächter überwacht.
+- **Hinweisfenster nach der Anmeldung:** gibt es neue Befunde, erscheinen sie direkt nach dem Admin-Login (und beim Öffnen des Adminbereichs)
+  als Fenster – mit „Gelesen“, „Später“ und „Alle Abstürze ansehen“. Ungelesene zeigt das Admin-Menü als roten Zähler.
+- Konsole: `sudo /opt/n8crosslink/scripts/n8-admin.sh crashes` zeigt die letzten Befunde. Dateien: `data/crashes.jsonl`, `data/crash/<id>.log`.
+
+### 🐛 Behoben: wahrscheinliche Absturzursachen
+- **Event-Loop stand beim Einlesen der ID-Listen still → systemd-Watchdog beendete die Bridge.** Die DMR-ID-Liste (≈ 300 000 Einträge)
+  wurde in einem Rutsch in die Datenbank geschrieben; die Datenbank blieb so lange gesperrt (auf einem Raspberry Pi über eine Minute).
+  Jeder Zugriff der Bridge – Ereignis, Last Heard, Talkgroup-Name, Sprecher-Name bei DMR – wartete darauf, die Event-Loop stand, das
+  Lebenszeichen für systemd blieb aus und nach 60 s wurde der Dienst hart beendet. Jetzt: Einlesen in Häppchen (5000 Zeilen) in eine
+  Zwischentabelle, Austausch in einem Zug am Ende; Auswerten der Listen und das nächtliche Aufräumen laufen außerhalb der Event-Loop.
+- **Lebenszeichen für systemd entkoppelt:** es kam bisher aus der Watchdog-Runde, die beim Neuaufbau einer Verbindung oder des Vocoders
+  warten musste. Jetzt eigene schlanke Aufgabe; Neuaufbauten sind auf 45 s begrenzt.
+- **Hintergrundaufgaben starben still:** ID-Listen, Avatare, Update-Prüfung, Aufräumen und der Watchdog selbst werden jetzt überwacht
+  und nach einem Fehler neu gestartet; die Live-Daten (Publisher) ebenso.
+- **DMR-Empfang:** ein nicht dekodierbarer Rahmen beendete die Empfangsaufgabe, der Durchgang blieb „aktiv“ und sperrte alle anderen Netze.
+- Neu: `tests/test_crashwatch.py` (Hänger, Task-Ausnahmen, Vocoder-Absturz mit SIGSEGV, Liste/Gelesen im Webinterface).
+
+> Auf bestehenden Servern genügt **„Update jetzt“** – das Update richtet den Absturz-Wächter ein (`install.sh --check-perms` prüft ihn).
+
 ## [1.18.3] – 2026-11-25
 
 ### 🖥️ Ganze Browser-Breite und dieselbe Menüleiste in allen N8-Systemen

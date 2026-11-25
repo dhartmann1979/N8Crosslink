@@ -231,8 +231,12 @@ class Router:
             except asyncio.TimeoutError:
                 pass
             self._dirty.clear()
-            self.broadcast(self.snapshot())
-            self._check_tot()
+            try:
+                self.broadcast(self.snapshot())
+                self._check_tot()
+            except Exception as e:  # noqa: BLE001 – Live-Daten dürfen nie stehen bleiben
+                log.exception("Live-Daten: %s", e)
+                await asyncio.sleep(1)
 
     def _check_tot(self) -> None:
         s = self.active

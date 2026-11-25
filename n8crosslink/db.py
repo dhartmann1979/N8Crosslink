@@ -12,6 +12,7 @@ import threading
 import time
 
 DEFAULTS: dict = {
+    "https": {"email": "", "staging": False},   # Domains & HTTPS (Let's Encrypt) – Werte des letzten Antrags
     "general": {
         "title": "N8 Crosslink",
         "theme": {},

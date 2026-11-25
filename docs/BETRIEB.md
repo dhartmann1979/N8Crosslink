@@ -41,3 +41,18 @@ Freigegeben werden: Neustart der Bridge, Bauen des N8schicht-Vocoders (`install.
 ## Berechtigungen
 
 Programm, venv und Skripte gehören root und sind für den Dienst nur lesbar – wichtig, weil `update.sh` als root läuft. Nur `data/` gehört dem Dienst. Geprüft und korrigiert wird bei jeder Installation, jedem Update und auf Knopfdruck (siehe [INSTALLATION.md](INSTALLATION.md#berechtigungen)).
+
+## LEDs in Statusleiste und Netzkarten
+
+| Farbe | Bedeutung |
+|---|---|
+| 🔴 **Rot** (blinkt) | das Netz **sendet** gerade (Bridge → FRN/DMR/Zello), Chip **TX** leuchtet rot |
+| 🟣 **Magenta** (blinkt) | das Netz **empfängt** gerade (Durchsage kommt von dort), Chip **RX** leuchtet magenta, die Netzkarte glüht magenta |
+| 🟢 **Grün** | Dienst ok – verbunden, bereit |
+| 🟡 **Gelb** | Netz ausgeschaltet |
+| 🔴 **Rot** (ruhig) | Netz offline / nicht verbunden |
+
+Bis 1.11 war Empfangen grün – das ließ sich nicht von „Dienst ok“ unterscheiden.
+
+![LEDs: FRN und Zello senden, DMR empfängt](screenshots/led-status.png)
+

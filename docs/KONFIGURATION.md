@@ -136,5 +136,36 @@ nie im Klartext), `PUT /api/admin/settings {"changes": {"frn.port": 10024, …}}
 **Titel:** Untertitel, Fußzeile und Seitenbeschreibung nennen nur die **eingeschalteten** Netze (z. B. *FRN · DMR*); `/api/info`
 liefert dazu `nets` und `nets_label`.
 
+## 🔒 Domains & HTTPS
+
+Eigene Domains für das Webinterface mit kostenlosem **Let's-Encrypt-Zertifikat** – ohne Konsole (ab 1.12.0).
+
+![Domains & HTTPS](screenshots/admin-domains.png)
+
+1. Fehlen nginx und certbot, steht oben **📦 Benötigte Pakete installieren** – ein Klick installiert `nginx`, `certbot` und
+   `python3-certbot-nginx` und schaltet die automatische Erneuerung (certbot-Timer) ein.
+2. Unter **➕ Domain hinzufügen** die Domain (z. B. `crosslink.example.org`) und die **E-Mail für Let's Encrypt** eintragen →
+   **🔒 Domain anlegen & Zertifikat holen**. nginx nimmt die Domain auf Port 80/443 an und leitet zu N8 Crosslink
+   (`127.0.0.1:<Web-Port>`, mit WebSocket) weiter; certbot holt das Zertifikat und stellt http:// auf https:// um.
+3. Die Liste zeigt je Domain, wohin der DNS-Eintrag zeigt, ob HTTPS aktiv ist, das Zertifikat (Aussteller, Ablaufdatum, Resttage –
+   rot unter 14 Tagen) und die Knöpfe **🔄 Erneuern**, **🔒 Zertifikat holen** (falls es beim ersten Mal nicht geklappt hat) und **Entfernen**
+   (Weiterleitung und Zertifikat).
+4. **Test-Zertifikat** nutzt die Staging-Umgebung von Let's Encrypt – zum Ausprobieren, ohne in die Limits zu laufen (Browser warnen bei
+   diesen Zertifikaten).
+5. **🛡️ Nur noch über HTTPS:** stellt die Web-Adresse auf `127.0.0.1` – dann ist `http://IP:Port` von außen zu und das Webinterface nur
+   noch über die Domain erreichbar (ein HobbyRadioPortal auf demselben Rechner erreicht es weiter). Der Dienst startet dafür neu.
+
+Voraussetzungen und Hinweise:
+
+* Die Domain zeigt per DNS (A/AAAA) auf diesen Server, **Port 80 und 443** sind aus dem Internet erreichbar (Let's Encrypt prüft über Port 80).
+* Lauscht N8 Crosslink selbst auf Port 80 oder 443, warnt die Seite: zuerst unter *Allgemein → Web-Port* einen anderen Port (z. B. 8070) eintragen.
+* Belegt ein anderes Programm Port 80, steht das als Hinweis da.
+* Läuft auf dem Rechner das **HobbyRadioPortal** und steht N8 Crosslink dahinter, verwaltet das Portal Domain und Zertifikat
+  (*Domains & Zertifikate* dort) – dann hier nichts anlegen.
+* Die Seite des alten Installers (`/etc/nginx/sites-available/n8crosslink`) wird erkannt und lässt sich hier erneuern oder entfernen.
+* Technisch: root-Helfer `/opt/n8crosslink/n8x-certs.sh` (`status`, `deps`, `add`, `renew`, `remove`) über sudo – er prüft Domain, E-Mail
+  und Port selbst, schreibt nur `/etc/nginx/sites-available/n8crosslink-<domain>`, prüft mit `nginx -t` und stellt bei Fehlern den alten
+  Stand wieder her. Siehe [SICHERHEIT.md](SICHERHEIT.md#reverse-proxy-davor-empfohlen).
+
 ## 👥 Benutzer · 🛠️ System
 Benutzer anlegen/löschen/Passwort ändern. System: **Dienste** (N8 Crosslink, erkannte alte Dienste wie svxlink/mmdvm_bridge/Zello-Bridge) mit Start, Stopp, Neustart, Autostart an/aus; **Berechtigungen prüfen & korrigieren**; **Server neu starten** (falls bei der Installation erlaubt); Bridge neu starten (nur die Netze), Dienst neu starten, ID-Listen aktualisieren, Konfiguration exportieren/importieren (ohne Passwörter), Ereignisprotokoll. Siehe [BETRIEB.md](BETRIEB.md).

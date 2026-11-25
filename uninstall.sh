@@ -60,13 +60,18 @@ systemctl disable --now n8crosslink n8crosslink-update.path n8crosslink-update.s
 rm -f /etc/systemd/system/n8crosslink.service /etc/systemd/system/n8crosslink-update.path /etc/systemd/system/n8crosslink-update.service
 rm -f /etc/sudoers.d/n8crosslink
 ok "Dienste, Update-Auslöser und sudo-Freigaben entfernt"
-if [[ -f /etc/nginx/sites-available/n8crosslink ]]; then
-  DOMAIN=$(awk '/server_name/{print $2; exit}' /etc/nginx/sites-available/n8crosslink | tr -d ';')
-  rm -f /etc/nginx/sites-enabled/n8crosslink /etc/nginx/sites-available/n8crosslink
+# nginx-Seiten aus „Domains & HTTPS“ (n8crosslink-<domain>) und die des alten Installers (n8crosslink)
+DOMAINS=""
+for f in /etc/nginx/sites-available/n8crosslink /etc/nginx/sites-available/n8crosslink-*; do
+  [[ -f "$f" ]] || continue
+  DOMAINS+=" $(awk '/server_name/{for(i=2;i<=NF;i++){gsub(";","",$i); print $i}}' "$f" | grep -v '^_$' | sort -u | tr '\n' ' ')"
+  rm -f "/etc/nginx/sites-enabled/$(basename "$f")" "$f" "$f.bak"
+done
+if [[ -n "${DOMAINS// /}" ]]; then
   nginx -t >/dev/null 2>&1 && systemctl reload nginx
-  ok "nginx-Konfiguration entfernt"
-  if [[ -n "$DOMAIN" ]] && command -v certbot >/dev/null && ask_yn "Let's-Encrypt-Zertifikat für $DOMAIN löschen?" n; then
-    certbot delete --cert-name "$DOMAIN" --non-interactive >/dev/null 2>&1 && ok "Zertifikat gelöscht"
+  ok "nginx-Konfiguration entfernt (${DOMAINS# })"
+  if command -v certbot >/dev/null && ask_yn "Let's-Encrypt-Zertifikate für ${DOMAINS# } löschen?" n; then
+    for d in $DOMAINS; do certbot delete --cert-name "$d" --non-interactive >/dev/null 2>&1 && ok "Zertifikat $d gelöscht"; done
   fi
 fi
 if [[ "$MODE" == "keep" ]]; then

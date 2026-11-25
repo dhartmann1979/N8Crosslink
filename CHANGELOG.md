@@ -2,6 +2,39 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.12.0] – 2026-11-25
+
+**🔒 Domains & HTTPS mit Let's Encrypt im Adminportal – und neue LED-Farben: Rot = Senden, Magenta = Empfangen, Grün = Dienst ok.**
+
+### 🔒 Domains & HTTPS (Let's Encrypt)
+- Neuer Bereich **⚙️ Admin → 🔒 Domains & HTTPS**: eigene Domains für das Webinterface mit kostenlosem Zertifikat, ohne Konsole.
+  - **📦 Benötigte Pakete installieren**: `nginx`, `certbot`, `python3-certbot-nginx`, automatische Erneuerung (certbot-Timer) an,
+    nginx-Standardseite aus.
+  - **Domain anlegen & Zertifikat holen**: nginx-Weiterleitung `Domain → 127.0.0.1:<Web-Port>` (mit WebSocket, `X-Forwarded-For`,
+    `X-Forwarded-Proto`), dann certbot mit Umleitung http → https. Optional **Test-Zertifikat** (Let's-Encrypt-Staging).
+  - Liste je Domain: wohin der DNS-Eintrag zeigt, HTTPS an/aus, Aussteller, Ablaufdatum und Resttage (rot unter 14 Tagen),
+    **🔄 Erneuern**, **🔒 Zertifikat holen** (neuer Versuch), **Entfernen** (Weiterleitung und Zertifikat).
+  - **🛡️ Nur noch über HTTPS**: Web-Adresse auf `127.0.0.1` – `http://IP:Port` ist dann von außen zu (Dienst startet neu).
+  - Hinweise, wenn N8 Crosslink selbst auf Port 80/443 lauscht, Port 80 von einem anderen Programm belegt ist oder ein HobbyRadioPortal
+    auf dem Rechner die Domains übernimmt. Die nginx-Seite des alten Installers wird erkannt.
+- Neuer **root-Helfer `n8x-certs.sh`** (`status`, `deps`, `add`, `renew`, `remove`): eine sudo-Zeile, prüft Domain, E-Mail und Port selbst,
+  schreibt nur `/etc/nginx/sites-available/n8crosslink-<domain>`, übernimmt nichts ohne `nginx -t` (sonst alter Stand zurück). Installer
+  (Frage „HTTPS einrichten“) und Webinterface nutzen denselben Helfer; `fix_perms` setzt ihn auf root:root 755; `uninstall.sh` entfernt alle
+  `n8crosslink*`-Seiten und fragt nach den Zertifikaten.
+- Nur angemeldete Admins, nie das HobbyRadioPortal; jede Aktion steht im Ereignisprotokoll. API: `GET/POST /api/admin/domains`,
+  `POST /api/admin/domains/deps`, `POST /api/admin/domains/{domain}/renew`, `DELETE /api/admin/domains/{domain}`, `POST /api/admin/domains/local-only`.
+- E-Mail und Staging-Wahl werden gemerkt (neuer Einstellungsbereich `https`).
+
+### 🟣 LEDs: Rot = Senden, Magenta = Empfangen, Grün = Dienst ok
+- Statusleiste, RX/TX-Chips und Glühen der Netzkarten: **Empfangen jetzt Magenta** (vorher Grün – nicht von „Dienst ok“ zu unterscheiden),
+  **Senden Rot**, **Grün** nur noch für „verbunden / bereit“. Auch „🟣 empfängt“ in der Netzkarte, die aktive Zeile in *Zuletzt gehört* und
+  in der FRN-Raumliste. Farben zentral als `--led-tx`, `--led-rx`, `--led-ok` in `crosslink.css`.
+
+### 📚 Doku
+- [KONFIGURATION.md → Domains & HTTPS](docs/KONFIGURATION.md#-domains--https), [INSTALLATION.md](docs/INSTALLATION.md#https--domain),
+  [SICHERHEIT.md](docs/SICHERHEIT.md#reverse-proxy-davor-empfohlen), [BETRIEB.md → LEDs](docs/BETRIEB.md#leds-in-statusleiste-und-netzkarten), README.
+  Neue Screenshots *Domains & HTTPS* und *LEDs*.
+
 ## [1.11.0] – 2026-11-25
 
 **🔌 HobbyRadioPortal ohne Token.** Läuft das [HobbyRadioPortal](https://github.com/dhartmann1979/HobbyRadioPortal) auf demselben

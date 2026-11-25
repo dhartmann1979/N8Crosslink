@@ -330,6 +330,73 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         return {"ok": True}
 
     # ---- Systemsteuerung (sudo, nur freigegebene Befehle)
+    # ---- Domains & HTTPS (Let's Encrypt) – nur angemeldete Menschen, nie das Portal
+    def _resolve(domain: str) -> list[str]:
+        import socket
+        try:
+            return sorted({a[4][0] for a in socket.getaddrinfo(domain, None)})
+        except OSError:
+            return []
+
+    @app.get("/api/admin/domains")
+    async def domains_get(_: str = Depends(require_human)) -> dict:
+        port = int(bridge.cfg["general"].get("web_port") or 8080)
+        st = await bridge.system.certs("status", str(port), timeout=60)
+        for s_ in st.get("sites") or []:
+            s_["dns"] = await asyncio.to_thread(_resolve, s_["domain"])
+        st["settings"] = db.load_config().get("https") or {}
+        st["web_host"] = bridge.cfg["general"].get("web_host", "0.0.0.0")
+        return st
+
+    @app.post("/api/admin/domains")
+    async def domains_add(data: dict = Body(...), user: str = Depends(require_human)) -> dict:
+        domain = str(data.get("domain") or "").strip().lower().rstrip(".")
+        email = str(data.get("email") or "").strip()
+        if not re.fullmatch(bridge.system.DOMAIN_RE, domain) or len(domain) > 253:
+            raise HTTPException(400, "Domain bitte wie crosslink.example.org angeben")
+        if not re.fullmatch(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}", email):
+            raise HTTPException(400, "Bitte eine gültige E-Mail-Adresse für Let's Encrypt angeben")
+        staging = bool(data.get("staging"))
+        db.save_section("https", {"email": email, "staging": staging})
+        port = int(bridge.cfg["general"].get("web_port") or 8080)
+        args = ["add", domain, email, str(port)] + (["staging"] if staging else [])
+        r = await bridge.system.certs(*args, timeout=420)
+        r["dns"] = await asyncio.to_thread(_resolve, domain)
+        bridge.router.event("info" if r.get("ok") else "warn", f"Domain {domain} von {user}: {r.get('message', '')[:160]}")
+        return r
+
+    @app.post("/api/admin/domains/deps")
+    async def domains_deps(user: str = Depends(require_human)) -> dict:
+        r = await bridge.system.certs("deps", timeout=900)
+        bridge.router.event("info" if r.get("ok") else "warn", f"nginx/certbot installieren ({user}): {r.get('message', '')[:160]}")
+        return r
+
+    @app.post("/api/admin/domains/{domain}/renew")
+    async def domains_renew(domain: str, user: str = Depends(require_human)) -> dict:
+        if not re.fullmatch(bridge.system.DOMAIN_RE, domain):
+            raise HTTPException(400, "Ungültige Domain")
+        r = await bridge.system.certs("renew", domain, timeout=420)
+        bridge.router.event("info" if r.get("ok") else "warn", f"Zertifikat {domain} erneuern ({user}): {r.get('message', '')[:160]}")
+        return r
+
+    @app.delete("/api/admin/domains/{domain}")
+    async def domains_remove(domain: str, user: str = Depends(require_human)) -> dict:
+        if not re.fullmatch(bridge.system.DOMAIN_RE, domain):
+            raise HTTPException(400, "Ungültige Domain")
+        r = await bridge.system.certs("remove", domain, timeout=120)
+        bridge.router.event("info" if r.get("ok") else "warn", f"Domain {domain} entfernt ({user}): {r.get('message', '')[:160]}")
+        return r
+
+    @app.post("/api/admin/domains/local-only")
+    async def domains_local_only(data: dict = Body(...), user: str = Depends(require_human)) -> dict:
+        """Webinterface nur noch über die HTTPS-Domain (bindet auf 127.0.0.1) – oder wieder an allen Schnittstellen."""
+        host = "127.0.0.1" if data.get("on") else "0.0.0.0"
+        db.save_section("general", {"web_host": host})
+        bridge.cfg["general"]["web_host"] = host
+        bridge.router.event("info", f"Web-Adresse auf {host} gestellt von {user} – Dienst startet neu")
+        asyncio.get_running_loop().call_later(1.0, lambda: asyncio.ensure_future(bridge.system.unit_action("n8crosslink.service", "restart")))
+        return {"ok": True, "web_host": host}
+
     @app.get("/api/admin/system")
     async def system_status(_: str = Depends(require_admin)) -> dict:
         return await bridge.system.status()

@@ -9,6 +9,8 @@
   --radius-lg: 22px; --radius-md: 16px; --radius-sm: 12px;
   --accent: #5ac8fa; --accent-rgb: 90, 200, 250; --accent2: #9bd8ff; --title-to: #b4e2ff;
   --green: #30d158; --amber: #ffd60a; --red: #ff453a;
+  /* LEDs: Rot = Senden, Magenta = Empfangen, Grün = Dienst ok */
+  --led-tx: #ff453a; --led-rx: #ff2dd1; --led-rx-rgb: 255, 45, 209; --led-ok: #30d158;
   --text: #f5f7fb; --text-dim: rgba(235, 240, 250, 0.62);
   --surface: rgba(255, 255, 255, 0.05); --surface-2: rgba(255, 255, 255, 0.08); --line: rgba(255, 255, 255, 0.08);
   --frn: #0a84ff; --dmr: #30d158; --zello: #ff9f0a;
@@ -71,10 +73,10 @@ h1 { font-size: 21px; font-weight: 700; white-space: nowrap;
 .status-strip::-webkit-scrollbar { display: none; }
 .ss { display: inline-flex; align-items: center; font-weight: 600; color: var(--text-dim); white-space: nowrap; }
 .ss::before { content: ''; margin-right: 6px; width: 7px; height: 7px; border-radius: 50%; background: #ff453a; box-shadow: 0 0 6px rgba(255,69,58,.7); }
-.ss.on::before { background: #30d158; box-shadow: 0 0 6px rgba(48,209,88,.8); }
+.ss.on::before { background: var(--led-ok); box-shadow: 0 0 6px rgba(48,209,88,.8); }
 .ss.warn::before { background: #ffd60a; box-shadow: 0 0 6px rgba(255,214,10,.7); }
-.ss.tx::before { background: #ff453a; animation: blink .6s infinite alternate; }
-.ss.rx::before { background: #30d158; animation: blink .6s infinite alternate; }
+.ss.tx::before { background: var(--led-tx); box-shadow: 0 0 7px rgba(255,69,58,.9); animation: blink .6s infinite alternate; }
+.ss.rx::before { background: var(--led-rx); box-shadow: 0 0 7px rgba(var(--led-rx-rgb),.9); animation: blink .6s infinite alternate; }
 .ss-spacer { flex: 1; }
 @keyframes blink { from { opacity: 1; } to { opacity: .35; } }
 
@@ -155,7 +157,7 @@ h1 { font-size: 21px; font-weight: 700; white-space: nowrap;
 .net-card::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--col); opacity: .9; }
 .net-card.frn { --col: var(--frn); } .net-card.dmr { --col: var(--dmr); } .net-card.zello { --col: var(--zello); }
 .net-card.txing { box-shadow: 0 0 0 1px rgba(255,69,58,.45), 0 0 30px rgba(255,69,58,.15), var(--glass-shadow); }
-.net-card.rxing { box-shadow: 0 0 0 1px rgba(48,209,88,.5), 0 0 30px rgba(48,209,88,.15), var(--glass-shadow); }
+.net-card.rxing { box-shadow: 0 0 0 1px rgba(var(--led-rx-rgb),.55), 0 0 30px rgba(var(--led-rx-rgb),.18), var(--glass-shadow); }
 .nc-head { display: flex; align-items: center; gap: 10px; }
 .nc-icon { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; font-size: 18px;
   background: linear-gradient(135deg, var(--col), rgba(255,255,255,.06)); flex: none; }
@@ -164,7 +166,7 @@ h1 { font-size: 21px; font-weight: 700; white-space: nowrap;
 .nc-head .grow { flex: 1; min-width: 0; }
 .rt { display: flex; gap: 6px; }
 .rt span { font-size: 10.5px; font-weight: 800; letter-spacing: .06em; padding: 3px 8px; border-radius: 8px; background: rgba(255,255,255,.06); color: var(--text-dim); border: 1px solid var(--line); }
-.rt span.rx.on { background: rgba(48,209,88,.25); color: #b4ffc9; border-color: rgba(48,209,88,.6); }
+.rt span.rx.on { background: rgba(var(--led-rx-rgb),.25); color: #ffc2f1; border-color: rgba(var(--led-rx-rgb),.65); }
 .rt span.tx.on { background: rgba(255,69,58,.25); color: #ffc1bc; border-color: rgba(255,69,58,.6); }
 .nc-now { min-height: 22px; font-size: 13.5px; display: flex; align-items: center; gap: 8px; }
 .nc-now b { font-weight: 750; }
@@ -187,7 +189,7 @@ h1 { font-size: 21px; font-weight: 700; white-space: nowrap;
   gap: 10px; align-items: center; padding: 9px 4px; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 13px; }
 .lh-row:last-child { border-bottom: 0; }
 .lh-head { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); padding-top: 6px; }
-.lh-row.live { background: linear-gradient(90deg, rgba(48,209,88,.12), transparent 60%); border-radius: 10px; }
+.lh-row.live { background: linear-gradient(90deg, rgba(var(--led-rx-rgb),.12), transparent 60%); border-radius: 10px; }
 .lh-row.blocked { opacity: .6; }
 .lh-user { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .avatar { width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center; font-weight: 800; font-size: 11px; flex: none;

@@ -58,7 +58,12 @@ Sitzungs-Cookie `HttpOnly`/`SameSite`; der Standard-Login `n8schicht / n8schicht
 
 ## Reverse-Proxy davor (empfohlen)
 
-N8 Crosslink bringt kein eigenes HTTPS mit. Soll das Dashboard aus dem Internet erreichbar sein, gehört ein **Reverse-Proxy** mit HTTPS davor: Zertifikate, Header und Protokolle an einer Stelle. Das Dashboard lauscht dann nur lokal (Admin → Allgemein → Web-Adresse `127.0.0.1`, Port z. B. 8080; Neustart des Dienstes). Die Weiterleitungs-Header (`X-Forwarded-Proto`) wertet N8 Crosslink aus.
+N8 Crosslink bringt kein eigenes HTTPS mit. Soll das Dashboard aus dem Internet erreichbar sein, gehört ein **Reverse-Proxy** mit HTTPS davor –
+am einfachsten über **⚙️ Admin → 🔒 Domains & HTTPS** (nginx + Let's Encrypt per Klick, siehe [KONFIGURATION.md](KONFIGURATION.md#-domains--https)).
+Das Webinterface ruft dafür nur den root-Helfer `/opt/n8crosslink/n8x-certs.sh` per sudo auf (eine Zeile in `/etc/sudoers.d/n8crosslink`);
+er nimmt nur `status`, `deps`, `add`, `renew`, `remove` an, prüft Domain (Kleinbuchstaben, gültige Labels), E-Mail und Port, schreibt nur
+`/etc/nginx/sites-available/n8crosslink-<domain>` und übernimmt nichts ohne erfolgreiches `nginx -t`. Die Domain-Verwaltung können nur
+angemeldete Admins bedienen, nie das HobbyRadioPortal. Von Hand geht es so: Zertifikate, Header und Protokolle an einer Stelle. Das Dashboard lauscht dann nur lokal (Admin → Allgemein → Web-Adresse `127.0.0.1`, Port z. B. 8080; Neustart des Dienstes). Die Weiterleitungs-Header (`X-Forwarded-Proto`) wertet N8 Crosslink aus.
 
 **Caddy** (holt das Zertifikat selbst):
 

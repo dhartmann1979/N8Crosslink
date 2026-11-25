@@ -78,7 +78,7 @@ fix_perms() {
   find "$APP_DIR" -path "$DATA_DIR" -prune -o -path "$APP_DIR/venv/bin" -prune -o -type f \
        ! -name '*.key' ! -name '*.pem' ! -name '*.p12' -exec chmod 644 {} +
   [[ -d "$APP_DIR/venv/bin" ]] && chmod -R go-w "$APP_DIR/venv/bin" && find "$APP_DIR/venv/bin" -type f -exec chmod 755 {} + 2>/dev/null || true
-  for f in install.sh update.sh uninstall.sh; do [[ -f "$APP_DIR/$f" ]] && chmod 755 "$APP_DIR/$f"; done
+  for f in install.sh update.sh uninstall.sh n8x-certs.sh; do [[ -f "$APP_DIR/$f" ]] && chmod 755 "$APP_DIR/$f"; done
   # private Schlüssel/Zertifikate (z. B. zello.key) nur für root lesbar
   local k; while IFS= read -r k; do chmod 600 "$k"; n=$((n + 1)); warn "Schlüsseldatei $k war lesbar – auf 600 gesetzt (wird nicht mehr gebraucht, liegt in der Datenbank)"; done \
     < <(find "$APP_DIR" -path "$DATA_DIR" -prune -o -path "$APP_DIR/venv" -prune -o -type f \( -name '*.key' -o -name '*.pem' -o -name '*.p12' \) -perm /044 -print 2>/dev/null)
@@ -229,9 +229,12 @@ setup_sudo() {
   [[ "$allow_reboot" == "true" ]] && echo "$SVC_USER ALL=(root) NOPASSWD: $SC reboot" >> "$TMP"
   echo "$SVC_USER ALL=(root) NOPASSWD: $APP_DIR/install.sh --fix-perms" >> "$TMP"
   echo "$SVC_USER ALL=(root) NOPASSWD: $APP_DIR/install.sh --build-vocoder" >> "$TMP"
+  # Domains & HTTPS (Let's Encrypt) im Webinterface – das Skript prüft jede Eingabe selbst
+  echo "$SVC_USER ALL=(root) NOPASSWD: $APP_DIR/n8x-certs.sh" >> "$TMP"
+  echo "$SVC_USER ALL=(root) NOPASSWD: $APP_DIR/n8x-certs.sh *" >> "$TMP"
   if visudo -cf "$TMP" >/dev/null 2>&1; then
     install -o root -g root -m 0440 "$TMP" "$F"
-    printf '{"sudo": true, "systemctl": "%s", "reboot": %s, "fix_perms": true, "build_vocoder": true, "units": [%s]}\n' "$SC" "$allow_reboot" "$json" > "$DATA_DIR/system.json"
+    printf '{"sudo": true, "systemctl": "%s", "reboot": %s, "fix_perms": true, "build_vocoder": true, "certs": true, "units": [%s]}\n' "$SC" "$allow_reboot" "$json" > "$DATA_DIR/system.json"
     chown "$SVC_USER:$SVC_USER" "$DATA_DIR/system.json"; chmod 640 "$DATA_DIR/system.json"
     ok "sudo fürs Webinterface eingerichtet ($(grep -c NOPASSWD "$F") freigegebene Befehle, mit visudo geprüft)"
   else
@@ -345,7 +348,7 @@ cp -r "$SRC_DIR/n8crosslink" "$SRC_DIR/requirements.txt" "$APP_DIR/"
 rm -rf "$APP_DIR/third_party"; mkdir -p "$APP_DIR/third_party"
 cp -r "$SRC_DIR/third_party/n8schicht-vocoder" "$APP_DIR/third_party/"
 chmod 755 "$APP_DIR/third_party/n8schicht-vocoder/build.sh"
-cp "$SRC_DIR/install.sh" "$SRC_DIR/update.sh" "$SRC_DIR/uninstall.sh" "$APP_DIR/" 2>/dev/null || true
+cp "$SRC_DIR/install.sh" "$SRC_DIR/update.sh" "$SRC_DIR/uninstall.sh" "$SRC_DIR/n8x-certs.sh" "$APP_DIR/" 2>/dev/null || true
 [[ -d "$SRC_DIR/.git" ]] && echo "$SRC_DIR" > "$APP_DIR/.source"
 rm -rf "$APP_DIR/n8crosslink/__pycache__"
 ok "Dateien nach $APP_DIR kopiert"
@@ -591,13 +594,12 @@ IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 if [[ "$MODE" == "neu" ]]; then
   echo
   if ask_yn "Optional: nginx als HTTPS-Reverse-Proxy mit Let's Encrypt für ${SERVER_NAME:-die Domain} einrichten?" n; then
-    apt-get install -y -qq nginx certbot python3-certbot-nginx >/dev/null
-    sed -e "s/__SERVER_NAME__/${SERVER_NAME}/g" -e "s/__PORT__/${PORT}/g" "$SRC_DIR/systemd/nginx-n8crosslink.conf" > /etc/nginx/sites-available/n8crosslink
-    ln -sf /etc/nginx/sites-available/n8crosslink /etc/nginx/sites-enabled/n8crosslink
-    nginx -t >/dev/null 2>&1 && systemctl reload nginx
+    # dasselbe Skript wie im Webinterface (Admin → 🔒 Domains & HTTPS) – weitere Domains kommen dort dazu
+    "$APP_DIR/n8x-certs.sh" deps >/dev/null || warn "nginx/certbot nicht installierbar"
     ask LE_MAIL "E-Mail für Let's Encrypt" ""
-    certbot --nginx -d "$SERVER_NAME" --non-interactive --agree-tos -m "$LE_MAIL" --redirect >/dev/null 2>&1 \
-      && ok "HTTPS aktiv: https://${SERVER_NAME}" || warn "Zertifikat fehlgeschlagen – DNS/Port 80 prüfen, dann: certbot --nginx -d ${SERVER_NAME}"
+    R=$("$APP_DIR/n8x-certs.sh" add "$SERVER_NAME" "$LE_MAIL" "$PORT" 2>&1 || true)
+    if [[ "$R" == *'"ok": true'* ]]; then ok "HTTPS aktiv: https://${SERVER_NAME}"
+    else warn "Zertifikat fehlgeschlagen – DNS/Port 80 prüfen, dann im Webinterface unter 🔒 Domains & HTTPS erneut"; fi
   fi
 fi
 

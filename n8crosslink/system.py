@@ -97,3 +97,22 @@ class System:
             return False, "Berechtigungsprüfung nicht freigegeben"
         rc, out = await self.sudo("/opt/n8crosslink/install.sh", "--fix-perms", timeout=180)
         return rc == 0, out[-3000:]
+
+    # ---- Domains & HTTPS (Let's Encrypt) über /opt/n8crosslink/n8x-certs.sh -------------------------------
+    CERTS = os.environ.get("N8X_CERTS_HELPER", "/opt/n8crosslink/n8x-certs.sh")   # anderer Pfad nur zum Testen
+    DOMAIN_RE = r"^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$"
+
+    async def certs(self, *args: str, timeout: float = 300) -> dict:
+        """Ruft den root-Helfer für Domains und Zertifikate auf; Antwort ist eine Zeile JSON."""
+        if not self.config().get("certs"):
+            return {"ok": False, "missing": True,
+                    "message": "Domains & HTTPS sind noch nicht freigegeben – einmal sudo /opt/n8crosslink/update.sh ausführen"}
+        rc, out = await self.sudo(self.CERTS, *args, timeout=timeout)
+        for line in reversed(out.splitlines()):
+            line = line.strip()
+            if line.startswith("{"):
+                try:
+                    return json.loads(line)
+                except json.JSONDecodeError:
+                    break
+        return {"ok": False, "message": (out[-400:] or f"Fehler {rc}")}

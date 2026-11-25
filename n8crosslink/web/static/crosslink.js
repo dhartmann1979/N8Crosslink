@@ -190,7 +190,7 @@ function renderNetCards() {
     const pill = !p.enabled ? '<span class="badge warn">AUS</span>' : p.online ? '<span class="badge ok">ONLINE</span>' : '<span class="badge off">OFFLINE</span>';
     let now = '';
     if (p.tx && p.tx_talker) now = `🔴 sendet: <b>${esc(p.tx_talker.name)}</b> ${badge(p.tx_talker.source)}`;
-    else if (p.rx && S.state.active?.source === k) now = `🟢 empfängt: <b>${esc(S.state.active.talker.name)}</b>`;
+    else if (p.rx && S.state.active?.source === k) now = `🟣 empfängt: <b>${esc(S.state.active.talker.name)}</b>`;
     else if (p.rx) now = '🟡 Empfang gesperrt (Bridge belegt)';
     else now = `<span style="color:var(--text-dim)">${esc(p.enabled ? (p.online ? 'bereit' : (p.state || 'offline')) : 'deaktiviert')}</span>`;
     const meta = [];
@@ -217,7 +217,7 @@ function renderRoom() {
   if (!list.length) { $('#roomList').innerHTML = '<div class="empty">Keine Stationen im Raum.</div>'; return; }
   const activeCs = S.state.active?.source === 'frn' ? S.state.active.talker.callsign : '';
   $('#roomList').innerHTML = `<table class="tbl"><thead><tr><th>Station</th><th>Ort</th><th>Band / Kanal</th><th>Typ</th></tr></thead><tbody>${
-    list.map(c => `<tr ${c.callsign === activeCs ? 'style="background:rgba(48,209,88,.12)"' : ''}><td><div class="lh-user">${avatar('frn', c.callsign, c.callsign)}
+    list.map(c => `<tr ${c.callsign === activeCs ? 'style="background:rgba(255,45,209,.12)"' : ''}><td><div class="lh-user">${avatar('frn', c.callsign, c.callsign)}
       <div><div class="lh-cs">${esc(c.callsign)}${c.callsign === activeCs ? ' 🎙️' : ''}${c.muted ? ' 🔇' : ''}</div><div class="lh-name">${esc(c.name)}</div></div></div></td>
       <td>${esc(c.city)}${c.country ? ' · ' + esc(c.country) : ''}</td><td>${esc(c.band)}</td><td>${esc(c.type)}</td></tr>`).join('')}</tbody></table>`;
 }
@@ -445,6 +445,7 @@ const SCHEMA = {
   update: { title: '⬆️ Updates', custom: renderUpdate },
   backup: { title: '💾 Backup & Neuanfang', custom: renderBackup },
   users: { title: '👥 Benutzer', custom: renderUsers },
+  domains: { title: '🔒 Domains & HTTPS', custom: renderDomains },
   system: { title: '🛠️ System', custom: renderSystem },
 };
 
@@ -580,6 +581,68 @@ async function renderUsers() {
   $('#nuBtn').onclick = async () => {
     try { await api('/api/admin/users', { method: 'POST', body: { username: $('#nuUser').value.trim(), password: $('#nuPass').value } }); toast('✅ Benutzer gespeichert'); renderUsers(); }
     catch (e) { toast('⚠️ ' + e.message); }
+  };
+}
+
+// ---------------------------------------------------------------- Domains & HTTPS (Let's Encrypt)
+async function renderDomains() {
+  $('#adminBody').innerHTML = '<div class="empty">Lade Domains …</div>';
+  let d;
+  try { d = await api('/api/admin/domains'); } catch (e) { $('#adminBody').innerHTML = `<div class="empty">⚠️ ${esc(e.message)}</div>`; return; }
+  const set = d.settings || {};
+  const days = c => c && c.days != null ? (c.days < 0 ? 'abgelaufen' : `noch ${c.days} Tage`) : '';
+  const certBadge = s => !s.cert ? '<span class="badge warn">kein Zertifikat</span>'
+    : s.cert.staging ? '<span class="badge warn">Test-Zertifikat</span>'
+    : s.cert.days != null && s.cert.days < 14 ? `<span class="badge off">${esc(days(s.cert))}</span>` : `<span class="badge ok">gültig · ${esc(days(s.cert))}</span>`;
+  const conflict = [80, 443].includes(Number(d.web_port));
+  const deps = d.nginx && d.certbot;
+  const hint = d.missing ? `<div class="banner">⚠️ <span class="grow">${esc(d.message)}</span></div>`
+    : !d.ok ? `<div class="banner">⚠️ <span class="grow">${esc(d.message || 'Status nicht lesbar')}</span></div>`
+    : conflict ? `<div class="banner">⚠️ <span class="grow">N8 Crosslink lauscht selbst auf Port ${esc(d.web_port)}. Für HTTPS braucht nginx die Ports 80 und 443 – zuerst unter <b>🏠 Allgemein → Web-Port</b> z. B. 8070 eintragen und den Dienst neu starten.</span></div>`
+    : !deps ? `<div class="banner">📦 <span class="grow">Für Let's Encrypt braucht es <b>nginx</b> und <b>certbot</b> auf diesem Rechner.</span><button class="btn" id="dmDeps">📦 Benötigte Pakete installieren</button></div>`
+    : d.port80 && d.port80 !== 'nginx' ? `<div class="banner">⚠️ <span class="grow">Port 80 belegt <b>${esc(d.port80)}</b> – nginx kann dort nicht lauschen. Let's Encrypt prüft die Domain über Port 80.</span></div>` : '';
+  const portal = d.portal ? `<p style="padding:0 4px;color:var(--text-dim);font-size:13px">ℹ️ Auf diesem Rechner läuft das <b>HobbyRadioPortal</b>. Steht N8 Crosslink dahinter, verwaltet das Portal Domain und Zertifikat (Admin → Domains &amp; Zertifikate) – dann hier nichts anlegen.</p>` : '';
+  const rows = (d.sites || []).map(s => `<tr><td><b>${esc(s.domain)}</b>${s.legacy ? ' <span class="badge">vom Installer</span>' : ''}
+      <div class="lh-name">${s.dns && s.dns.length ? 'DNS: ' + s.dns.map(esc).join(', ') : '⚠️ DNS: kein Eintrag gefunden'} · → 127.0.0.1:${esc(s.upstream || '?')}</div></td>
+      <td>${s.https ? '<span class="badge ok">HTTPS</span>' : '<span class="badge warn">nur HTTP</span>'} ${certBadge(s)}
+        ${s.cert ? `<div class="lh-name">${esc(s.cert.issuer || '')} · bis ${esc(s.cert.expires || '')}</div>` : ''}</td>
+      <td class="num"><a class="btn secondary" href="https://${esc(s.domain)}/" target="_blank" rel="noopener">↗</a>
+        ${s.cert ? `<button class="btn secondary" data-renew="${esc(s.domain)}">🔄 Erneuern</button>` : `<button class="btn secondary" data-retry="${esc(s.domain)}">🔒 Zertifikat holen</button>`}
+        <button class="btn secondary" data-rm="${esc(s.domain)}">Entfernen</button></td></tr>`).join('');
+  const anyHttps = (d.sites || []).some(s => s.https);
+  $('#adminBody').innerHTML = `<h2 class="section-header">🔒 Domains &amp; HTTPS ${d.renew_timer ? '<span class="badge ok">automatische Erneuerung an</span>' : deps ? '<span class="badge warn">Erneuerung nicht geplant</span>' : ''}</h2>
+    <p style="padding:0 4px;color:var(--text-dim);font-size:13px">Eigene Domains für dieses Webinterface mit kostenlosem Zertifikat von <b>Let's Encrypt</b>. nginx nimmt die Domain auf Port 80/443 an und leitet zu N8 Crosslink (127.0.0.1:${esc(d.web_port)}) weiter; certbot holt das Zertifikat und erneuert es automatisch rechtzeitig vor Ablauf. Voraussetzung: Die Domain zeigt per DNS auf diesen Server und Port 80 und 443 sind aus dem Internet erreichbar.</p>
+    ${hint}${portal}
+    <div class="card">${rows ? `<table class="tbl"><thead><tr><th>Domain</th><th>Zertifikat</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">Noch keine Domain.</div>'}</div>
+    <h2 class="section-header">➕ Domain hinzufügen</h2>
+    <div class="form"><div class="field"><label>Domain</label><input type="text" id="dmName" placeholder="crosslink.example.org" autocomplete="off"></div>
+      <div class="field"><label>E-Mail für Let's Encrypt</label><input type="text" inputmode="email" id="dmMail" value="${esc(set.email || '')}" placeholder="sysop@example.org" autocomplete="email"><small>Für Hinweise zum Ablauf des Zertifikats</small></div>
+      <div class="field wide"><label class="switch"><input type="checkbox" id="dmStaging" ${set.staging ? 'checked' : ''}><span></span>Test-Zertifikat (Let's-Encrypt-Staging, zum Ausprobieren ohne Limits)</label></div></div>
+    <div class="form-actions" style="justify-content:flex-start"><button class="btn" id="dmAdd" ${!d.ok || conflict || !deps ? 'disabled' : ''}>🔒 Domain anlegen &amp; Zertifikat holen</button></div>
+    <pre id="dmOut" style="font-size:11.5px;white-space:pre-wrap;color:var(--text-dim);padding:0 4px"></pre>
+    ${anyHttps ? `<h2 class="section-header">🛡️ Nur noch über HTTPS</h2><div class="form"><div class="field wide"><label class="switch"><input type="checkbox" id="dmLocal" ${d.web_host === '127.0.0.1' ? 'checked' : ''}><span></span>Webinterface nur noch über die Domain erreichbar (lauscht auf 127.0.0.1 statt allen Schnittstellen)</label>
+      <small>Danach ist http://IP:${esc(d.web_port)} von außen zu. Ein HobbyRadioPortal auf diesem Rechner erreicht N8 Crosslink weiter über 127.0.0.1. Der Dienst startet dafür neu.</small></div></div>` : ''}`;
+  const out = (r) => { $('#dmOut').textContent = (r.message || '') + (r.log ? '\n\n' + r.log : ''); toast((r.ok ? '✅ ' : '⚠️ ') + (r.message || '')); };
+  const busy = (b, t) => { b.disabled = true; b.textContent = t; $('#dmOut').textContent = 'Läuft – das kann bis zu einer Minute dauern …'; };
+  if ($('#dmDeps')) $('#dmDeps').onclick = async (e) => { busy(e.target, '📦 Installiere …'); out(await api('/api/admin/domains/deps', { method: 'POST' })); renderDomains(); };
+  const add = async (domain, btn) => {
+    const email = $('#dmMail').value.trim();
+    if (!email) { toast('⚠️ Bitte die E-Mail für Let\'s Encrypt eintragen'); $('#dmMail').focus(); return; }
+    busy(btn, '🔒 Hole Zertifikat …');
+    try { out(await api('/api/admin/domains', { method: 'POST', body: { domain, email, staging: $('#dmStaging').checked } })); } catch (e) { toast('⚠️ ' + e.message); }
+    renderDomains();
+  };
+  $('#dmAdd').onclick = (e) => { const v = $('#dmName').value.trim(); if (!v) { $('#dmName').focus(); return; } add(v, e.target); };
+  $$('[data-retry]').forEach(b => b.onclick = () => add(b.dataset.retry, b));
+  $$('[data-renew]').forEach(b => b.onclick = async () => { busy(b, '🔄 …'); out(await api(`/api/admin/domains/${encodeURIComponent(b.dataset.renew)}/renew`, { method: 'POST' })); renderDomains(); });
+  $$('[data-rm]').forEach(b => b.onclick = async () => {
+    if (!confirm(`${b.dataset.rm} entfernen? Weiterleitung und Zertifikat werden gelöscht.`)) return;
+    out(await api(`/api/admin/domains/${encodeURIComponent(b.dataset.rm)}`, { method: 'DELETE' })); renderDomains();
+  });
+  if ($('#dmLocal')) $('#dmLocal').onchange = async (e) => {
+    const on = e.target.checked;
+    if (!confirm(on ? 'Webinterface nur noch über die Domain erreichbar machen? Der Dienst startet neu.' : 'Webinterface wieder an allen Schnittstellen öffnen? Der Dienst startet neu.')) { e.target.checked = !on; return; }
+    await api('/api/admin/domains/local-only', { method: 'POST', body: { on } }); toast('♻️ Dienst startet neu …');
   };
 }
 

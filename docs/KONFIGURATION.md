@@ -113,21 +113,22 @@ Betriebsart (N8schicht-Vocoder, USB-Stick, AMBEserver, Test), Pegel und Watchdog
 
 ![Klang-Einstellungen](screenshots/admin-vocoder-klang.png)
 
-## 🔌 Portal-Zugang (API-Token) – im HobbyRadioPortal verwalten
+## 🔌 Im HobbyRadioPortal verwalten (ohne Token)
 Seit 1.8.0 lässt sich die Brücke auch im [HobbyRadioPortal](https://github.com/dhartmann1979/HobbyRadioPortal) einstellen
 (*Admin → Dienste → 🔀 Crosslink & Vocoder*): Allgemein, Sprachansage (mit Probehören), Routing, FRN (mit *Passwort anfordern*), DMR,
 Zello, Vocoder mit **Klang-Einstellungen** und Probehören, ID-Listen & Avatare, Bridge neu starten, Vocoder testen.
 
-1. Hier unter **👥 Benutzer → 🔌 Portal-Zugang** einen Namen eintragen (z. B. *HobbyRadioPortal*) → **➕ Token anlegen** →
-   Token (`n8x_…`) **sofort kopieren**, er wird nur einmal angezeigt.
-2. Im Portal: *Dienste & Plugins → N8 Crosslink* → Adresse (z. B. `http://127.0.0.1:8080/`) und **API-Token** eintragen → Speichern.
+Seit 1.11.0 braucht das **keinen Token** mehr: Läuft das Portal auf **demselben Rechner**, verwaltet es die Brücke direkt. Im Portal
+steht unter *Dienste → Crosslink → Verbindung & Anzeige* nur die Adresse (meist `http://127.0.0.1:8070/`). Unter **👥 Benutzer** steht
+ein kurzer Hinweis.
 
-Der Token darf nur Einstellungen, Routing, Vocoder-Klang, Sprachansage, FRN-Passwort-Anforderung, ID-Listen, Ereignisse und den
+Das Portal darf nur Einstellungen, Routing, Vocoder-Klang, Sprachansage, FRN-Passwort-Anforderung, ID-Listen, Ereignisse und den
 Neustart der Brücke – **nie** Benutzer, Backup/Neuanfang, System (Dienste, Neustart des Servers), Updates, Aussehen, Export/Import.
-Web-Adresse/-Port und die Update-Quelle sind für Token gesperrt. Jede Änderung steht im Ereignisprotokoll als
-`api:<Name> (<Portal-Benutzer>)`. **Widerrufen** entzieht den Zugang sofort. Mehr: [SICHERHEIT.md](SICHERHEIT.md#api-token-für-das-hobbyradioportal).
+Web-Adresse/-Port und die Update-Quelle sind gesperrt. Jede Änderung steht im Ereignisprotokoll als
+`api:HobbyRadioPortal (<Portal-Benutzer>)`. Wann ein Aufruf als Portal gilt und wie man es abschaltet:
+[SICHERHEIT.md](SICHERHEIT.md#hobbyradioportal-auf-diesem-rechner-ohne-token).
 
-![Portal-Zugang](screenshots/admin-benutzer-token.png)
+![Benutzer mit Hinweis zum Portal](screenshots/admin-benutzer-token.png)
 
 Für andere Programme beschreibt `GET /api/admin/settings` alle Einstellungen (Bereiche, Felder, Art, Grenzen, Hilfetexte; Passwörter
 nie im Klartext), `PUT /api/admin/settings {"changes": {"frn.port": 10024, …}}` ändert sie mit Prüfung.

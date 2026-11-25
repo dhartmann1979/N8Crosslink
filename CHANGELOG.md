@@ -2,6 +2,31 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.11.0] – 2026-11-25
+
+**🔌 HobbyRadioPortal ohne Token.** Läuft das [HobbyRadioPortal](https://github.com/dhartmann1979/HobbyRadioPortal) auf demselben
+Rechner, verwaltet es die Brücke direkt – kein Token anlegen, kopieren und eintragen mehr.
+Ausführlich: [docs/SICHERHEIT.md](docs/SICHERHEIT.md#hobbyradioportal-auf-diesem-rechner-ohne-token).
+
+### Was sich ändert
+- **API-Tokens sind weg:** Bereich *🔌 Portal-Zugang (API-Token)* unter Benutzer, `GET/POST /api/admin/api-tokens`,
+  `DELETE /api/admin/api-tokens/{id}`, `python -m n8crosslink.cli api-token` und `N8X_PORTAL_TOKEN_FILE` im Installer; die Tabelle
+  `api_tokens` wird beim Start gelöscht. Unter Benutzer steht stattdessen ein kurzer Hinweis.
+- **Als Portal gilt nur ein direkter Aufruf auf diesem Rechner:** Absender und `Host` Loopback (`127.0.0.1`, `::1`, `localhost`),
+  Kopfzeile `X-HobbyRadioPortal: 1`, **keine** Proxy-Kopfzeile (`X-Forwarded-For`, `X-Real-IP`, `Forwarded`, `X-Forwarded-Host/-Proto`,
+  `Via`, `CF-Connecting-IP`, `True-Client-IP`, `X-Client-IP`). Auch wenn uvicorn die Adresse aus `X-Forwarded-For` übernimmt, bleibt die
+  Kopfzeile da – ein vorgetäuschtes „127.0.0.1“ von außen wird so abgelehnt. Die nginx-Vorlage setzt `X-Forwarded-For`.
+- **Was das Portal darf, bleibt gleich:** Einstellungen (ohne Web-Adresse/-Port und Update-Quelle), Routing, Vocoder-Klang und Probehören,
+  Sprachansage, FRN-Passwort anfordern, ID-Listen & Avatare, Ereignisse, Neustart der Brücke – nie Benutzer, Backup/Neuanfang, System,
+  Updates, Aussehen, Export/Import. Im Ereignisprotokoll: `api:HobbyRadioPortal (<Portal-Benutzer>)`.
+- **Abschalten:** `N8X_PORTAL_LOCAL=0` in der Umgebung des Dienstes.
+
+### Doku und Tests
+- [KONFIGURATION.md](docs/KONFIGURATION.md#-im-hobbyradioportal-verwalten-ohne-token) und [SICHERHEIT.md](docs/SICHERHEIT.md) umgestellt,
+  Screenshot *Benutzer* neu.
+- `tests/test_portal_local.py` statt `test_api_tokens.py`: Pfade und Einstellungen über das Portal, gesperrte Pfade, Proxy-Kopfzeilen und
+  öffentlicher Host abgelehnt, ohne Kennung oder von einem anderen Rechner kein Zugriff, Abschalten.
+
 ## [1.10.0] – 2026-11-25
 
 **Installer: Neueinrichtung ohne Rückfragen mit `N8X_SETUP_FILE`.** Bisher ging „ohne Fragen“ nur als Umzug aus einem Backup.

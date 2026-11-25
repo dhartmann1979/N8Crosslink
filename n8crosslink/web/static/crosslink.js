@@ -566,33 +566,16 @@ function renderVocoder() {
 }
 
 async function renderUsers() {
-  const [list, tk] = await Promise.all([api('/api/admin/users'), api('/api/admin/api-tokens')]);
-  const dt = (t) => t ? new Date(t * 1000).toLocaleString('de-DE') : '—';
-  const tokens = `<h2 class="section-header">🔌 Portal-Zugang (API-Token)</h2>
-    <p style="padding:0 4px;color:var(--text-dim);font-size:13px">Für das HobbyRadioPortal: Es verwaltet damit Einstellungen, Routing, Vocoder-Klang, Sprachansage und ID-Listen –
-    nie Benutzer, Backups, System, Updates oder Aussehen. Der Token wird nur einmal angezeigt; im Portal unter Dienste &amp; Plugins → N8 Crosslink → API-Token eintragen.</p>
-    ${tk.tokens.length ? `<table class="tbl" style="margin:8px 0"><thead><tr><th>Name</th><th>Token</th><th>Angelegt</th><th>Zuletzt benutzt</th><th>IP</th><th></th></tr></thead><tbody>
-    ${tk.tokens.map(t => `<tr><td><b>${esc(t.name)}</b></td><td><code>n8x_…${esc(t.hint)}</code></td><td>${dt(t.created)} · ${esc(t.created_by || '')}</td>
-      <td>${dt(t.last_used)}</td><td><code>${esc(t.last_ip || '')}</code></td><td class="num"><button class="btn secondary" data-tdel="${t.id}">Widerrufen</button></td></tr>`).join('')}</tbody></table>`
-      : '<div class="empty">Noch kein Token.</div>'}
-    <div class="form"><div class="field"><label>Name des Tokens</label><input type="text" id="tkName" placeholder="HobbyRadioPortal" maxlength="40"></div></div>
-    <div class="form-actions" style="justify-content:flex-start"><button class="btn" id="tkBtn">➕ Token anlegen</button></div><div id="tkNew"></div>`;
+  const list = await api('/api/admin/users');
+  const tokens = `<h2 class="section-header">🔌 HobbyRadioPortal</h2>
+    <p style="padding:0 4px;color:var(--text-dim);font-size:13px">Kein Token nötig: Ein HobbyRadioPortal auf diesem Server verwaltet Einstellungen, Routing, Vocoder-Klang, Sprachansage und ID-Listen direkt –
+    nie Benutzer, Backups, System, Updates oder Aussehen. Anfragen über einen Proxy oder von anderen Rechnern gelten nie als Portal. Abschalten: N8X_PORTAL_LOCAL=0 im Dienst.</p>`;
   $('#adminBody').innerHTML = `<table class="tbl" style="margin:8px 0"><thead><tr><th>Benutzer</th><th>Rolle</th><th>Angelegt</th><th></th></tr></thead><tbody>
     ${list.map(u => `<tr><td>👤 ${esc(u.username)}</td><td>${esc(u.role)}</td><td>${u.created ? new Date(u.created * 1000).toLocaleDateString('de-DE') : ''}</td>
     <td class="num">${u.username === S.me.user ? '<span class="badge">du</span>' : `<button class="btn secondary" data-del="${esc(u.username)}">Löschen</button>`}</td></tr>`).join('')}</tbody></table>
     <div class="form"><div class="field"><label>Neuer Benutzer / Passwort ändern</label><input type="text" id="nuUser" placeholder="Benutzername"></div>
     <div class="field"><label>Passwort (min. 8 Zeichen)</label><input type="password" id="nuPass" autocomplete="new-password"></div></div>
     <div class="form-actions"><button class="btn" id="nuBtn">💾 Speichern</button></div>${tokens}`;
-  $$('[data-tdel]').forEach(b => b.onclick = async () => { if (confirm('Token widerrufen? Der Dienst verliert sofort den Zugang.')) { await api('/api/admin/api-tokens/' + b.dataset.tdel, { method: 'DELETE' }); toast('Token widerrufen'); renderUsers(); } });
-  $('#tkBtn').onclick = async () => {
-    try {
-      const { token } = await api('/api/admin/api-tokens', { method: 'POST', body: { name: $('#tkName').value.trim() || 'HobbyRadioPortal' } });
-      await renderUsers();
-      $('#tkNew').innerHTML = `<div class="banner" style="margin:10px 4px">🔑 <span class="grow">Token jetzt kopieren – er wird nur einmal angezeigt:<br><code style="user-select:all;font-size:13px">${esc(token.token)}</code></span>
-        <button class="btn secondary" id="tkCopy">📋 Kopieren</button></div>`;
-      $('#tkCopy').onclick = () => { navigator.clipboard.writeText(token.token); toast('Kopiert'); };
-    } catch (e) { toast('⚠️ ' + e.message); }
-  };
   $$('[data-del]').forEach(b => b.onclick = async () => { if (confirm('Benutzer ' + b.dataset.del + ' löschen?')) { await api('/api/admin/users/' + encodeURIComponent(b.dataset.del), { method: 'DELETE' }); renderUsers(); } });
   $('#nuBtn').onclick = async () => {
     try { await api('/api/admin/users', { method: 'POST', body: { username: $('#nuUser').value.trim(), password: $('#nuPass').value } }); toast('✅ Benutzer gespeichert'); renderUsers(); }

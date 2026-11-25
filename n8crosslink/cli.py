@@ -4,7 +4,6 @@
   python -m n8crosslink.cli --db DB admin BENUTZER        (Passwort über stdin)
   python -m n8crosslink.cli --db DB show [SECTION]
   python -m n8crosslink.cli --db DB users
-  python -m n8crosslink.cli --db DB api-token NAME        (legt einen Portal-Token an und gibt ihn aus)
   python -m n8crosslink.cli --db DB apply-setup DATEI     (Neueinrichtung ohne Fragen aus JSON – install.sh N8X_SETUP_FILE)
 """
 from __future__ import annotations
@@ -83,8 +82,6 @@ def main() -> int:
     b.add_argument("--out", default=".")
     r = sub.add_parser("restore")
     r.add_argument("file")
-    t = sub.add_parser("api-token", help="API-Token für das HobbyRadioPortal anlegen (wird einmal ausgegeben)")
-    t.add_argument("name")
     st = sub.add_parser("apply-setup", help="Neueinrichtung ohne Fragen aus einer JSON-Datei (install.sh N8X_SETUP_FILE)")
     st.add_argument("file")
     args = ap.parse_args()
@@ -199,13 +196,6 @@ def main() -> int:
             print(f"Einrichtung fehlgeschlagen: {e}", file=sys.stderr)
             return 2
         print(json.dumps(done, ensure_ascii=False))
-        return 0
-    if args.cmd == "api-token":
-        try:
-            print(db.create_api_token(args.name, "installer")["token"])
-        except ValueError as e:
-            print(e, file=sys.stderr)
-            return 2
         return 0
     if args.cmd == "users":
         for u in db.list_users():

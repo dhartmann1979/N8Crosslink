@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""API-Token für das HobbyRadioPortal und die Einstellungs-Beschreibung (GET/PUT /api/admin/settings)."""
+"""HobbyRadioPortal auf demselben Rechner (ohne Token, ab 1.11.0) und die Einstellungs-Beschreibung (GET/PUT /api/admin/settings)."""
 from __future__ import annotations
 
 import sys
@@ -13,12 +13,15 @@ from n8crosslink.settings_schema import FIELDS, NOT_DESCRIBED, SettingsError, va
 from tests.test_web_security import login, make_client  # noqa: E402
 
 
-def _token(c):
-    login(c)
-    t = c.post("/api/admin/api-tokens", json={"name": "HobbyRadioPortal"}).json()["token"]
-    c.post("/api/logout")
-    c.cookies.clear()
-    return t["token"], {"Authorization": "Bearer " + t["token"], "X-Portal-User": "dirk<x>"}
+H = {"X-HobbyRadioPortal": "1", "X-Portal-User": "dirk<x>"}
+
+
+def _local():
+    """Client wie das Portal: von 127.0.0.1 an http://127.0.0.1:8070/."""
+    from fastapi.testclient import TestClient
+    from n8crosslink.web.server import create_app
+    c, bridge = make_client()
+    return TestClient(create_app(bridge), base_url="http://127.0.0.1:8070", client=("127.0.0.1", 50000)), bridge, c
 
 
 def test_schema_covers_all_settings():
@@ -48,10 +51,8 @@ def test_validate():
         pass
 
 
-def test_token_paths_and_settings():
-    c, bridge = make_client()
-    tok, H = _token(c)
-    assert tok.startswith("n8x_")
+def test_portal_paths_and_settings():
+    c, bridge, _ = _local()
     d = c.get("/api/admin/settings", headers=H).json()
     ids = [s["id"] for s in d["sections"]]
     assert ids == ["general", "announce", "routes", "frn", "dmr", "zello", "vocoder", "ids"]
@@ -64,22 +65,26 @@ def test_token_paths_and_settings():
     assert bridge.cfg["routes"]["zello_dmr"] is False
     assert c.put("/api/admin/settings", headers=H, json={"changes": {"general.web_port": 81}}).status_code == 400
     assert c.get("/api/admin/vocoder/params", headers=H).status_code == 200
-    for path in ("/api/admin/users", "/api/admin/config", "/api/admin/system", "/api/admin/api-tokens", "/api/admin/update"):
+    for path in ("/api/admin/users", "/api/admin/config", "/api/admin/system", "/api/admin/update"):
         assert c.get(path, headers=H).status_code == 401, path
+    assert c.get("/api/admin/api-tokens", headers=H).status_code in (401, 404)        # gibt es nicht mehr
     assert c.post("/api/admin/backup", headers=H, json={}).status_code in (401, 422)
-    assert c.post("/api/admin/api-tokens", headers=H, json={"name": "böse"}).status_code == 401
-    assert c.get("/api/admin/settings", headers={"Authorization": "Bearer n8x_falsch"}).status_code == 401
     ev = [e["text"] for e in bridge.db.events(50)]
     assert any("api:HobbyRadioPortal (dirkx)" in t for t in ev), ev[:3]
 
 
-def test_revoke_and_info_nets():
-    c, bridge = make_client()
-    tok, H = _token(c)
-    login(c)
-    tid = c.get("/api/admin/api-tokens").json()["tokens"][0]["id"]
-    assert c.delete(f"/api/admin/api-tokens/{tid}").json()["ok"]
-    c.cookies.clear()
+def test_not_the_portal():
+    c, bridge, remote = _local()
+    assert c.get("/api/admin/settings").status_code == 401                              # ohne Kennung
+    assert remote.get("/api/admin/settings", headers=H).status_code == 401              # anderer Rechner
+    for extra in ({"X-Forwarded-For": "203.0.113.9"}, {"X-Real-IP": "203.0.113.9"}, {"Forwarded": "for=1.2.3.4"},
+                  {"Via": "1.1 nginx"}, {"Host": "crosslink.example.org"}):
+        assert c.get("/api/admin/settings", headers={**H, **extra}).status_code == 401, extra
+
+
+def test_switch_off_and_info_nets(monkeypatch):
+    c, bridge, _ = _local()
+    monkeypatch.setenv("N8X_PORTAL_LOCAL", "0")
     assert c.get("/api/admin/settings", headers=H).status_code == 401
     bridge.db.save_section("zello", {"enabled": False})
     i = c.get("/api/info").json()
@@ -92,17 +97,3 @@ if __name__ == "__main__":
         if n.startswith("test_"):
             f()
             print("✓", n)
-
-
-def test_cli_api_token(tmp_path, monkeypatch, capsys):
-    """Der Installer legt beim Umzug ins Portal so den Token an (N8X_PORTAL_TOKEN_FILE)."""
-    import sys
-    from n8crosslink import cli
-    from n8crosslink.db import Database
-    db = tmp_path / "x.db"
-    monkeypatch.setattr(sys, "argv", ["cli", "--db", str(db), "api-token", "HobbyRadioPortal"])
-    assert cli.main() == 0
-    tok = capsys.readouterr().out.strip()
-    assert tok.startswith("n8x_") and Database(str(db)).list_api_tokens()[0]["name"] == "HobbyRadioPortal"
-    monkeypatch.setattr(sys, "argv", ["cli", "--db", str(db), "api-token", "x"])
-    assert cli.main() == 2

@@ -601,12 +601,7 @@ if [[ "$MODE" == "neu" ]]; then
   fi
 fi
 
-if [[ -n "${N8X_PORTAL_TOKEN_FILE:-}" ]]; then
-  if TOK=$(cli api-token HobbyRadioPortal 2>&1); then
-    install -m 600 /dev/null "$N8X_PORTAL_TOKEN_FILE"; printf '%s\n' "$TOK" > "$N8X_PORTAL_TOKEN_FILE"; unset TOK
-    ok "API-Token „HobbyRadioPortal“ angelegt"
-  else warn "API-Token nicht angelegt: $TOK"; fi
-fi
+# HobbyRadioPortal auf demselben Rechner: verwaltet ohne Token (ab 1.11.0) – nichts anzulegen
 
 echo
 echo "${G}${B}  ✔ N8 Crosslink ${APP_VERSION} ist installiert.${R}"

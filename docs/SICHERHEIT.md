@@ -40,17 +40,21 @@ Rufzeichen, Namen und Orte kommen von FRN-Clients, aus DMR (ID-Liste, Talker Ali
 
 Sitzungs-Cookie `HttpOnly`/`SameSite`; der Standard-Login `n8schicht / n8schicht` wird angemahnt, bis er geändert ist. Mithören läuft über einen eigenen WebSocket, der nur angemeldete Admins annimmt.
 
-## API-Token für das HobbyRadioPortal
+## HobbyRadioPortal auf diesem Rechner (ohne Token)
 
-- Anlegen nur angemeldet unter *Benutzer → Portal-Zugang* (nie mit einem Token selbst). Der Token `n8x_…` hat 256 Bit Zufall,
-  gespeichert wird nur sein SHA-256 (Tabelle `api_tokens`), angezeigt nur die letzten vier Zeichen, zuletzt benutzt und letzte IP.
-- Anmeldung mit `Authorization: Bearer n8x_…` – nur auf diesen Pfaden: `/api/admin/settings` (lesen/ändern), `/api/admin/restart`
+- Seit 1.11.0 gibt es **keine API-Tokens** mehr (die Tabelle `api_tokens` wird beim Start gelöscht, `cli api-token` gibt es nicht mehr).
+- Als Portal gilt nur ein **direkter Aufruf auf diesem Rechner**: Absender und `Host` Loopback (`127.0.0.1`, `::1`, `localhost`),
+  Kopfzeile `X-HobbyRadioPortal: 1` und **keine** Proxy-Kopfzeile (`X-Forwarded-For`, `X-Real-IP`, `Forwarded`, `X-Forwarded-Host/-Proto`,
+  `Via`, `CF-Connecting-IP`, `True-Client-IP`, `X-Client-IP`). nginx vor der Brücke (auch die Vorlage `systemd/nginx-n8crosslink.conf`)
+  setzt `X-Forwarded-For` – über ihn kommt niemand an die Verwaltung. Ein eigener Reverse-Proxy muss das ebenso tun.
+- Jedes Programm auf diesem Rechner könnte sich als Portal ausgeben. Wer das nicht will: `N8X_PORTAL_LOCAL=0` in der Umgebung des Dienstes.
+- Das Portal erreicht nur diese Pfade: `/api/admin/settings` (lesen/ändern), `/api/admin/restart`
   (Bridge), `/api/admin/vocoder/params|options|preview`, `/api/admin/vocoder-test`, `/api/admin/announce/preview`,
   `/api/admin/frn/request-password`, `/api/admin/events`, `/api/admin/ids`, `/api/admin/ids/update`, `/api/admin/avatars/refresh`,
   `/api/admin/serial-ports`. Alles andere antwortet `401`.
 - Gesperrt auch innerhalb der Einstellungen: Web-Adresse, Web-Port und Update-Quelle.
-- Passwörter (FRN, DMR, Zello, Token, Private Key) gehen nie hinaus; leer gelassen bleiben sie unverändert.
-- Jede Änderung im Ereignisprotokoll mit Token-Name und Portal-Benutzer (`X-Portal-User`, bereinigt).
+- Passwörter (FRN, DMR, Zello, Private Key) gehen nie hinaus; leer gelassen bleiben sie unverändert.
+- Jede Änderung im Ereignisprotokoll als `api:HobbyRadioPortal (<Portal-Benutzer>)` (`X-Portal-User`, bereinigt).
 
 ## Reverse-Proxy davor (empfohlen)
 

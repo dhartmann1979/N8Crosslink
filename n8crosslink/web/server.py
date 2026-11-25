@@ -22,6 +22,9 @@ from ..db import DEFAULTS, Database
 
 HERE = Path(__file__).parent
 COOKIE = "n8x_session"
+LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+PROXY_HEADERS = ("x-forwarded-for", "x-real-ip", "forwarded", "x-forwarded-host", "x-forwarded-proto", "via",
+                 "cf-connecting-ip", "true-client-ip", "x-client-ip")
 RANGES = {"today": None, "24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400, "90d": 90 * 86400}
 
 
@@ -55,28 +58,36 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
     env = Environment(loader=FileSystemLoader(HERE / "templates"), autoescape=select_autoescape(["html"]))
 
     # ------------------------------------------------------------ Auth
-    # API-Token (HobbyRadioPortal): nur diese Admin-Pfade – nie Benutzer, Backup, System, Updates, Aussehen
-    TOKEN_PATHS = {"/api/admin/settings", "/api/admin/restart", "/api/admin/vocoder/params", "/api/admin/vocoder/options",
+    # HobbyRadioPortal auf demselben Rechner (ohne Token, ab 1.11.0): nur diese Admin-Pfade – nie Benutzer, Backup, System, Updates,
+    # Aussehen. Als Portal gilt nur ein direkter Aufruf: Loopback-Absender und -Host, Kennung X-HobbyRadioPortal: 1 und **keine**
+    # Proxy-Kopfzeile (nginx/Caddy kommen auch von 127.0.0.1, setzen aber X-Forwarded-For). Abschalten: N8X_PORTAL_LOCAL=0.
+    PORTAL_PATHS = {"/api/admin/settings", "/api/admin/restart", "/api/admin/vocoder/params", "/api/admin/vocoder/options",
                    "/api/admin/vocoder/preview", "/api/admin/vocoder-test", "/api/admin/announce/preview",
                    "/api/admin/frn/request-password", "/api/admin/events", "/api/admin/ids", "/api/admin/ids/update",
                    "/api/admin/avatars/refresh", "/api/admin/serial-ports"}
+
+    def portal_local(request: Request) -> bool:
+        if os.environ.get("N8X_PORTAL_LOCAL", "1") == "0" or request.headers.get("x-hobbyradioportal") != "1":
+            return False
+        if (request.client.host if request.client else "") not in LOOPBACK or any(h in request.headers for h in PROXY_HEADERS):
+            return False
+        host = request.headers.get("host", "")
+        host = host[1:host.find("]")] if host.startswith("[") else host.rsplit(":", 1)[0]
+        return host in LOOPBACK
 
     def current_user(request: Request) -> str | None:
         u = db.session_user(request.cookies.get(COOKIE))
         if u:
             return u
-        auth = request.headers.get("authorization") or ""
-        if auth[:7].lower() == "bearer " and request.url.path in TOKEN_PATHS:
-            name = db.token_user(auth[7:].strip(), request.client.host if request.client else "")
-            if name:
-                who = re.sub(r"[^A-Za-z0-9._@-]", "", request.headers.get("x-portal-user", ""))[:40]
-                return name + (f" ({who})" if who else "")
+        if request.url.path in PORTAL_PATHS and portal_local(request):
+            who = re.sub(r"[^A-Za-z0-9._@-]", "", request.headers.get("x-portal-user", ""))[:40]
+            return "api:HobbyRadioPortal" + (f" ({who})" if who else "")    # „api:“ = Rechte wie früher ein Token
         return None
 
     def require_human(request: Request) -> str:
         u = require_admin(request)
         if u.startswith("api:"):
-            raise HTTPException(403, "Nicht mit einem API-Token")
+            raise HTTPException(403, "Nicht für das HobbyRadioPortal – bitte im Dashboard anmelden")
         return u
 
     def require_admin(request: Request) -> str:
@@ -300,27 +311,6 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         if changed:
             bridge.router.event("info", f"Einstellungen geändert von {user}: {', '.join(changed)[:200]}")
         return {"changed": changed, "restart_required": restart, "sections": describe(new, api=api_user)}
-
-    # ---- API-Token verwalten (nur angemeldete Admins, nie per Token)
-    @app.get("/api/admin/api-tokens")
-    async def api_tokens(_: str = Depends(require_human)) -> dict:
-        return {"tokens": db.list_api_tokens(), "paths": sorted(TOKEN_PATHS)}
-
-    @app.post("/api/admin/api-tokens")
-    async def api_token_create(data: dict = Body(...), user: str = Depends(require_human)) -> dict:
-        try:
-            t = db.create_api_token(str(data.get("name") or ""), user)
-        except ValueError as e:
-            raise HTTPException(400, str(e)) from e
-        bridge.router.event("info", f"API-Token „{t['name']}“ angelegt von {user}")
-        return {"token": t}
-
-    @app.delete("/api/admin/api-tokens/{token_id}")
-    async def api_token_revoke(token_id: int, user: str = Depends(require_human)) -> dict:
-        if not db.revoke_api_token(token_id):
-            raise HTTPException(404, "Token nicht gefunden")
-        bridge.router.event("info", f"API-Token {token_id} widerrufen von {user}")
-        return {"ok": True}
 
     @app.post("/api/admin/restart")
     async def restart(_: str = Depends(require_admin)) -> dict:

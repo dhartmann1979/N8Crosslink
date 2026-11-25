@@ -75,6 +75,12 @@ class System:
         args = [c["systemctl"], action, unit]
         if action in ("start", "restart"):
             args.insert(1, "--no-block")
+        from .n8_admin import N8Admin, own_unit
+        if action in ("restart", "stop") and unit == own_unit():
+            # eigener Dienst: systemd beendet beim Stoppen auch das laufende sudo/systemctl (bisher „Fehler -15“) –
+            # also erst antworten, dann nach 1 s auslösen
+            N8Admin._later(self.sudo(*args))
+            return True, "wird gleich ausgeführt – die Weboberfläche ist dabei kurz nicht erreichbar"
         rc, out = await self.sudo(*args)
         return rc == 0, out or ("ok" if rc == 0 else f"Fehler {rc}")
 

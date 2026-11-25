@@ -455,7 +455,8 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         bridge.router.event("info" if ok else "warn", f"System: {action} {unit} durch {user} – {'ok' if ok else out[:120]}")
         if not ok:
             raise HTTPException(400, out[:300] or "fehlgeschlagen")
-        return {"ok": True, "message": out[:500]}
+        from ..n8_admin import own_unit
+        return {"ok": True, "message": out[:500], "self": action in ("restart", "stop") and unit == own_unit()}
 
     @app.get("/api/admin/perms")
     async def perms_get(_: str = Depends(require_admin)) -> dict:

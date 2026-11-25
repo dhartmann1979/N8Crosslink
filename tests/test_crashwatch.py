@@ -122,6 +122,23 @@ async def main() -> None:
     w.note("DMR", "neuer Befund nach dem Lesen", kind="task")
     check("neuer Befund danach wieder ungelesen", a.crashes()["unacked"] == 1)
 
+    # eigener Dienst neu starten: erst antworten, dann auslösen (kein „Fehler -15“ mehr)
+    import n8crosslink.n8_admin as NA
+    json.dump({"units": [{"unit": "selbst.service", "actions": ["restart"]}], "systemctl": "/bin/true"}, open(os.path.join(d, "n8-admin.json"), "w"))
+    calls = []
+
+    async def fake_sudo(*cmd, timeout=60):
+        calls.append(cmd)
+        return 0, ""
+    a2 = NA.N8Admin(d)
+    a2._sudo = fake_sudo
+    NA.own_unit, real_own = (lambda: "selbst.service"), NA.own_unit
+    ok_, msg = await a2.unit_action("selbst.service", "restart")
+    check("eigener Neustart: sofort ok, noch nicht ausgelöst", ok_ and not calls, msg)
+    await asyncio.sleep(1.3)
+    check("eigener Neustart: nach 1 s ausgelöst", len(calls) == 1 and calls[0][-1] == "selbst.service")
+    NA.own_unit = real_own
+
 
 def hook_test() -> None:
     """scripts/n8-admin.sh crash-hook mit nachgebautem systemctl/journalctl (nur als root – das Skript verlangt root)."""

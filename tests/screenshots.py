@@ -59,7 +59,7 @@ with sync_playwright() as p:
     page.click("#listenBtn")
     page.click("button[data-tab=admin]")
     time.sleep(0.8)
-    for sec, name in [("vocoder", "admin-vocoder"), ("routes", "admin-routing"), ("dmr", "admin-dmr"),
+    for sec, name in [("vocoder", "admin-vocoder"), ("routes", "admin-routing"), ("audio", "admin-audio"), ("dmr", "admin-dmr"),
                       ("frn", "admin-frn"), ("zello", "admin-zello"), ("ids", "admin-idlisten-avatare"),
                       ("appearance", "admin-aussehen"), ("update", "admin-updates"), ("backup", "admin-backup"), ("system", "admin-system")]:
         page.evaluate(f"S.adminSec='{sec}'; loadAdmin()")

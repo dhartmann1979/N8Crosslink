@@ -2,6 +2,35 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.24.0] – 2026-11-25
+
+### 🎚️ Neu: Audio & AGC – schnelle, einstellbare Pegelregelung in der ganzen Bridge
+- **Neuer Admin-Bereich „🎚️ Audio & AGC“** (Betrieb). Alles wirkt **sofort, ohne Neustart**.
+- **AGC am Eingang** (je Netz FRN, DMR, Zello schaltbar): jede Quelle wird auf den Zielpegel (−20 dBFS RMS) geregelt, bevor sie
+  verteilt wird – leise und laute Stationen kommen gleich laut an.
+- **AGC am Ausgang** (je Netz schaltbar): noch einmal je Ziel auf den Ausgangs-Zielpegel (−18 dBFS RMS), passend für AMBE+2 und Opus.
+- **Schnell:** Regelschritt 5 ms, Angriffszeit 10 ms, Rückstellzeit 300 ms – einstellbar, ebenso höchste Verstärkung (15 dB) und
+  Absenkung (20 dB). Die Verstärkung wird innerhalb jedes Schritts gleitend übergeblendet, es knackst nicht.
+- **Torschwelle** (−50 dBFS): in Pausen bleibt die Verstärkung stehen – Rauschen wird nicht hochgezogen, kein „Pumpen“.
+- **Limiter** nach jeder AGC (Decke −1 dBFS, sofortiges Ansprechen, weiche Kennlinie): **nichts übersteuert**.
+- Die AGC beginnt bei jedem Durchgang neu; Pegelanzeigen (TX-Pegel) zeigen den Pegel nach der AGC.
+- Rechenaufwand ≈ 0,2 ms je 20-ms-Rahmen (nur numpy, keine neue Abhängigkeit).
+
+### 📻 Mehr aus dem FRN-Ton – für Zello und AMBE
+- FRN kommt als GSM 6.10 und klingt dumpf. Neu am FRN-Eingang: **Tiefen-Filter 120 Hz** (Rumpeln, Brummen, Wind weg),
+  **Präsenz +3 dB bei 2,2 kHz** (Verständlichkeit) und **Höhen +2 dB ab 3 kHz** (Brillanz) – danach AGC und Limiter.
+  Davon profitieren Zello (Opus) und DMR (AMBE+2) gleichermaßen. Alle drei Werte einstellbar, 0 = aus.
+
+### 🎛️ N8schicht-Vocoder: Quelle vor dem Encoder in Mitten und Höhen angehoben
+- Neue Stufe **„🎚️ Vor dem Encoder“** in den Klang-Einstellungen: **Mitten +2 dB (2,2 kHz)** und **Höhen +4 dB (ab 2,8 kHz)** im
+  Profil *N8schicht* – Stimmen kommen im DMR deutlicher, Konsonanten klarer. Ein **Limiter bei −1 dBFS** dahinter verhindert Übersteuern.
+- Wirkt für jeden Vocoder (N8schicht, USB-Stick, AMBEserver) und auch im **Probehören**. Profil *DroidStar* bleibt unverändert (0 dB).
+
+### 🧪 Tests & Doku
+- Neue Tests `tests/test_agc.py`: Zielpegel bei leiser/normaler/übersteuerter Quelle, Limiter-Decke, Torschwelle, Filter ohne
+  Sprünge an Rahmengrenzen, Höhenanhebung ohne Übersteuern; End-to-End-Simulation (55/55) mit AGC.
+- Doku: [KONFIGURATION.md](docs/KONFIGURATION.md#-audio--agc) (Kette, alle Werte), [VOCODER.md](docs/VOCODER.md) (neue Regler).
+
 ## [1.23.0] – 2026-11-25
 
 ### 📻 Der Crosslink als Funkgerät (Vorlage: N8 Hotspot)

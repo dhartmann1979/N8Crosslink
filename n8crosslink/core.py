@@ -180,6 +180,18 @@ class Router:
         self._dirty = asyncio.Event()
         self.started = time.time()
         self.vocoder = None
+        self.dsp: dict = {}                      # (netz, "in"/"out") -> audio.agc.Chain
+        self.reload_audio()
+
+    def reload_audio(self) -> None:
+        """Klangaufbereitung (AGC, Limiter, FRN-Filter) aus ``audio`` neu aufbauen – wirkt sofort."""
+        from .audio.agc import chain_from
+        a = self.cfg.get("audio") or {}
+        self.dsp = {(n, d): chain_from(a, n, d) for n in ("frn", "dmr", "zello") for d in ("in", "out")}
+
+    def _chain(self, net: str, direction: str):  # noqa: ANN202
+        c = self.dsp.get((net, direction))
+        return c if c else None
 
     # ------------------------------------------------------------ Konfiguration
     @property
@@ -269,6 +281,9 @@ class Router:
         lh = self.db.lh_insert({"ts_start": now, "source": port.key, "name": talker.name,
                                 "callsign": talker.callsign, "detail": talker.detail,
                                 "dmr_id": talker.dmr_id, "targets": [t.key for t in targets], "status": "live"})
+        for c in [self._chain(port.key, "in")] + [self._chain(t.key, "out") for t in targets]:
+            if c:
+                c.reset()
         self.active = Session(port, talker, targets, now, lh, now)
         self.feeds = {}
         for t in targets:
@@ -296,6 +311,12 @@ class Router:
 
     def rx_audio(self, port: Port, pcm: bytes) -> None:
         s = self.active
+        cin = self._chain(port.key, "in") if s and s.source is port else None
+        if cin:
+            try:
+                pcm = cin.process(pcm)
+            except Exception as e:  # noqa: BLE001 – Klangaufbereitung darf den Ton nie anhalten
+                log.exception("Audio-Eingang %s: %s", port.key, e)
         lvl = level_dbfs(pcm)
         port.rx_level = lvl
         if not s or s.source is not port:
@@ -306,13 +327,20 @@ class Router:
             if q.qsize() < 100:          # ~2 s Rückstau, danach verwerfen (langsamer Client)
                 q.put_nowait(pcm)
         for t in s.targets:
-            t.tx_level = lvl
+            out = pcm
+            cout = self._chain(t.key, "out")
+            if cout:
+                try:
+                    out = cout.process(pcm)
+                except Exception as e:  # noqa: BLE001
+                    log.exception("Audio-Ausgang %s: %s", t.key, e)
+            t.tx_level = level_dbfs(out) if cout else lvl
             f = self.feeds.get(t.key)
             if f is not None and not f.closed:
-                f.push(pcm)
+                f.push(out)
                 continue
             try:
-                t.tx_audio(pcm)
+                t.tx_audio(out)
             except Exception as e:  # noqa: BLE001
                 log.exception("tx_audio %s: %s", t.key, e)
 

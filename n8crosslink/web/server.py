@@ -318,6 +318,9 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         bridge.cfg["routes"].update(new["routes"])
         # Allgemein wirkt komplett sofort (auch Sprachansage) – nur Web-Adresse/-Port brauchen einen Dienst-Neustart
         bridge.cfg["general"].update({k: v for k, v in new["general"].items() if k not in ("web_host", "web_port")})
+        # Klangaufbereitung (AGC, Limiter, FRN-Filter) wirkt sofort
+        bridge.cfg.setdefault("audio", {}).update(new.get("audio", {}))
+        bridge.router.reload_audio()
         bridge.router.notify()
         restart = any(s in data for s in ("frn", "dmr", "zello", "vocoder"))
         return {"ok": True, "restart_required": restart}
@@ -769,12 +772,14 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         if prof not in PROFILES:
             raise HTTPException(400, "Unbekanntes Profil")
         own = data.get("options") or {}
-        own = {side: {str(k): float(val) for k, val in (own.get(side) or {}).items()} for side in ("enc", "dec", "post")}
+        own = {side: {str(k): float(val) for k, val in (own.get(side) or {}).items()} for side in ("enc", "dec", "post", "pre")}
         db.save_section("vocoder", {"n8vocoder_profile": prof, "n8vocoder_options": own})
         bridge.cfg["vocoder"].update({"n8vocoder_profile": prof, "n8vocoder_options": own})
         eff = effective_options(bridge.cfg["vocoder"])
         v = bridge.vocoder
         bad = await v.set_options(eff) if v and v.mode == "n8vocoder" else []
+        if v and v.mode != "n8vocoder":
+            v._set_post(eff)          # Mitten/Höhen vor dem Encoder wirken auch mit USB-Stick/AMBEserver
         bridge.router.event("info", f"Vocoder-Klang geändert von {user} (Profil {prof})")
         return {"ok": not bad, "bad": bad, "live": bool(v and v.mode == "n8vocoder"), "effective": eff}
 

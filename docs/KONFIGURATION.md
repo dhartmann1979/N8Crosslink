@@ -38,6 +38,36 @@ Wichtig: Der ganze Durchgang läuft um die Länge der Ansage verzögert (Buchsta
 ## 🔀 Routing
 Matrix mit allen sechs Richtungen. Wirkt sofort, ohne Neustart.
 
+## 🎚️ Audio & AGC
+Klangaufbereitung der ganzen Bridge – **wirkt sofort, ohne Neustart**. Kette je Durchgang:
+
+```
+Quelle ─▶ [nur FRN: Tiefen-Filter · Mitten · Höhen] ─▶ AGC Eingang ─▶ Verteilung ─┬▶ AGC Ausgang FRN   ─▶ Limiter ─▶ FRN
+                                                                                ├▶ AGC Ausgang DMR   ─▶ Limiter ─▶ (Mitten/Höhen + Limiter vor dem Encoder) ─▶ AMBE
+                                                                                └▶ AGC Ausgang Zello ─▶ Limiter ─▶ Opus
+```
+
+| Einstellung | Standard | Wirkung |
+|---|---|---|
+| AGC Eingang FRN / DMR / Zello | an | Regelt jede Quelle auf den Eingangs-Zielpegel – leise und laute Stationen kommen gleich laut an |
+| AGC Ausgang FRN / DMR / Zello | an | Regelt noch einmal je Netz auf den Ausgangs-Zielpegel (z. B. optimal für AMBE und Opus) |
+| Zielpegel Eingang | −20 dBFS RMS | Worauf die Quelle geregelt wird |
+| Zielpegel Ausgang | −18 dBFS RMS | Pegel in jedes Netz |
+| Höchste Verstärkung / Absenkung | 15 dB / 20 dB | Grenzen der Regelung |
+| Angriffszeit | 10 ms | Wie schnell zu laute Stellen zurückgeregelt werden (schnelle AGC, Regelschritt 5 ms) |
+| Rückstellzeit | 300 ms | Wie schnell danach wieder angehoben wird – kürzer „pumpt“ |
+| Torschwelle | −50 dBFS | Darunter gilt es als Pause/Rauschen: die Verstärkung bleibt stehen, Rauschen wird nicht hochgezogen |
+| Limiter-Decke | −1 dBFS Spitze | Keine Spitze geht darüber, nichts übersteuert |
+| FRN: Tiefen-Filter | 120 Hz | Entfernt Rumpeln, Brummen, Wind aus dem GSM-Ton |
+| FRN: Mitten anheben | +3 dB (2,2 kHz) | GSM klingt dumpf – mehr Verständlichkeit für Zello und AMBE |
+| FRN: Höhen anheben | +2 dB (ab 3 kHz) | Etwas mehr Brillanz |
+
+Die AGC startet bei jedem Durchgang neu (0 dB). Die Pegelregler je Netz (*RX/TX-Pegel* bei FRN, DMR, Zello) wirken weiterhin
+zusätzlich – mit AGC können sie meist auf 0 dB bleiben. Wer den alten Klang will, schaltet die sechs AGC-Schalter aus und setzt die
+drei FRN-Werte auf 0.
+
+![Audio & AGC](screenshots/admin-audio.png)
+
 ## 📻 FRN
 Server, Backup-Server, Konto, Rufzeichen/Name (erscheint im FRN-Raum als „Rufzeichen, Name“), Client-Typ (0 = Crosslink, 1 = Gateway, 2 = PC Only), Band/Kanal, Raum. *Ende-Erkennung RX* ist die Zeit ohne Sprachpaket, nach der ein Durchgang als beendet gilt. 
 

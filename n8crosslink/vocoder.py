@@ -125,8 +125,10 @@ PROFILES = {
                           "high_band_start": 0.6, "enhance_strength": 0.65, "pitch_glide_end": 120,
                           "voicing_off_end": 80, "repeat_max": 4},
                   "enc": {"highpass_hz": 150},
-                  "post": {"bwe_db": 0.0}},
-    "droidstar": {"dec": {}, "enc": {}, "post": {}},
+                  "post": {"bwe_db": 0.0},
+                  # seit 1.24.0: Quelle vor dem Encoder in den Mitten und Höhen anheben (deutlicher, Limiter gegen Übersteuern)
+                  "pre": {"presence_db": 2.0, "treble_db": 4.0}},
+    "droidstar": {"dec": {}, "enc": {}, "post": {}, "pre": {}},
 }
 # Regler im Adminportal: Seite, Schlüssel, Bezeichnung, min, max, Schritt, Grundwert DroidStar, Erklärung
 PARAMS = [
@@ -160,6 +162,12 @@ PARAMS = [
     ("post", "bwe_db", "Höhen-Ergänzung 3,65–4 kHz (dB, −40 = aus)", -40, 6, 1, -40,
      "AMBE+2 endet bei ≈ 3,65 kHz. Füllt das Band bis 4 kHz mit Rauschen nach der Hüllkurve von 3,0–3,65 kHz "
      "(mehr „Luft“ bei s/z/f). Pegel relativ zu diesem Band; −40 = aus (N8schicht: 0)."),
+    ("pre", "presence_db", "Mitten anheben vor dem Encoder (dB, um 2,2 kHz)", 0, 8, 0.5, 0,
+     "Hebt die Präsenz der Quelle (FRN/Zello → DMR) an, bevor sie kodiert wird – Stimmen werden deutlicher. "
+     "Ein Limiter danach verhindert Übersteuern (N8schicht: 2 dB)."),
+    ("pre", "treble_db", "Höhen anheben vor dem Encoder (dB, ab 2,8 kHz)", 0, 10, 0.5, 0,
+     "Hebt die Höhen der Quelle an (Kuhschwanz ab 2,8 kHz) – Zischlaute und Konsonanten kommen klarer durch den AMBE+2. "
+     "Zu viel = scharf (N8schicht: 4 dB)."),
     ("enc", "highpass_hz", "Tiefen-Filter vor dem Kodieren (Hz)", 0, 300, 5, 135,
      "Entfernt Brummen und Rumpeln vor dem Kodieren (FRN/Zello → DMR). 0 = aus; höher = dünner, aber oft klarer."),
     ("enc", "gate_level_db", "Rauschsperre (dBFS)", -90, -30, 1, -70,
@@ -169,13 +177,21 @@ PARAMS = [
 ]
 
 
+def pre_chain(options: dict):  # noqa: ANN201
+    """Mitten-/Höhenanhebung vor dem Encoder + Limiter (None, wenn beides 0)."""
+    from .audio.agc import Chain, Limiter, ToneEQ
+    p = options.get("pre") or {}
+    eq = ToneEQ(0, float(p.get("presence_db", 0)), 2200, float(p.get("treble_db", 0)), 2800)
+    return Chain(eq, None, Limiter(-1.0)) if eq else None
+
+
 def effective_options(cfg: dict) -> dict:
     """Profil + eigene Werte aus dem Adminportal -> {"enc": {...}, "dec": {...}}."""
     prof = PROFILES.get(str(cfg.get("n8vocoder_profile") or "n8schicht"), PROFILES["n8schicht"])
     own = cfg.get("n8vocoder_options") or {}
     keys = {(side, k) for side, k, *_ in PARAMS}
-    out = {"enc": dict(prof["enc"]), "dec": dict(prof["dec"]), "post": dict(prof.get("post", {}))}
-    for side in ("enc", "dec", "post"):
+    out = {"enc": dict(prof["enc"]), "dec": dict(prof["dec"]), "post": dict(prof.get("post", {})), "pre": dict(prof.get("pre", {}))}
+    for side in ("enc", "dec", "post", "pre"):
         for k, v in (own.get(side) or {}).items():
             if (side, k) in keys:
                 out[side][k] = float(v)
@@ -338,6 +354,10 @@ class Vocoder:
         self.lockstep = self.mode == "ambeserver"
         self.codec: N8VocoderWorker | None = None
         self.bwe: BandwidthExtender | None = None
+        try:   # Mitten/Höhen vor dem Encoder – für alle Vocoder-Arten (Software, USB-Stick, AMBEserver)
+            self.pre = pre_chain(effective_options(cfg))
+        except Exception:  # noqa: BLE001
+            self.pre = None
         self._req_lock = asyncio.Lock()
         self._drain_until = 0.0
         self._renew = False
@@ -595,6 +615,9 @@ class Vocoder:
     async def encode(self, pcm_le: bytes, timeout: float | None = None) -> bytes | None:
         if self.mode == "none":
             return AMBE_SILENCE
+        pre = getattr(self, "pre", None)
+        if pre:
+            pcm_le = pre.process(pcm_le)
         if self.enc_gain:
             pcm_le = _gain(pcm_le, self.enc_gain)
         if self.mode == "n8vocoder":
@@ -648,14 +671,15 @@ class Vocoder:
 
     async def set_options(self, options: dict) -> list[str]:
         """Klang-Einstellungen sofort übernehmen (ohne Neustart)."""
+        self._set_post(options)
         if self.codec is None:
             return ["Vocoder nicht aktiv"]
-        self._set_post(options)
         return await self.codec.set_options(options)
 
     def _set_post(self, options: dict) -> None:
         db = float((options.get("post") or {}).get("bwe_db", -40))
         self.bwe = BandwidthExtender(db) if db > -40 else None
+        self.pre = pre_chain(options)
 
     def _timeout(self) -> float:
         return float(self.cfg.get("vocoder_timeout_ms", 300 if self.lockstep else 500)) / 1000.0

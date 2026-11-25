@@ -521,6 +521,21 @@ const SCHEMA = {
   ], extra: `<div class="banner" style="margin:12px 4px 0">🔊 <span class="grow">Ansage probehören – mit den Werten aus dem Formular: <input id="annCall" value="DO1TEST" style="width:120px;margin-left:8px;background:rgba(255,255,255,.06);color:inherit;border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:5px 9px;font:inherit"></span>
       <button class="btn secondary" type="button" id="annBtn">▶ Ansage anhören</button></div>` },
   routes: { title: '🔀 Routing', custom: renderRoutes },
+  audio: { title: '🎚️ Audio & AGC', fields: [
+    F('agc_in_frn', 'AGC Eingang FRN', 'bool'), F('agc_in_dmr', 'AGC Eingang DMR', 'bool'), F('agc_in_zello', 'AGC Eingang Zello', 'bool'),
+    F('agc_out_frn', 'AGC Ausgang FRN', 'bool'), F('agc_out_dmr', 'AGC Ausgang DMR', 'bool'), F('agc_out_zello', 'AGC Ausgang Zello', 'bool'),
+    F('in_target_dbfs', 'Zielpegel Eingang (dBFS RMS)', 'number', { step: 0.5, help: 'Worauf jede Quelle geregelt wird, bevor sie verteilt wird. −20 dBFS ist ein guter Wert.' }),
+    F('out_target_dbfs', 'Zielpegel Ausgang (dBFS RMS)', 'number', { step: 0.5, help: 'Pegel in jedes Netz. Für AMBE und Zello −18 dBFS; der Limiter hält die Spitzen unter der Decke.' }),
+    F('agc_max_gain_db', 'Höchste Verstärkung (dB)', 'number', { step: 0.5, help: 'So viel hebt die AGC leise Stationen höchstens an (15 dB).' }),
+    F('agc_max_cut_db', 'Höchste Absenkung (dB)', 'number', { step: 0.5, help: 'So viel nimmt sie laute Stationen höchstens zurück (20 dB).' }),
+    F('agc_attack_ms', 'Angriffszeit (ms)', 'number', { help: 'Wie schnell sie bei zu lauten Stellen zurückregelt – schnell: 5–15 ms.' }),
+    F('agc_release_ms', 'Rückstellzeit (ms)', 'number', { help: 'Wie schnell sie danach wieder anhebt – 200–500 ms klingt natürlich, kürzer „pumpt“.' }),
+    F('agc_gate_dbfs', 'Torschwelle (dBFS)', 'number', { help: 'Darunter gilt es als Pause/Rauschen: die Verstärkung bleibt stehen, Rauschen wird nicht hochgezogen (−50 dBFS).' }),
+    F('limiter_dbfs', 'Limiter-Decke (dBFS Spitze)', 'number', { step: 0.5, help: 'Keine Spitze geht darüber – nichts übersteuert (−1 dBFS).' }),
+    F('frn_hpf_hz', 'FRN: Tiefen-Filter (Hz)', 'number', { help: 'Entfernt Rumpeln, Brummen und Wind aus dem FRN-Ton (GSM) – 100–150 Hz.' }),
+    F('frn_presence_db', 'FRN: Mitten anheben (dB, 2,2 kHz)', 'number', { step: 0.5, help: 'GSM klingt dumpf – die Präsenz macht Stimmen verständlicher, für Zello und AMBE (3 dB).' }),
+    F('frn_treble_db', 'FRN: Höhen anheben (dB, ab 3 kHz)', 'number', { step: 0.5, help: 'Etwas mehr Brillanz aus dem FRN-Ton (2 dB). Zu viel macht Rauschen hörbar.' }),
+  ], extra: `<div class="banner" style="margin:12px 4px 0">🎚️ <span class="grow">Kette je Durchgang: <b>Quelle → (FRN: Tiefen-Filter, Mitten, Höhen) → AGC Eingang → Verteilung → AGC Ausgang je Netz → Limiter → Netz</b>. Nach DMR folgt zusätzlich die Mitten-/Höhenanhebung vor dem Encoder (🎛️ Vocoder → Vor dem Encoder). Änderungen wirken sofort, ohne Neustart.</span></div>` },
   frn: { title: '📻 FRN', fields: [
     F('enabled', 'FRN aktiv', 'bool'), F('server', 'Server'), F('port', 'Port', 'number'),
     F('backup_server', 'Backup-Server'), F('backup_port', 'Backup-Port', 'number'),
@@ -590,7 +605,7 @@ const SCHEMA = {
   'sys-crashes': { title: '💥 Abstürze', custom: () => sysView('crashes') },
 };
 // Admin-Menü: derselbe Baum wie in allen N8-Systemen (N8 Kit) – Betrieb · Benutzer & Zugang · Darstellung · Netz & Domains · System
-const ADMIN_GROUPS = [['betrieb', ['general', 'routes', 'frn', 'dmr', 'zello', 'vocoder', 'ids']], ['zugang', ['users', 'sessions', 'audit']], ['darstellung', ['appearance']],
+const ADMIN_GROUPS = [['betrieb', ['general', 'routes', 'audio', 'frn', 'dmr', 'zello', 'vocoder', 'ids']], ['zugang', ['users', 'sessions', 'audit']], ['darstellung', ['appearance']],
   ['netz', ['ports', 'domains']], ['system', ['system', 'sys-update', 'sys-services', 'sys-perms', 'sys-keepalive', 'sys-crashes', 'backup']]];
 const ADMIN_OLD = { update: 'sys-update' };
 // System → Update, Dienste, Berechtigungen & sudo, Keep-Alive: die N8-Kit-Ansichten, in allen N8-Systemen gleich
@@ -1013,12 +1028,12 @@ async function previewAnnounce() {
 
 /* ---------- N8schicht-Vocoder: Klang-Popup ---------- */
 const VT = { data: null, profile: 'n8schicht', own: { enc: {}, dec: {}, post: {} }, timer: null };
-const VT_SIDES = [['dec', '🔊 Decoder – DMR → FRN / Zello (was man hört)'], ['post', '✨ Nachbearbeitung'], ['enc', '🎙️ Encoder – FRN / Zello → DMR (was ins DMR geht)']];
+const VT_SIDES = [['dec', '🔊 Decoder – DMR → FRN / Zello (was man hört)'], ['post', '✨ Nachbearbeitung'], ['pre', '🎚️ Vor dem Encoder – Quelle aufbereiten (FRN / Zello → DMR)'], ['enc', '🎙️ Encoder – FRN / Zello → DMR (was ins DMR geht)']];
 async function openVocTune() {
   try { VT.data = await api('/api/admin/vocoder/params'); } catch (e) { return toast('⚠️ ' + e.message); }
   VT.profile = VT.data.profile;
   const own = S.cfg?.vocoder?.n8vocoder_options || {};
-  VT.own = { enc: { ...(own.enc || {}) }, dec: { ...(own.dec || {}) }, post: { ...(own.post || {}) } };
+  VT.own = { enc: { ...(own.enc || {}) }, dec: { ...(own.dec || {}) }, post: { ...(own.post || {}) }, pre: { ...(own.pre || {}) } };
   $('#vpInfo').textContent = VT.data.active ? 'Der N8schicht-Vocoder ist aktiv – Änderungen wirken sofort im laufenden Betrieb (ohne Neustart).'
     : 'Hinweis: Der N8schicht-Vocoder ist gerade nicht aktiv. Werte werden gespeichert und gelten, sobald er läuft. Probehören geht trotzdem.';
   renderVocTune();
@@ -1045,7 +1060,7 @@ function renderVocTune() {
   }).join('')).join('');
   $$('#vpBody input[type=range]').forEach(el => el.oninput = () => {
     const p = d.params.find(x => x.side === el.dataset.side && x.key === el.dataset.key);
-    const v = parseFloat(el.value); VT.own[p.side][p.key] = v;
+    const v = parseFloat(el.value); (VT.own[p.side] ||= {})[p.key] = v;
     const isBool = p.min === 0 && p.max === 1 && p.step === 1;
     const lab = $(`#vpv_${p.side}_${p.key}`); lab.textContent = isBool ? (v >= 0.5 ? 'an' : 'aus') : fmtV(p, v); lab.classList.add('changed');
     scheduleVt();
@@ -1083,7 +1098,7 @@ async function runVtPreview() {
 }
 $('#vpClose').addEventListener('click', () => { clearTimeout(VT.timer); $('#vocModal').classList.remove('open'); loadAdmin(); });
 $('#vpSave').addEventListener('click', () => { clearTimeout(VT.timer); saveVt(true); });
-$('#vpReset').addEventListener('click', () => { if (!confirm('Alle eigenen Werte löschen und die Grundabstimmung verwenden?')) return; VT.own = { enc: {}, dec: {}, post: {} }; renderVocTune(); saveVt(true); });
+$('#vpReset').addEventListener('click', () => { if (!confirm('Alle eigenen Werte löschen und die Grundabstimmung verwenden?')) return; VT.own = { enc: {}, dec: {}, post: {}, pre: {} }; renderVocTune(); saveVt(true); });
 $('#vpRun').addEventListener('click', runVtPreview);
 $('#vpWav').addEventListener('change', () => { const f = $('#vpWav').files[0]; if (f) toast('📂 ' + f.name + ' – jetzt „Testen“'); });
 

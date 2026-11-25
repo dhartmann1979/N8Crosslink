@@ -114,6 +114,16 @@ DEFAULTS: dict = {
         "rx_timeout_ms": 1500,
         "rx_gain_db": 0.0, "tx_gain_db": 0.0,
     },
+    # Klangaufbereitung der Bridge (audio/agc.py) – wirkt sofort, ohne Neustart
+    "audio": {
+        "agc_in_frn": True, "agc_in_dmr": True, "agc_in_zello": True,       # AGC am Eingang (vom Netz in die Bridge)
+        "agc_out_frn": True, "agc_out_dmr": True, "agc_out_zello": True,    # AGC am Ausgang (aus der Bridge ins Netz)
+        "in_target_dbfs": -20.0, "out_target_dbfs": -18.0,
+        "agc_max_gain_db": 15.0, "agc_max_cut_db": 20.0,
+        "agc_attack_ms": 10.0, "agc_release_ms": 300.0, "agc_gate_dbfs": -50.0,
+        "limiter_dbfs": -1.0,
+        "frn_hpf_hz": 120.0, "frn_presence_db": 3.0, "frn_treble_db": 2.0,  # FRN (GSM) aufbereiten
+    },
     "vocoder": {
         "vocoder_mode": "n8vocoder",   # n8vocoder | usb | ambeserver | none
         "n8vocoder_lib": "",           # leer = automatisch (/opt/n8crosslink/lib/libn8vocoder.so)

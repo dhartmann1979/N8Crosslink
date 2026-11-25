@@ -87,9 +87,12 @@ async def process(pcm: np.ndarray, options: dict, lib: str | None = None) -> np.
     x = np.concatenate([pcm[:n], np.zeros(320, np.int16)])        # 2 Rahmen Encoder-Verzögerung
     w = N8VocoderWorker(lib, options)
     try:
+        from .vocoder import pre_chain
+        pre = pre_chain(options)
         frames = []
         for i in range(len(x) // 160):
-            a = await w.call(b"E", x[i * 160:(i + 1) * 160].tobytes(), 5.0)
+            blk = x[i * 160:(i + 1) * 160].tobytes()
+            a = await w.call(b"E", pre.process(blk) if pre else blk, 5.0)
             if a is None:
                 raise PreviewError("Vocoder-Prozess antwortet nicht")
             frames.append(a)

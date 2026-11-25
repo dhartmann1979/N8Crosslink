@@ -81,6 +81,16 @@ Im Vocoder-Bereich auf der Karte **N8schicht-Vocoder** auf **„🎚️ Klang-Ei
 |---|---|---|---|
 | Höhen-Ergänzung 3,65–4 kHz (dB) | aus (−40) | **0** | Füllt das Band oberhalb der AMBE-Grenze bis 4 kHz mit Rauschen, das der Hüllkurve des Bands 3,0–3,65 kHz folgt und zur Obergrenze ausblendet. Mehr „Luft“ bei Zischlauten. −40 = aus |
 
+**🎚️ Vor dem Encoder – Quelle aufbereiten (seit 1.24.0)**
+
+| Regler | DroidStar | N8schicht | Wirkung |
+|---|---|---|---|
+| Mitten anheben (dB, um 2,2 kHz) | 0 | **+2** | Präsenz-Glocke vor dem Kodieren – Stimmen werden im DMR deutlicher, ohne lauter zu werden |
+| Höhen anheben (dB, ab 2,8 kHz) | 0 | **+4** | Kuhschwanz vor dem Kodieren – Konsonanten und Zischlaute kommen klarer durch den AMBE+2. Zu viel = scharf |
+
+Danach sitzt ein **Limiter bei −1 dBFS** (sofortiges Ansprechen, weiche Kennlinie): die Anhebung kann nicht übersteuern. Die Stufe wirkt
+für jeden Vocoder (N8schicht, USB-Stick, AMBEserver) und auch im Probehören.
+
 **🎙️ Encoder – FRN / Zello → DMR (was ins DMR geht)**
 
 | Regler | DroidStar | N8schicht | Wirkung |

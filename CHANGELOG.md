@@ -2,6 +2,16 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.20.2] – 2026-11-25
+
+### 🛠️ Update: fehlende Programmdateien werden wiederhergestellt statt das Update abzubrechen
+- „Update jetzt“ (`scripts/n8-admin.sh update`) brach ab mit „Im Programmverzeichnis wurden Dateien von Hand geändert – nichts
+  aktualisiert“, wenn im Programmordner nur Dateien **fehlten** (z. B. Doku, LICENSE, `.github` – etwa nach einer Installation, die
+  nicht alles kopiert hat). Jetzt stellt das Update **fehlende** Dateien aus git wieder her (`git checkout -- <Datei>`, im Protokoll:
+  „N fehlende Programmdatei(en) aus git wiederhergestellt“) und läuft weiter. Wirklich **geänderte** Dateien sind weiterhin ein
+  Grund zum Abbruch – nichts von Hand Geändertes geht verloren.
+- Gemeinsames N8 Admin-Kit (`scripts/n8-admin.sh`), gleich in allen N8-Systemen.
+
 ## [1.20.1] – 2026-11-25
 
 ### 👥 Benutzer & Zugang komplett wie in HBlink4

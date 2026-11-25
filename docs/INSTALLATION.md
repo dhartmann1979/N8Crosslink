@@ -35,34 +35,6 @@ Der Installer fragt Schritt für Schritt:
 
 Alle Einstellungen liegen danach in `/opt/n8crosslink/data/crosslink.db` und sind im Adminportal änderbar.
 
-### Ohne Rückfragen aus einem Backup (Umzug)
-
-Für Skripte und den Web-Installer des HobbyRadioPortals: `N8X_RESTORE` (Backupdatei), `N8X_RESTORE_PASSWORD_FILE` (Passwort in der
-ersten Zeile), optional `N8X_WEB_PORT`, `N8X_LOCAL_LINKS=1` und `N8X_PORTAL_TOKEN_FILE` – siehe [Backup → Umzug](BACKUP.md#umzug-ins-hobbyradioportal).
-
-### Ohne Rückfragen neu einrichten (ab 1.10.0)
-
-`N8X_SETUP_FILE=/pfad/setup.json` ersetzt die Fragen der Schritte 4–8. Die Felder heißen wie im Adminportal; unbekannte werden
-abgewiesen. So installiert der Web-Installer des HobbyRadioPortals (ab 0.11.0, *Crosslink → ✨ N8 Crosslink neu installieren*):
-
-```bash
-cat > /root/xl.json <<'JSON'
-{"general": {"title": "N8 Crosslink"},
- "frn": {"enabled": true, "server": "127.0.0.1", "port": 10024, "email": "bridge@example.org", "password": "…",
-         "callsign": "N8XLINK", "op_name": "Crosslink", "net": "Nachtschicht", "city": "Minden - JO42", "country": "Germany"},
- "dmr": {"enabled": true, "host": "127.0.0.1", "port": 62031, "password": "…", "peer_id": 262000101, "callsign": "N8XLINK",
-         "src_id": 2620001, "slot": 2, "tg_rx": 262, "tg_tx": 262},
- "zello": {"enabled": false}, "vocoder": {"vocoder_mode": "n8vocoder"},
- "admin_user": "sysop", "admin_password": "mindestens-8-Zeichen"}
-JSON
-chmod 600 /root/xl.json
-sudo N8X_SETUP_FILE=/root/xl.json N8X_WEB_PORT=8070 N8X_PORTAL_TOKEN_FILE=/root/xl.token ./install.sh
-rm /root/xl.json
-```
-
-Mit `admin_user` ≠ `n8schicht` ersetzt der neue Superadmin den Standard-Login `n8schicht/n8schicht`. Der N8schicht-Vocoder wird
-gebaut, wenn er gewählt ist. Prüfen geht auch ohne Installer: `python -m n8crosslink.cli --db … apply-setup setup.json`.
-
 ## Standard-Login
 
 Beim ersten Start gibt es den Superadmin **`n8schicht`** mit Passwort **`n8schicht`**. Solange dieses Passwort aktiv ist, zeigt das Dashboard nach dem Login einen Hinweis mit Knopf „Passwort ändern“ (Admin → 👥 Benutzer).

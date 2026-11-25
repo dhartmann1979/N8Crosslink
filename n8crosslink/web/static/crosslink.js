@@ -577,15 +577,12 @@ function renderVocoder() {
 
 async function renderUsers() {
   const list = await api('/api/admin/users');
-  const tokens = `<h2 class="section-header">🔌 HobbyRadioPortal</h2>
-    <p style="padding:0 4px;color:var(--text-dim);font-size:13px">Kein Token nötig: Ein HobbyRadioPortal auf diesem Server verwaltet Einstellungen, Routing, Vocoder-Klang, Sprachansage und ID-Listen direkt –
-    nie Benutzer, Backups, System, Updates oder Aussehen. Anfragen über einen Proxy oder von anderen Rechnern gelten nie als Portal. Abschalten: N8X_PORTAL_LOCAL=0 im Dienst.</p>`;
   $('#adminBody').innerHTML = `<table class="tbl" style="margin:8px 0"><thead><tr><th>Benutzer</th><th>Rolle</th><th>Angelegt</th><th></th></tr></thead><tbody>
     ${list.map(u => `<tr><td>👤 ${esc(u.username)}</td><td>${esc(u.role)}</td><td>${u.created ? new Date(u.created * 1000).toLocaleDateString('de-DE') : ''}</td>
     <td class="num">${u.username === S.me.user ? '<span class="badge">du</span>' : `<button class="btn secondary" data-del="${esc(u.username)}">Löschen</button>`}</td></tr>`).join('')}</tbody></table>
     <div class="form"><div class="field"><label>Neuer Benutzer / Passwort ändern</label><input type="text" id="nuUser" placeholder="Benutzername"></div>
     <div class="field"><label>Passwort (min. 8 Zeichen)</label><input type="password" id="nuPass" autocomplete="new-password"></div></div>
-    <div class="form-actions"><button class="btn" id="nuBtn">💾 Speichern</button></div>${tokens}`;
+    <div class="form-actions"><button class="btn" id="nuBtn">💾 Speichern</button></div>`;
   $$('[data-del]').forEach(b => b.onclick = async () => { if (confirm('Benutzer ' + b.dataset.del + ' löschen?')) { await api('/api/admin/users/' + encodeURIComponent(b.dataset.del), { method: 'DELETE' }); renderUsers(); } });
   $('#nuBtn').onclick = async () => {
     try { await api('/api/admin/users', { method: 'POST', body: { username: $('#nuUser').value.trim(), password: $('#nuPass').value } }); toast('✅ Benutzer gespeichert'); renderUsers(); }
@@ -608,7 +605,7 @@ async function renderPorts() {
     ${restartNote}
     <h2 class="section-header">🌐 Webinterface</h2>
     <div class="card"><table class="tbl"><tbody>
-      <tr><td><b>Web-Adresse (Bind)</b><div class="lh-name">0.0.0.0 = alle Schnittstellen (IPv4) · :: = alle (IPv4 und IPv6) · 127.0.0.1 = nur dieser Rechner (dann nur über die Domain bzw. das HobbyRadioPortal)</div></td>
+      <tr><td><b>Web-Adresse (Bind)</b><div class="lh-name">0.0.0.0 = alle Schnittstellen (IPv4) · :: = alle (IPv4 und IPv6) · 127.0.0.1 = nur dieser Rechner (dann nur über die Domain)</div></td>
         <td><span class="badge warn">⬇ eingehend</span></td><td class="num"><input type="text" class="pt-in" data-k="general.web_host" value="${esc(v['general.web_host'] || '0.0.0.0')}" style="width:150px"></td></tr>
       ${row('general.web_port', 'Web-Port', 'ein', 'TCP', 'Webinterface und Live-Daten (http://IP:Port). Unter 1024 (z. B. 80) geht ohne root – nginx braucht dann andere Ports. Neustart des Dienstes.')}
     </tbody></table></div>
@@ -663,7 +660,6 @@ async function renderDomains() {
     : conflict ? `<div class="banner">⚠️ <span class="grow">N8 Crosslink lauscht selbst auf Port ${esc(d.web_port)}, den nginx für HTTP/HTTPS braucht – unter <b>🔌 Ports</b> den Web-Port (z. B. 8070) oder die nginx-Ports ändern.</span></div>`
     : !deps ? `<div class="banner">📦 <span class="grow">Für Let's Encrypt braucht es <b>nginx</b> und <b>certbot</b> auf diesem Rechner.</span><button class="btn" id="dmDeps">📦 Benötigte Pakete installieren</button></div>`
     : d.port80 && d.port80 !== 'nginx' ? `<div class="banner">⚠️ <span class="grow">Port ${esc(d.http_port || 80)} belegt <b>${esc(d.port80)}</b> – nginx kann dort nicht lauschen. Let's Encrypt prüft die Domain über Port 80.</span></div>` : '';
-  const portal = d.portal ? `<p style="padding:0 4px;color:var(--text-dim);font-size:13px">ℹ️ Auf diesem Rechner läuft das <b>HobbyRadioPortal</b>. Steht N8 Crosslink dahinter, verwaltet das Portal Domain und Zertifikat (Admin → Domains &amp; Zertifikate) – dann hier nichts anlegen.</p>` : '';
   const rows = (d.sites || []).map(s => `<tr><td><b>${esc(s.domain)}</b>${s.legacy ? ' <span class="badge">vom Installer</span>' : ''}
       <div class="lh-name">${s.dns && s.dns.length ? 'DNS: ' + s.dns.map(esc).join(', ') : '⚠️ DNS: kein Eintrag gefunden'} · Ports ${esc((s.listen || []).join('/'))} → 127.0.0.1:${esc(s.upstream || '?')}${s.ports_ok === false ? ' · <b style="color:#ffd60a">passt nicht zu den Ports</b>' : ''}</div></td>
       <td>${s.https ? '<span class="badge ok">HTTPS</span>' : '<span class="badge warn">nur HTTP</span>'} ${certBadge(s)}
@@ -675,7 +671,7 @@ async function renderDomains() {
   const mismatch = (d.sites || []).some(s => s.ports_ok === false);
   $('#adminBody').innerHTML = `<h2 class="section-header">🔒 Domains &amp; HTTPS ${d.renew_timer ? '<span class="badge ok">automatische Erneuerung an</span>' : deps ? '<span class="badge warn">Erneuerung nicht geplant</span>' : ''}</h2>
     <p style="padding:0 4px;color:var(--text-dim);font-size:13px">Eigene Domains für dieses Webinterface mit kostenlosem Zertifikat von <b>Let's Encrypt</b>. nginx nimmt die Domain auf Port ${esc(d.http_port || 80)}/${esc(d.https_port || 443)} an und leitet zu N8 Crosslink (127.0.0.1:${esc(d.web_port)}) weiter; certbot holt das Zertifikat und erneuert es automatisch rechtzeitig vor Ablauf. Voraussetzung: Die Domain zeigt per DNS auf diesen Server und Port 80 (Let's Encrypt prüft immer dort – sonst Weiterleitung im Router) und ${esc(d.https_port || 443)} sind aus dem Internet erreichbar.</p>
-    ${hint}${portal}
+    ${hint}
     <p style="padding:0 4px;color:var(--text-dim);font-size:13px">nginx lauscht auf <b>HTTP ${esc(d.http_port || 80)}</b> und <b>HTTPS ${esc(d.https_port || 443)}</b> und leitet zu 127.0.0.1:${esc(d.web_port)} – ändern unter <a href="#" id="dmPorts">🔌 Ports</a>.</p>
     ${mismatch ? `<div class="banner warn">⚠️ <span class="grow">Mindestens eine Domain nutzt noch andere Ports als eingestellt.</span><button class="btn" id="dmApply">🔁 Ports auf alle Domains anwenden</button></div>` : ''}
     <div class="card">${rows ? `<table class="tbl"><thead><tr><th>Domain</th><th>Zertifikat</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">Noch keine Domain.</div>'}</div>
@@ -686,7 +682,7 @@ async function renderDomains() {
     <div class="form-actions" style="justify-content:flex-start"><button class="btn" id="dmAdd" ${!d.ok || conflict || !deps ? 'disabled' : ''}>🔒 Domain anlegen &amp; Zertifikat holen</button></div>
     <pre id="dmOut" style="font-size:11.5px;white-space:pre-wrap;color:var(--text-dim);padding:0 4px"></pre>
     ${anyHttps ? `<h2 class="section-header">🛡️ Nur noch über HTTPS</h2><div class="form"><div class="field wide"><label class="switch"><input type="checkbox" id="dmLocal" ${d.web_host === '127.0.0.1' ? 'checked' : ''}><span></span>Webinterface nur noch über die Domain erreichbar (lauscht auf 127.0.0.1 statt allen Schnittstellen)</label>
-      <small>Danach ist http://IP:${esc(d.web_port)} von außen zu. Ein HobbyRadioPortal auf diesem Rechner erreicht N8 Crosslink weiter über 127.0.0.1. Der Dienst startet dafür neu.</small></div></div>` : ''}`;
+      <small>Danach ist http://IP:${esc(d.web_port)} von außen zu. Der Dienst startet dafür neu.</small></div></div>` : ''}`;
   const out = (r) => { $('#dmOut').textContent = (r.message || '') + (r.log ? '\n\n' + r.log : ''); toast((r.ok ? '✅ ' : '⚠️ ') + (r.message || '')); };
   const busy = (b, t) => { b.disabled = true; b.textContent = t; $('#dmOut').textContent = 'Läuft – das kann bis zu einer Minute dauern …'; };
   $('#dmPorts').onclick = (e) => { e.preventDefault(); S.adminSec = 'ports'; loadAdmin(); };
@@ -716,11 +712,17 @@ async function renderDomains() {
 async function renderSystem() {
   const [ev, sy] = await Promise.all([api('/api/admin/events?limit=150'), api('/api/admin/system')]);
   const stCls = (a) => a === 'active' ? 'ok' : a === 'failed' ? 'off' : 'warn';
-  const ACT = { start: '▶️ Start', stop: '⏹️ Stopp', restart: '🔄 Neustart', enable: '✅ Autostart an', disable: '🚫 Autostart aus' };
-  const unitsHtml = sy.units.length ? `<table class="tbl"><thead><tr><th>Dienst</th><th>Status</th><th>Autostart</th><th></th></tr></thead><tbody>${
-    sy.units.map(u => `<tr><td><b>${esc(u.label)}</b><div class="lh-name">${esc(u.unit)}</div></td>
-      <td><span class="badge ${stCls(u.active)}">${esc(u.active)}</span></td><td><span class="badge ${u.enabled === 'enabled' ? 'ok' : ''}">${esc(u.enabled)}</span></td>
-      <td class="num">${u.actions.map(a => `<button class="btn secondary" style="padding:4px 10px;margin:2px" data-unit="${esc(u.unit)}" data-act="${a}" ${sy.sudo ? '' : 'disabled'}>${ACT[a] || a}</button>`).join('')}</td></tr>`).join('')}</tbody></table>`
+  const ST = { active: 'läuft', inactive: 'gestoppt', failed: 'Fehler', activating: 'startet', deactivating: 'stoppt', reloading: 'lädt neu' };
+  const units = sy.units.filter(u => !u.hidden);
+  const can = (u, a) => sy.sudo && u.actions.includes(a);
+  const btn = (u, a, icon, title) => u.actions.includes(a) ? `<button class="btn secondary svc-b" title="${title}" data-unit="${esc(u.unit)}" data-act="${a}" ${can(u, a) ? '' : 'disabled'}>${icon}</button>` : '';
+  const unitsHtml = units.length ? `<table class="tbl svc-tbl"><tbody>${
+    units.map(u => { const on = u.enabled === 'enabled', run = u.active === 'active';
+      return `<tr><td><span class="svc-dot ${stCls(u.active)}"></span><b>${esc(u.label)}</b><div class="lh-name">${esc(u.unit)}</div></td>
+      <td><span class="badge ${stCls(u.active)}">${esc(ST[u.active] || u.active)}</span></td>
+      <td>${u.actions.includes('enable') ? `<label class="switch" title="Autostart beim Booten"><input type="checkbox" data-auto="${esc(u.unit)}" ${on ? 'checked' : ''} ${can(u, on ? 'disable' : 'enable') ? '' : 'disabled'}><span></span> Autostart</label>`
+        : `<span class="badge">${esc(u.enabled)}</span>`}</td>
+      <td class="num" style="white-space:nowrap">${run ? btn(u, 'restart', '🔄', 'Neu starten') + btn(u, 'stop', '⏹', 'Stoppen') : btn(u, 'start', '▶', 'Starten')}</td></tr>`; }).join('')}</tbody></table>`
     : '<div class="empty">Keine Dienste freigegeben.</div>';
   $('#adminBody').innerHTML = `<h2 class="section-header">Dienste ${sy.sudo ? '<span class="badge ok">sudo bereit</span>' : '<span class="badge warn">sudo nicht eingerichtet – einmal sudo /opt/n8crosslink/update.sh ausführen</span>'}</h2>
     <div class="card">${unitsHtml}</div>
@@ -742,9 +744,15 @@ async function renderSystem() {
       <label class="btn secondary" style="cursor:pointer">⬆️ Importieren<input type="file" id="sysImp" accept=".json" hidden></label></div>
     <h2 class="section-header">Ereignisprotokoll</h2>
     <div class="ev-list">${ev.map(e => `<div class="ev-row ${e.level === 'warn' ? 'warn' : ''}"><time>${new Date(e.ts * 1000).toLocaleString('de-DE')}</time><div>${esc(e.text)}</div></div>`).join('') || '<div class="empty">Leer.</div>'}</div>`;
+  $$('[data-auto]').forEach(c => c.onchange = async () => {
+    const act = c.checked ? 'enable' : 'disable';
+    if (act === 'disable' && !confirm(`Autostart für ${c.dataset.auto} ausschalten? Nach einem Neustart des Servers startet der Dienst dann nicht mehr von selbst.`)) { c.checked = true; return; }
+    const r = await api('/api/admin/system/unit', { method: 'POST', body: { unit: c.dataset.auto, action: act } });
+    toast((r.ok ? '✅ ' : '⚠️ ') + (r.message || '')); setTimeout(renderSystem, 800);
+  });
   $$('[data-unit]').forEach(b => b.onclick = async () => {
     const self = b.dataset.unit === 'n8crosslink.service';
-    if (['stop', 'disable'].includes(b.dataset.act) || self) { if (!confirm(`${b.textContent.trim()} – ${b.dataset.unit}?`)) return; }
+    if (['stop', 'disable'].includes(b.dataset.act) || self) { if (!confirm(`${b.title || b.textContent.trim()} – ${b.dataset.unit}?${self && b.dataset.act === 'stop' ? '\n\nDanach ist dieses Webinterface weg – wieder starten nur auf der Konsole: sudo systemctl start n8crosslink' : ''}`)) return; }
     const r = await api('/api/admin/system/unit', { method: 'POST', body: { unit: b.dataset.unit, action: b.dataset.act } });
     toast((r.ok ? '✅ ' : '⚠️ ') + (r.message || '')); if (!self) setTimeout(renderSystem, 1500);
   });
@@ -997,14 +1005,6 @@ function renderBackup() {
     <p style="color:var(--text-dim);font-size:13px;padding:0 4px">Enthält alles: Einstellungen inkl. Zugangsdaten (FRN, DMR, Zello), Benutzer, Last Heard, Statistik, Ereignisse, ID-Listen, Talkgroups und Avatare.</p>
     <div class="form"><div class="field"><label>Superadmin-Passwort (dein aktuelles Passwort)</label><input type="password" id="bkPw" autocomplete="current-password"></div></div>
     <div class="form-actions" style="justify-content:flex-start"><button class="btn" id="bkBtn">💾 Verschlüsseltes Backup erstellen</button><span id="bkMsg" style="font-size:13px;color:var(--text-dim)"></span></div>
-
-    <h2 class="section-header">📦 Umzug ins HobbyRadioPortal</h2>
-    <div class="banner" style="margin:6px 0 14px;align-items:flex-start;border-left:3px solid #0a84ff">📦 <div class="grow">
-      Ziehst du N8 Crosslink auf den Server des <b>HobbyRadioPortals</b> um, ist dieses Backup das <b>Umzugspaket</b>:
-      oben erstellen und herunterladen, dann im Web-Installer des Portals (<code>/setup</code>) im Schritt <b>🔀 Crosslink</b> hochladen und dasselbe Superadmin-Passwort eingeben.
-      Der Installer richtet N8 Crosslink dort mit allen Einstellungen, Benutzern und Daten ein (Web-Port 8070, auf Wunsch FRN und DMR über 127.0.0.1)
-      und verbindet das Portal per API-Token. <b>Hier bleibt alles, wie es ist</b> – erst nach dem Umzug abschalten, sonst laufen zwei Bridges im selben Raum.
-      <a href="https://github.com/dhartmann1979/HobbyRadioPortal/blob/main/docs/UMZUG.md" target="_blank" rel="noopener">Anleitung</a></div></div>
 
     <h2 class="section-header">Backup wiederherstellen</h2>
     <div class="form"><div class="field"><label>Backupdatei (.n8xbak)</label><input type="file" id="rsFile" accept=".n8xbak"></div>

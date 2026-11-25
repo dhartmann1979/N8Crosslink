@@ -110,7 +110,6 @@ timer = sh("systemctl", "is-enabled", "certbot.timer").strip() == "enabled" or o
 print(json.dumps({"ok": True, "nginx": bool(shutil.which("nginx")), "certbot": bool(shutil.which("certbot")),
                   "renew_timer": timer, "port80": who(http_port), "port443": who(https_port), "web_port": port,
                   "http_port": http_port, "https_port": https_port,
-                  "portal": os.path.exists("/etc/nginx/sites-available/hobbyradioportal") or os.path.isdir("/opt/hobbyradioportal"),
                   "sites": sites}, ensure_ascii=False))
 PY
 }

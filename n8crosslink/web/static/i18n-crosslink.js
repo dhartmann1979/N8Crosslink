@@ -5,10 +5,9 @@ N8Kit.i18n.add({
     base: 'de',
     en: {
         // Kopfzeile, Statusleiste, Live
-        'Kein Token nötig: Ein HobbyRadioPortal auf diesem Server verwaltet Einstellungen, Routing, Vocoder-Klang, Sprachansage und ID-Listen direkt – nie Benutzer, Backups, System, Updates oder Aussehen. Anfragen über einen Proxy oder von anderen Rechnern gelten nie als Portal. Abschalten: N8X_PORTAL_LOCAL=0 im Dienst.': 'No token needed: an HobbyRadioPortal on this server manages settings, routing, vocoder sound, announcements and ID lists directly – never users, backups, system, updates or appearance. Requests through a proxy or from other machines never count as the portal. Switch off: N8X_PORTAL_LOCAL=0 in the service.', 'Name des Tokens': 'Token name', 'Token anlegen': 'Create token', 'Noch kein Token': 'No token yet',
+ 'Name des Tokens': 'Token name', 'Token anlegen': 'Create token', 'Noch kein Token': 'No token yet',
         'Widerrufen': 'Revoke', 'Token widerrufen': 'Token revoked', 'Zuletzt benutzt': 'Last used', 'Angelegt': 'Created', 'Kopiert': 'Copied', 'Kopieren': 'Copy',
         'Token jetzt kopieren – er wird nur einmal angezeigt:': 'Copy the token now – it is shown only once:', 'keine Netze aktiv': 'no networks enabled',
-        'Für das HobbyRadioPortal: Es verwaltet damit Einstellungen, Routing, Vocoder-Klang, Sprachansage und ID-Listen – nie Benutzer, Backups, System, Updates oder Aussehen. Der Token wird nur einmal angezeigt; im Portal unter Dienste & Plugins → N8 Crosslink → API-Token eintragen.': 'For the HobbyRadioPortal: it manages settings, routing, vocoder sound, announcements and ID lists – never users, backups, system, updates or appearance. The token is shown only once; enter it in the portal under Services & plugins → N8 Crosslink → API token.',
         'Live-Daten': 'Live data', 'Statistik': 'Statistics', 'Netze': 'Networks', 'Mithören': 'Listen in', 'Mithören (nur für angemeldete Admins)': 'Listen in (logged-in admins only)',
         'Lautstärke': 'Volume', 'Lautstärke Mithören': 'Listen-in volume', 'Ruhe': 'Quiet', 'Pegel der sprechenden Station': 'Level of the talking station', 'Anmelden': 'Log in', 'Abmelden': 'Log out',
         'Ruhe auf allen Netzen': 'Quiet on all networks', 'Gerade aktiv': 'Active now', 'On Air · über DMR': 'On air · via DMR', 'On Air · über FRN': 'On air · via FRN', 'On Air · über Zello': 'On air · via Zello',
@@ -106,7 +105,7 @@ N8Kit.i18n.add({
 
         // Admin: Updates (N8 Kit), Backup, Benutzer, System
         'Update-Dienst': 'Update service', 'eingerichtet': 'set up', 'Update-Dienst fehlt – einmal': 'Update service missing – run once', 'ausführen': '', 'zurückgesetzt auf': 'rolled back to',
-        'Verschlüsseltes Backup erstellen': 'Create encrypted backup', '📦 Umzug ins HobbyRadioPortal': '📦 Move to the HobbyRadioPortal', 'Umzug ins HobbyRadioPortal': 'Move to the HobbyRadioPortal', 'Anleitung': 'Guide', 'Backup herunterladen': 'Download backup', 'Backup wiederherstellen': 'Restore backup', 'Backupdatei (.n8xbak)': 'Backup file (.n8xbak)',
+        'Verschlüsseltes Backup erstellen': 'Create encrypted backup', 'Anleitung': 'Guide', 'Backup herunterladen': 'Download backup', 'Backup wiederherstellen': 'Restore backup', 'Backupdatei (.n8xbak)': 'Backup file (.n8xbak)',
         'WICHTIG – Superadmin-Passwort = Schlüssel des Backups': 'IMPORTANT – superadmin password = key of the backup',
         'Das Backup wird vollständig verschlüsselt (AES-256-GCM, kein Klartext). Der Schlüssel ist das': 'The backup is fully encrypted (AES-256-GCM, no plain text). The key is the',
         'Superadmin-Passwort': 'superadmin password', 'zum Zeitpunkt des Backups. Ohne dieses Passwort lässt sich das Backup': 'at the time of the backup. Without this password the backup cannot be',

@@ -160,7 +160,7 @@ class Database:
         CREATE TABLE IF NOT EXISTS settings (section TEXT, key TEXT, value TEXT, PRIMARY KEY(section, key));
         CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, pw_hash TEXT, role TEXT DEFAULT 'admin', created REAL);
         CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, username TEXT, expires REAL);
-        DROP TABLE IF EXISTS api_tokens;   -- bis 1.10: Tokens für das HobbyRadioPortal (jetzt: derselbe Rechner, kein Token)
+        DROP TABLE IF EXISTS api_tokens;   -- bis 1.10: alte API-Tokens, nicht mehr verwendet
         CREATE TABLE IF NOT EXISTS lastheard (
             id INTEGER PRIMARY KEY AUTOINCREMENT, ts_start REAL, ts_end REAL, duration REAL,
             source TEXT, name TEXT, callsign TEXT, detail TEXT, dmr_id INTEGER,
@@ -299,7 +299,6 @@ class Database:
             return row["username"]
         return None
 
-    # ------------------------------------------------------------ API-Token (HobbyRadioPortal)
     def end_session(self, token: str) -> None:
         with self.lock:
             self.conn.execute("DELETE FROM sessions WHERE token=?", (token,))

@@ -138,29 +138,6 @@ Betriebsart (N8schicht-Vocoder, USB-Stick, AMBEserver, Test), Pegel und Watchdog
 
 ![Klang-Einstellungen](screenshots/admin-vocoder-klang.png)
 
-## 🔌 Im HobbyRadioPortal verwalten (ohne Token)
-Seit 1.8.0 lässt sich die Brücke auch im [HobbyRadioPortal](https://github.com/dhartmann1979/HobbyRadioPortal) einstellen
-(*Admin → Dienste → 🔀 Crosslink & Vocoder*): Allgemein, Sprachansage (mit Probehören), Routing, FRN (mit *Passwort anfordern*), DMR,
-Zello, Vocoder mit **Klang-Einstellungen** und Probehören, ID-Listen & Avatare, Bridge neu starten, Vocoder testen.
-
-Seit 1.11.0 braucht das **keinen Token** mehr: Läuft das Portal auf **demselben Rechner**, verwaltet es die Brücke direkt. Im Portal
-steht unter *Dienste → Crosslink → Verbindung & Anzeige* nur die Adresse (meist `http://127.0.0.1:8070/`). Unter **👥 Benutzer** steht
-ein kurzer Hinweis.
-
-Das Portal darf nur Einstellungen, Routing, Vocoder-Klang, Sprachansage, FRN-Passwort-Anforderung, ID-Listen, Ereignisse und den
-Neustart der Brücke – **nie** Benutzer, Backup/Neuanfang, System (Dienste, Neustart des Servers), Updates, Aussehen, Export/Import.
-Web-Adresse/-Port und die Update-Quelle sind gesperrt. Jede Änderung steht im Ereignisprotokoll als
-`api:HobbyRadioPortal (<Portal-Benutzer>)`. Wann ein Aufruf als Portal gilt und wie man es abschaltet:
-[SICHERHEIT.md](SICHERHEIT.md#hobbyradioportal-auf-diesem-rechner-ohne-token).
-
-![Benutzer mit Hinweis zum Portal](screenshots/admin-benutzer-token.png)
-
-Für andere Programme beschreibt `GET /api/admin/settings` alle Einstellungen (Bereiche, Felder, Art, Grenzen, Hilfetexte; Passwörter
-nie im Klartext), `PUT /api/admin/settings {"changes": {"frn.port": 10024, …}}` ändert sie mit Prüfung.
-
-**Titel:** Untertitel, Fußzeile und Seitenbeschreibung nennen nur die **eingeschalteten** Netze (z. B. *FRN · DMR*); `/api/info`
-liefert dazu `nets` und `nets_label`.
-
 ## 🔒 Domains & HTTPS
 
 Eigene Domains für das Webinterface mit kostenlosem **Let's-Encrypt-Zertifikat** – ohne Konsole (ab 1.12.0).
@@ -180,7 +157,7 @@ Eigene Domains für das Webinterface mit kostenlosem **Let's-Encrypt-Zertifikat*
 4. **Test-Zertifikat** nutzt die Staging-Umgebung von Let's Encrypt – zum Ausprobieren, ohne in die Limits zu laufen (Browser warnen bei
    diesen Zertifikaten).
 5. **🛡️ Nur noch über HTTPS:** stellt die Web-Adresse auf `127.0.0.1` – dann ist `http://IP:Port` von außen zu und das Webinterface nur
-   noch über die Domain erreichbar (ein HobbyRadioPortal auf demselben Rechner erreicht es weiter). Der Dienst startet dafür neu.
+   noch über die Domain erreichbar. Der Dienst startet dafür neu.
 
 Voraussetzungen und Hinweise:
 
@@ -188,8 +165,6 @@ Voraussetzungen und Hinweise:
   immer über Port 80 – ist der HTTP-Port ein anderer, braucht es eine Weiterleitung im Router (außen 80 → innen HTTP-Port).
 * Lauscht N8 Crosslink selbst auf dem HTTP- oder HTTPS-Port, warnt die Seite: unter *🔌 Ports* den Web-Port (z. B. 8070) oder die nginx-Ports ändern.
 * Belegt ein anderes Programm den HTTP- oder HTTPS-Port, steht das als Hinweis da.
-* Läuft auf dem Rechner das **HobbyRadioPortal** und steht N8 Crosslink dahinter, verwaltet das Portal Domain und Zertifikat
-  (*Domains & Zertifikate* dort) – dann hier nichts anlegen.
 * Die Seite des alten Installers (`/etc/nginx/sites-available/n8crosslink`) wird erkannt und lässt sich hier erneuern oder entfernen.
 * Technisch: root-Helfer `/opt/n8crosslink/n8x-certs.sh` (`status`, `deps`, `add`, `ports`, `renew`, `remove`) über sudo – er prüft Domain,
   E-Mail und alle Ports selbst, schreibt nur `/etc/nginx/sites-available/n8crosslink-<domain>`, prüft mit `nginx -t` und stellt bei Fehlern den alten
@@ -221,4 +196,4 @@ API: `GET/POST /api/admin/ports`, `POST /api/admin/ports/apply` (nur angemeldete
 *📡 DMR → Erweitert* (`dmr.local_port`).
 
 ## 👥 Benutzer · 🛠️ System
-Benutzer anlegen/löschen/Passwort ändern. System: **Dienste** (N8 Crosslink, erkannte alte Dienste wie svxlink/mmdvm_bridge/Zello-Bridge) mit Start, Stopp, Neustart, Autostart an/aus; **🔐 Berechtigungen & sudo** (Liste aller Prüfungen, **🛠️ Korrigieren** repariert und prüft erneut); **Server neu starten** (falls bei der Installation erlaubt); Bridge neu starten (nur die Netze), Dienst neu starten, ID-Listen aktualisieren, Konfiguration exportieren/importieren (ohne Passwörter), Ereignisprotokoll. Siehe [BETRIEB.md](BETRIEB.md).
+Benutzer anlegen/löschen/Passwort ändern. System: **Dienste** (N8 Crosslink, Update-Auslöser, erkannte alte Dienste wie svxlink/mmdvm_bridge/Zello-Bridge) schlank mit Status, Autostart-Schalter und Starten/Stoppen/Neu starten; **🔐 Berechtigungen & sudo** (Liste aller Prüfungen, **🛠️ Korrigieren** repariert und prüft erneut); **Server neu starten** (falls bei der Installation erlaubt); Bridge neu starten (nur die Netze), Dienst neu starten, ID-Listen aktualisieren, Konfiguration exportieren/importieren (ohne Passwörter), Ereignisprotokoll. Siehe [BETRIEB.md](BETRIEB.md).

@@ -2,6 +2,30 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.17.0] – 2026-11-25
+
+**🧹 HobbyRadioPortal-Anbindung entfernt · 🧩 Dienste schlank: aktivieren, deaktivieren, starten, stoppen, neu starten.**
+
+### 🧹 HobbyRadioPortal komplett entfernt
+N8 Crosslink ist wieder eigenständig; das HobbyRadioPortal verwaltet die Brücke nicht mehr.
+- Lokale Portal-Schnittstelle weg: `X-HobbyRadioPortal`/`X-Portal-User`, `N8X_PORTAL_LOCAL`, Benutzer `api:HobbyRadioPortal`, die
+  Portal-Freigaben einzelner Admin-Adressen. Alle Admin-Adressen brauchen jetzt immer eine Anmeldung im Dashboard.
+- Einstellungs-Beschreibung `GET/PUT /api/admin/settings` und `settings_schema.py` entfernt (gab es nur für das Portal).
+- Installer ohne Rückfragen für den Web-Installer des Portals entfernt: `N8X_RESTORE`, `N8X_RESTORE_PASSWORD_FILE`, `N8X_WEB_PORT`,
+  `N8X_LOCAL_LINKS`, `N8X_PORTAL_TOKEN_FILE`, `N8X_SETUP_FILE` und `cli apply-setup`. Wiederherstellen aus einem Backup geht weiter im
+  Installer (mit Rückfrage), im Webinterface und per CLI.
+- Adminportal: Hinweis „🔌 HobbyRadioPortal“ unter Benutzer, „📦 Umzug ins HobbyRadioPortal“ unter Backup und der Portal-Hinweis bei
+  Domains & HTTPS entfernt; `n8x-certs.sh status` meldet kein `portal` mehr.
+- Doku bereinigt (KONFIGURATION, SICHERHEIT, BACKUP, INSTALLATION, README); Tests `test_portal_local.py` und `test_apply_setup.py` entfernt.
+
+### 🧩 Dienste (⚙️ Admin → 🛠️ System)
+- Schlanke Liste: Status-Punkt und -Abzeichen (läuft / gestoppt / Fehler), **Autostart** als Schalter, je nach Zustand **🔄 Neu starten** und
+  **⏹ Stoppen** oder **▶ Starten**. Stoppen und Autostart aus fragen nach (beim eigenen Dienst mit Hinweis auf den Konsolenbefehl).
+- Neu freigegeben: `n8crosslink.service` und `n8crosslink-update.path` mit Starten, Stoppen, Neustarten, Autostart an/aus (vorher nur
+  Neustart); alte Dienste wie bisher. Der Update-Dienst selbst wird nicht mehr gelistet (läuft über *Updates*).
+- Die neuen sudo-Freigaben kommen mit dem Update; der Berechtigungsprüfer erkennt veraltete Freigaben und schreibt sie neu.
+- Doku: BETRIEB.md (Abschnitt *Dienste*), Screenshot `admin-dienste.png`. Die Demo spielt systemd-Zustände vor.
+
 ## [1.16.0] – 2026-11-25
 
 **🙈 Ohne Anmeldung sind keine IP-Adressen und Ports mehr sichtbar.**

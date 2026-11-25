@@ -52,24 +52,7 @@ allem, was die Seite lädt (`/api/state`, `/api/events`, `/api/lastheard`, `/api
   `web_port=•••`, `ws://127.0.0.1:8799/ws` → `ws://•••`). Hostnamen ohne Port und normale Links bleiben lesbar.
 * Auch der Servername im Kopf wird so bereinigt, falls dort eine IP oder ein Port steht.
 
-Angemeldete Admins sehen alles; nach dem An- oder Abmelden baut die Seite die Live-Verbindung neu auf. Das HobbyRadioPortal auf demselben
-Rechner bekommt die vollständigen Daten (es entscheidet selbst, was es öffentlich zeigt).
-
-## HobbyRadioPortal auf diesem Rechner (ohne Token)
-
-- Seit 1.11.0 gibt es **keine API-Tokens** mehr (die Tabelle `api_tokens` wird beim Start gelöscht, `cli api-token` gibt es nicht mehr).
-- Als Portal gilt nur ein **direkter Aufruf auf diesem Rechner**: Absender und `Host` Loopback (`127.0.0.1`, `::1`, `localhost`),
-  Kopfzeile `X-HobbyRadioPortal: 1` und **keine** Proxy-Kopfzeile (`X-Forwarded-For`, `X-Real-IP`, `Forwarded`, `X-Forwarded-Host/-Proto`,
-  `Via`, `CF-Connecting-IP`, `True-Client-IP`, `X-Client-IP`). nginx vor der Brücke (auch die Vorlage `systemd/nginx-n8crosslink.conf`)
-  setzt `X-Forwarded-For` – über ihn kommt niemand an die Verwaltung. Ein eigener Reverse-Proxy muss das ebenso tun.
-- Jedes Programm auf diesem Rechner könnte sich als Portal ausgeben. Wer das nicht will: `N8X_PORTAL_LOCAL=0` in der Umgebung des Dienstes.
-- Das Portal erreicht nur diese Pfade: `/api/admin/settings` (lesen/ändern), `/api/admin/restart`
-  (Bridge), `/api/admin/vocoder/params|options|preview`, `/api/admin/vocoder-test`, `/api/admin/announce/preview`,
-  `/api/admin/frn/request-password`, `/api/admin/events`, `/api/admin/ids`, `/api/admin/ids/update`, `/api/admin/avatars/refresh`,
-  `/api/admin/serial-ports`. Alles andere antwortet `401`.
-- Gesperrt auch innerhalb der Einstellungen: Web-Adresse, Web-Port und Update-Quelle.
-- Passwörter (FRN, DMR, Zello, Private Key) gehen nie hinaus; leer gelassen bleiben sie unverändert.
-- Jede Änderung im Ereignisprotokoll als `api:HobbyRadioPortal (<Portal-Benutzer>)` (`X-Portal-User`, bereinigt).
+Angemeldete Admins sehen alles; nach dem An- oder Abmelden baut die Seite die Live-Verbindung neu auf.
 
 ## Reverse-Proxy davor (empfohlen)
 
@@ -79,7 +62,7 @@ Das Webinterface ruft dafür nur den root-Helfer `/opt/n8crosslink/n8x-certs.sh`
 er nimmt nur `status`, `deps`, `add`, `ports`, `renew`, `remove` an, prüft Domain (Kleinbuchstaben, gültige Labels), E-Mail und alle Ports
 (1–65535, Web-, HTTP- und HTTPS-Port verschieden), löscht nur Dateien mit geprüftem Namen `n8crosslink*` unter `/etc/nginx`, schreibt nur
 `/etc/nginx/sites-available/n8crosslink-<domain>` und übernimmt nichts ohne erfolgreiches `nginx -t`. Die Domain-Verwaltung können nur
-angemeldete Admins bedienen, nie das HobbyRadioPortal. Von Hand geht es so: Zertifikate, Header und Protokolle an einer Stelle. Das Dashboard lauscht dann nur lokal (Admin → Allgemein → Web-Adresse `127.0.0.1`, Port z. B. 8080; Neustart des Dienstes). Die Weiterleitungs-Header (`X-Forwarded-Proto`) wertet N8 Crosslink aus.
+angemeldete Admins bedienen. Von Hand geht es so: Zertifikate, Header und Protokolle an einer Stelle. Das Dashboard lauscht dann nur lokal (Admin → Allgemein → Web-Adresse `127.0.0.1`, Port z. B. 8080; Neustart des Dienstes). Die Weiterleitungs-Header (`X-Forwarded-Proto`) wertet N8 Crosslink aus.
 
 **Caddy** (holt das Zertifikat selbst):
 

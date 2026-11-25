@@ -3,17 +3,6 @@
 #  N8 Crosslink – geführter Installer
 #  FRN · DMR · Zello Bridge im Die-N8schicht-Design (nur Python, ohne SvxLink)
 #  Debian 12/13, Ubuntu 22.04+, Raspberry Pi OS, DietPi (amd64 / arm64 / armhf)
-#
-#  Ohne Rückfragen aus einem Backup (Umzug, z. B. durch den Web-Installer des HobbyRadioPortals):
-#    N8X_RESTORE=/pfad/backup.n8xbak          verschlüsseltes Backup
-#    N8X_RESTORE_PASSWORD_FILE=/pfad/datei    Superadmin-Passwort des Backups (erste Zeile)
-#    N8X_WEB_PORT=8070                        Web-Port auf dem neuen Server (sonst der aus dem Backup)
-#    N8X_LOCAL_LINKS=1                        FRN- und DMR-Server auf 127.0.0.1 umstellen (laufen auf demselben Rechner)
-#    N8X_PORTAL_TOKEN_FILE=/pfad/datei        API-Token „HobbyRadioPortal“ anlegen und hierhin schreiben (600)
-#
-#  Ohne Rückfragen neu einrichten (z. B. Web-Installer des HobbyRadioPortals, „N8 Crosslink neu installieren“):
-#    N8X_SETUP_FILE=/pfad/setup.json          {"general": {...}, "frn": {...}, "dmr": {...}, "zello": {...}, "vocoder": {...},
-#                                             "admin_user": "n8schicht", "admin_password": "…"} – Felder wie im Adminportal
 # =============================================================================
 set -euo pipefail
 
@@ -217,11 +206,14 @@ sudo_rules() {   # sudo_rules DATEI [reboot] – schreibt die Freigaben nach DAT
                    *)             echo "$SVC_USER ALL=(root) NOPASSWD: $SC $a $unit" >> "$out" ;; esac
     done
     al=$(printf '"%s",' "$@"); al="[${al%,}]"
-    SUDO_JSON+="${sep}{\"unit\": \"$unit\", \"label\": \"$label\", \"actions\": $al}"; sep=", "
+    local hidden=false; [[ "$unit" == *-update.service ]] && hidden=true     # wird über „Updates“ gestartet, nicht in der Liste
+    SUDO_JSON+="${sep}{\"unit\": \"$unit\", \"label\": \"$label\", \"actions\": $al, \"hidden\": $hidden}"; sep=", "
   }
   echo "# N8 Crosslink – vom Installer erzeugt, nicht von Hand ändern (wird bei jedem Update neu geschrieben)" > "$out"
   echo "Defaults:$SVC_USER !requiretty" >> "$out"
-  add_unit n8crosslink.service "N8 Crosslink" restart
+  # eigene Dienste: aktivieren, deaktivieren, starten, stoppen, neu starten (Adminportal → System → Dienste)
+  add_unit n8crosslink.service "N8 Crosslink" start stop restart enable disable
+  add_unit n8crosslink-update.path "Update-Auslöser („Update jetzt“)" start stop restart enable disable
   add_unit n8crosslink-update.service "Update-Dienst" start
   for u in $(systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}' | grep -Ei '^(svxlink|mmdvm_bridge|analog_bridge|ambeserver|.*zello.*)\.service$' | grep -v n8crosslink | sort -u); do
     add_unit "$u" "${u%.service} (alt)" start stop restart enable disable
@@ -506,17 +498,7 @@ ARCH=$(dpkg --print-architecture 2>/dev/null || uname -m)
 info "System: ${PRETTY_NAME:-unbekannt} (${ARCH}) · N8 Crosslink ${APP_VERSION}"
 
 MODE="neu"
-UNATTENDED=0
-if [[ -n "${N8X_RESTORE:-}" ]]; then
-  UNATTENDED=1
-  [[ -f "$N8X_RESTORE" ]] || fail "Backup nicht gefunden: $N8X_RESTORE"
-  [[ -f "${N8X_RESTORE_PASSWORD_FILE:-}" ]] || fail "N8X_RESTORE_PASSWORD_FILE fehlt (Superadmin-Passwort des Backups)"
-  info "Umzug ohne Rückfragen aus $(basename "$N8X_RESTORE")"
-elif [[ -n "${N8X_SETUP_FILE:-}" ]]; then
-  [[ -f "$N8X_SETUP_FILE" ]] || fail "N8X_SETUP_FILE nicht gefunden: $N8X_SETUP_FILE"
-  MODE="neu"; UNATTENDED=2
-  info "Neueinrichtung ohne Rückfragen aus $(basename "$N8X_SETUP_FILE")"
-elif [[ -f "$DB" && "${N8X_UPDATE:-0}" == "1" ]]; then
+if [[ -f "$DB" && "${N8X_UPDATE:-0}" == "1" ]]; then
   MODE="update"
 elif [[ -f "$DB" ]]; then
   echo
@@ -564,40 +546,6 @@ runuser -u "$SVC_USER" -- "$APP_DIR/venv/bin/python" -c "import sys; sys.path.in
   || fail "libgsm/libopus konnten nicht geladen werden"
 ok "Abhängigkeiten installiert, GSM- und Opus-Codec geprüft"
 
-if (( UNATTENDED == 1 )); then
-  step 4 "Backup einspielen (Umzug)"
-  install -m 600 -o "$SVC_USER" -g "$SVC_USER" "$N8X_RESTORE" "$DATA_DIR/restore.n8xbak"
-  if head -n1 "$N8X_RESTORE_PASSWORD_FILE" | cli restore "$DATA_DIR/restore.n8xbak"; then
-    MODE="restored"; rm -f "$DATA_DIR/restore.n8xbak"
-  else
-    rm -f "$DATA_DIR/restore.n8xbak"; fail "Backup nicht eingespielt (Passwort falsch oder Datei beschädigt)"
-  fi
-  if [[ -n "${N8X_WEB_PORT:-}" ]]; then setcfg general web_port "$N8X_WEB_PORT"; ok "Web-Port $N8X_WEB_PORT"; fi
-  if [[ "${N8X_LOCAL_LINKS:-0}" == 1 ]]; then
-    setcfg frn server 127.0.0.1; setcfg dmr host 127.0.0.1
-    ok "FRN- und DMR-Server auf 127.0.0.1 umgestellt (laufen auf diesem Rechner)"
-  fi
-  ok "Backup eingespielt – alle Einstellungen, Benutzer und Daten übernommen"
-fi
-
-if [[ "$MODE" == "neu" ]] && (( UNATTENDED == 2 )); then
-  # ---------------------------------------------------------------- 4–8 aus N8X_SETUP_FILE
-  step 4 "Einstellungen aus $(basename "$N8X_SETUP_FILE")"
-  install -m 600 -o "$SVC_USER" -g "$SVC_USER" "$N8X_SETUP_FILE" "$DATA_DIR/.setup.json"
-  if OUT=$(cli apply-setup "$DATA_DIR/.setup.json" 2>&1); then
-    rm -f "$DATA_DIR/.setup.json"; ok "Einstellungen und Superadmin übernommen: $OUT"
-  else
-    rm -f "$DATA_DIR/.setup.json"; fail "$OUT"
-  fi
-  if [[ -n "${N8X_WEB_PORT:-}" ]]; then setcfg general web_port "$N8X_WEB_PORT"; ok "Web-Port $N8X_WEB_PORT"; fi
-  if [[ "${N8X_LOCAL_LINKS:-0}" == 1 ]]; then setcfg frn server 127.0.0.1; setcfg dmr host 127.0.0.1; ok "FRN- und DMR-Server auf 127.0.0.1"; fi
-  step 5 "–"; step 6 "–"; step 7 "–"
-  step 8 "Vocoder für DMR (AMBE+2)"
-  if cli show vocoder | grep -q '"vocoder_mode": "n8vocoder"'; then
-    build_vocoder || warn "Vocoder kann später unter Admin → 🎛️ Vocoder → „Vocoder bauen“ nachgeholt werden"
-  else info "Vocoder: $(cli show vocoder | grep -o '"vocoder_mode": "[a-z0-9]*"')"; fi
-  MODE="setup"
-fi
 
 if [[ "$MODE" == "neu" ]]; then
   echo
@@ -802,8 +750,6 @@ if [[ "$MODE" == "neu" ]]; then
     else warn "Zertifikat fehlgeschlagen – DNS/Port 80 prüfen, dann im Webinterface unter 🔒 Domains & HTTPS erneut"; fi
   fi
 fi
-
-# HobbyRadioPortal auf demselben Rechner: verwaltet ohne Token (ab 1.11.0) – nichts anzulegen
 
 echo
 echo "${G}${B}  ✔ N8 Crosslink ${APP_VERSION} ist installiert.${R}"

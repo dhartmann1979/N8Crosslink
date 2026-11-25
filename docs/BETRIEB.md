@@ -25,6 +25,16 @@ Hinweis, Updates-Seite und Fortschritt kommen aus dem **N8 Kit** und sehen in N8
 
 ![Updates](screenshots/admin-updates.png)
 
+## Dienste
+
+**⚙️ Admin → 🛠️ System → Dienste** zeigt schlank alle freigegebenen Dienste: Status (läuft / gestoppt / Fehler), **Autostart** als Schalter
+(aktivieren/deaktivieren beim Booten) und je nach Zustand **🔄 Neu starten** und **⏹ Stoppen** oder **▶ Starten**. Dabei sind
+`n8crosslink.service`, der Update-Auslöser `n8crosslink-update.path` und erkannte alte Dienste (svxlink, mmdvm_bridge, analog_bridge,
+ambeserver, Zello-Bridge). Stoppen oder Autostart aus fragt nach; wer N8 Crosslink selbst stoppt, startet es danach nur auf der Konsole wieder
+(`sudo systemctl start n8crosslink`).
+
+![Dienste](screenshots/admin-dienste.png)
+
 ## sudo – alles über das Webinterface
 
 Die Bridge läuft als eigener Benutzer **ohne** root-Rechte. Damit trotzdem alles im Webinterface geht, schreibt der Installer `/etc/sudoers.d/n8crosslink` mit **einzelnen, vollständigen Befehlen** (keine Shell; einziger Platzhalter ist `n8x-certs.sh *`, der Helfer prüft jede Eingabe selbst), z. B.
@@ -37,7 +47,7 @@ n8crosslink ALL=(root) NOPASSWD: /opt/n8crosslink/install.sh --fix-perms
 n8crosslink ALL=(root) NOPASSWD: /opt/n8crosslink/install.sh --check-perms --json
 ```
 
-Freigegeben werden: Neustart der Bridge, Bauen des N8schicht-Vocoders (`install.sh --build-vocoder`), Update-Dienst und die bei der Installation erkannten alten Dienste (Start/Stopp/Neustart/Autostart), Berechtigungsprüfung (`--check-perms --json`) und -korrektur (`--fix-perms`), Domains & HTTPS (`n8x-certs.sh`) und – nur wenn bei der Installation bestätigt – `systemctl reboot`. Die Datei wird vor dem Einspielen mit `visudo` geprüft und bei jedem Update neu erzeugt. Alles andere (Shell, andere Dienste) ist verboten.
+Freigegeben werden: für die eigenen Dienste `n8crosslink.service` und `n8crosslink-update.path` Starten, Stoppen, Neustarten, Autostart an/aus, Bauen des N8schicht-Vocoders (`install.sh --build-vocoder`), Update-Dienst und die bei der Installation erkannten alten Dienste (Start/Stopp/Neustart/Autostart), Berechtigungsprüfung (`--check-perms --json`) und -korrektur (`--fix-perms`), Domains & HTTPS (`n8x-certs.sh`) und – nur wenn bei der Installation bestätigt – `systemctl reboot`. Die Datei wird vor dem Einspielen mit `visudo` geprüft und bei jedem Update neu erzeugt. Alles andere (Shell, andere Dienste) ist verboten.
 
 **Sandbox des Dienstes:** `n8crosslink.service` läuft mit `ProtectSystem=full` – `/etc` und `/usr` sind für den Dienst schreibgeschützt, und das
 erbt auch alles, was er per sudo startet. Die root-Helfer (`install.sh --fix-perms/--check-perms/--build-vocoder`, `n8x-certs.sh`) erkennen das

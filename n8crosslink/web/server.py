@@ -22,9 +22,6 @@ from ..db import DEFAULTS, Database
 
 HERE = Path(__file__).parent
 COOKIE = "n8x_session"
-LOOPBACK = {"127.0.0.1", "::1", "localhost"}
-PROXY_HEADERS = ("x-forwarded-for", "x-real-ip", "forwarded", "x-forwarded-host", "x-forwarded-proto", "via",
-                 "cf-connecting-ip", "true-client-ip", "x-client-ip")
 RANGES = {"today": None, "24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400, "90d": 90 * 86400}
 
 
@@ -58,37 +55,12 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
     env = Environment(loader=FileSystemLoader(HERE / "templates"), autoescape=select_autoescape(["html"]))
 
     # ------------------------------------------------------------ Auth
-    # HobbyRadioPortal auf demselben Rechner (ohne Token, ab 1.11.0): nur diese Admin-Pfade – nie Benutzer, Backup, System, Updates,
-    # Aussehen. Als Portal gilt nur ein direkter Aufruf: Loopback-Absender und -Host, Kennung X-HobbyRadioPortal: 1 und **keine**
-    # Proxy-Kopfzeile (nginx/Caddy kommen auch von 127.0.0.1, setzen aber X-Forwarded-For). Abschalten: N8X_PORTAL_LOCAL=0.
-    PORTAL_PATHS = {"/api/admin/settings", "/api/admin/restart", "/api/admin/vocoder/params", "/api/admin/vocoder/options",
-                   "/api/admin/vocoder/preview", "/api/admin/vocoder-test", "/api/admin/announce/preview",
-                   "/api/admin/frn/request-password", "/api/admin/frn/errorlog", "/api/admin/events", "/api/admin/ids", "/api/admin/ids/update",
-                   "/api/admin/avatars/refresh", "/api/admin/serial-ports"}
-
-    def portal_local(request: Request) -> bool:
-        if os.environ.get("N8X_PORTAL_LOCAL", "1") == "0" or request.headers.get("x-hobbyradioportal") != "1":
-            return False
-        if (request.client.host if request.client else "") not in LOOPBACK or any(h in request.headers for h in PROXY_HEADERS):
-            return False
-        host = request.headers.get("host", "")
-        host = host[1:host.find("]")] if host.startswith("[") else host.rsplit(":", 1)[0]
-        return host in LOOPBACK
-
     def current_user(request: Request) -> str | None:
         u = db.session_user(request.cookies.get(COOKIE))
-        if u:
-            return u
-        if request.url.path in PORTAL_PATHS and portal_local(request):
-            who = re.sub(r"[^A-Za-z0-9._@-]", "", request.headers.get("x-portal-user", ""))[:40]
-            return "api:HobbyRadioPortal" + (f" ({who})" if who else "")    # „api:“ = Rechte wie früher ein Token
-        return None
+        return u or None
 
-    def require_human(request: Request) -> str:
-        u = require_admin(request)
-        if u.startswith("api:"):
-            raise HTTPException(403, "Nicht für das HobbyRadioPortal – bitte im Dashboard anmelden")
-        return u
+    def require_human(request: Request) -> str:      # nur angemeldete Menschen (früher: nicht das Portal) – heute wie require_admin
+        return require_admin(request)
 
     def require_admin(request: Request) -> str:
         u = current_user(request)
@@ -184,11 +156,11 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         return resp
 
     # ------------------------------------------------------------ öffentliche Daten
-    # Ohne Anmeldung keine IPs und Ports (public.scrub); angemeldete Admins und das Portal auf diesem Rechner sehen alles.
+    # Ohne Anmeldung keine IPs und Ports (public.scrub); angemeldete Admins sehen alles.
     from . import public
 
     def sees_all(request: Request) -> bool:
-        return bool(db.session_user(request.cookies.get(COOKIE))) or portal_local(request)
+        return bool(db.session_user(request.cookies.get(COOKIE)))
 
     @app.get("/api/state")
     async def state(request: Request) -> dict:
@@ -299,35 +271,6 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         restart = any(s in data for s in ("frn", "dmr", "zello", "vocoder"))
         return {"ok": True, "restart_required": restart}
 
-    # ---- Einstellungen als Beschreibung (für das HobbyRadioPortal und andere Dienste)
-    @app.get("/api/admin/settings")
-    async def settings_describe(request: Request, user: str = Depends(require_admin)) -> dict:
-        from ..settings_schema import describe
-        from ..vocoder import PROFILES
-        return {"sections": describe(db.load_config(), api=user.startswith("api:")), "version": __version__,
-                "vocoder_profiles": list(PROFILES)}
-
-    @app.put("/api/admin/settings")
-    async def settings_update(data: dict = Body(...), user: str = Depends(require_admin)) -> dict:
-        from ..settings_schema import SettingsError, describe, validate
-        api_user = user.startswith("api:")
-        try:
-            clean = validate(data.get("changes") or {}, api=api_user)
-        except SettingsError as e:
-            raise HTTPException(400, str(e)) from e
-        old = db.load_config()
-        changed = [f"{sec}.{k}" for sec, vals in clean.items() for k, v in vals.items() if old.get(sec, {}).get(k) != v]
-        for sec, vals in clean.items():
-            db.save_section(sec, vals)
-        new = db.load_config()
-        bridge.cfg["routes"].update(new["routes"])
-        bridge.cfg["general"].update({k: v for k, v in new["general"].items() if k not in ("web_host", "web_port")})
-        bridge.cfg["ids"].update(new["ids"])
-        bridge.router.notify()
-        restart = any(k.split(".")[0] in ("frn", "dmr", "zello", "vocoder") for k in changed)
-        if changed:
-            bridge.router.event("info", f"Einstellungen geändert von {user}: {', '.join(changed)[:200]}")
-        return {"changed": changed, "restart_required": restart, "sections": describe(new, api=api_user)}
 
     @app.post("/api/admin/restart")
     async def restart(_: str = Depends(require_admin)) -> dict:
@@ -347,7 +290,7 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         return {"ok": True}
 
     # ---- Systemsteuerung (sudo, nur freigegebene Befehle)
-    # ---- Domains & HTTPS (Let's Encrypt) – nur angemeldete Menschen, nie das Portal
+    # ---- Domains & HTTPS (Let's Encrypt) – nur angemeldete Admins
     def _resolve(domain: str) -> list[str]:
         import socket
         try:

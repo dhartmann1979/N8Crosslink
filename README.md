@@ -33,7 +33,7 @@ Alles läuft in **einem** Python-Dienst mit Live-Dashboard und Adminportal – i
 | 🔒 **Domains & HTTPS** | eigene Domains mit **Let's Encrypt** im Adminportal: nginx und certbot per Klick, Zertifikat holen, erneuern, entfernen, Ablauf im Blick, automatische Erneuerung – [mehr](docs/KONFIGURATION.md#-domains--https) |
 | 🔌 **Ports** | alle Ports an einer Stelle: Web-Adresse und Web-Port, HTTP-/HTTPS-Port von nginx, FRN-, DMR- (auch eigener UDP-Port), AMBEserver-Port – mit Richtung (ein/aus) und TCP/UDP für die Firewall – [mehr](docs/KONFIGURATION.md#-ports) |
 | 🎧 **Mithören** | Angemeldete Admins hören die aktive Durchsage direkt im Browser mit (aus jedem Netz) – Knopf oben im Menü, Lautstärke im Dropdown am kleinen Pfeil. In der Statusleiste stehen Sprecher und eine **segmentierte Pegelanzeige** mit Spitzenwert |
-| 💾 **Backup** | Alles als vollständig verschlüsselte Datei zum Download (AES-256-GCM). **Der Schlüssel ist das Superadmin-Passwort – im Passwortsafe aufbewahren!** Wiederherstellen im Webinterface, per CLI oder direkt im Installer – auch ohne Rückfragen. **📦 Umzug ins HobbyRadioPortal**: Backup im Web-Installer des Portals hochladen |
+| 💾 **Backup** | Alles als vollständig verschlüsselte Datei zum Download (AES-256-GCM). **Der Schlüssel ist das Superadmin-Passwort – im Passwortsafe aufbewahren!** Wiederherstellen im Webinterface, per CLI oder direkt im Installer. |
 | ♻️ **Neuanfang** | Zurücksetzen im Webinterface (Verlauf / Einstellungen / alles) und `uninstall.sh` mit „Daten behalten“ oder „komplett entfernen“, inkl. Wiedereinschalten der alten Dienste |
 | 📊 **Dashboard** | On-Air-Anzeige mit Pegel und Zeit, Netzkarten mit RX/TX – **LEDs: 🔴 Rot = Senden, 🟣 Magenta = Empfangen, 🟢 Grün = Dienst ok** –, Last Heard, FRN-Raumliste, Ereignisse, Statistik (Heute … 90 Tage) |
 | ⚙️ **Adminportal** | Alle Einstellungen in SQLite, Benutzerverwaltung, Bridge-/Dienst-Neustart, ID-Datenbank-Update, Export/Import |
@@ -119,7 +119,7 @@ Senden in die Netze:
 * [Technik & Protokolle](docs/TECHNIK.md)
 * [Betrieb: Watchdogs, Updates, sudo & Berechtigungen](docs/BETRIEB.md)
 * [Sicherheit, Sprache DE/EN & N8 Kit (gemeinsam mit HBlink4, adn-frn-server, N8-HotSpot)](docs/SICHERHEIT.md)
-* [Backup & Wiederherstellung](docs/BACKUP.md) – mit Umzug ins HobbyRadioPortal
+* [Backup & Wiederherstellung](docs/BACKUP.md)
 * [Deinstallation & von vorn beginnen](docs/DEINSTALLATION.md)
 * [Branding & Site-Icons](docs/BRANDING.md)
 * [Fehlersuche](docs/FEHLERSUCHE.md)

@@ -357,3 +357,11 @@ footer a { color: var(--text-dim); text-decoration: underline; text-decoration-c
 tr.perm-bad td { color: #ff6b61; }
 tr.perm-warn td { color: #ffd60a; }
 tr.perm-ok td:last-child { color: var(--text-dim); }
+
+/* Dienste (System) – schlank */
+.svc-tbl td { vertical-align: middle; }
+.svc-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; background: #8e8e93; vertical-align: 1px; }
+.svc-dot.ok { background: var(--led-ok, #30d158); box-shadow: 0 0 8px rgba(48,209,88,.6); }
+.svc-dot.off { background: #ff453a; }
+.svc-dot.warn { background: #ffd60a; }
+.svc-b { padding: 4px 10px; margin: 2px; min-width: 38px; }

@@ -41,36 +41,3 @@ sudo systemctl restart n8crosslink
 ```
 
 Beim Neuinstallieren fragt `install.sh` direkt nach einem Backup, und `uninstall.sh` bietet vorher eines an.
-
-## Umzug ins HobbyRadioPortal
-
-Ziehst du N8 Crosslink auf den Server des [HobbyRadioPortals](https://github.com/dhartmann1979/HobbyRadioPortal) um (dort laufen meist
-auch FRN-Server und HBlink4), ist dieses Backup das **Umzugspaket** (ab 1.9.0):
-
-1. Hier als Superadmin **⚙️ Admin → 💾 Backup & Neuanfang → Verschlüsseltes Backup erstellen** und die `.n8xbak`-Datei herunterladen.
-2. Im Web-Installer des Portals (`http://<neuer Server>/setup`) im Schritt **🔀 Crosslink** die Datei hochladen, das Superadmin-Passwort
-   eingeben und **🔍 Prüfen** – das Portal zeigt Version, Rechner, Datum und Zahlen aus dem Backup.
-3. *N8 Crosslink auf diesen Server umziehen* wählen; Haken **FRN- und DMR-Server über 127.0.0.1**, wenn beide auf den neuen Server
-   kommen. Beim Umzug holt der Root-Helfer des Portals N8 Crosslink von GitHub und ruft `install.sh` ohne Rückfragen auf:
-
-```bash
-N8X_RESTORE=/root/hrp-xl.…/backup.n8xbak N8X_RESTORE_PASSWORD_FILE=/root/hrp-xl.…/pw \
-N8X_WEB_PORT=8070 N8X_LOCAL_LINKS=1 N8X_PORTAL_TOKEN_FILE=/root/hrp-xl.…/token ./install.sh
-```
-
-4. Danach den **alten Crosslink abschalten**, sonst laufen zwei Bridges im selben Raum: `sudo systemctl disable --now n8crosslink`.
-
-Das Passwort liegt nur kurz in einer Datei (600, nur root bzw. der Dienst des Portals) und wird nach dem Umzug gelöscht, ebenso die
-hochgeladene Backupdatei. Diese Variablen gehen auch ohne Portal – z. B. für einen eigenen Umzug per Skript.
-
-### Wiederherstellen im Portal (auch später)
-
-Dasselbe gilt nicht nur für den ersten Umzug: Jede `.n8xbak` lässt sich jederzeit im Portal wieder einspielen – etwa nach einem
-Defekt oder auf einem neu aufgesetzten Portal-Server. Im Portal unter **⚙️ Admin → 💾 Backup & Restore → ♻️ Dienste aus ihren eigenen
-Backups wiederherstellen** (ab Portal 0.10.0) öffnet sich der Web-Installer; dort im Schritt **🔀 Crosslink** die Datei und das
-Superadmin-Passwort **zum Zeitpunkt des Backups** angeben. Zusammen mit dem FRN-Backup (`.frnbak` aus adn-frn-server) und der
-HBlink4-Sicherung (`backup-*.tar.gz` oder AutoBackup) kommt so der ganze Server aus seinen Backups zurück –
-siehe [Umzug → Aus Backups wiederherstellen](https://github.com/dhartmann1979/HobbyRadioPortal/blob/main/docs/UMZUG.md#aus-backups-wiederherstellen).
-
-Tipp: das Backup regelmäßig anlegen und **außerhalb** des Rechners aufheben (Passwortsafe fürs Passwort, Datei z. B. in der Cloud).
-

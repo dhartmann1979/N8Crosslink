@@ -120,8 +120,26 @@ async def main(port: int) -> None:
                               f"{_ago(3)} ERROR - Client [DL9XYZ, Gateway], DE/DE, Request CC - wrong FRN password - Hint: Perform an FRN password request and use the assigned FRN password !"])
     _el._get = lambda timeout: _j.dumps({"log": _demo_log})
     open(os.path.join(os.path.dirname(db.path), "system.json"), "w").write(_j.dumps({"sudo": True, "systemctl": "/usr/bin/systemctl", "reboot": True, "fix_perms": True, "build_vocoder": True, "certs": True, "check_perms": True, "units": [
-        {"unit": "n8crosslink.service", "label": "N8 Crosslink", "actions": ["restart"]},
+        {"unit": "n8crosslink.service", "label": "N8 Crosslink", "actions": ["start", "stop", "restart", "enable", "disable"]},
+        {"unit": "n8crosslink-update.path", "label": "Update-Auslöser („Update jetzt“)", "actions": ["start", "stop", "restart", "enable", "disable"]},
+        {"unit": "n8crosslink-update.service", "label": "Update-Dienst", "actions": ["start"], "hidden": True},
         {"unit": "svxlink.service", "label": "svxlink (alt)", "actions": ["start", "stop", "restart", "enable", "disable"]}]}))
+    # Demo ohne systemd: Zustände der Dienste vorspielen (Start/Stopp/Autostart wirken im Speicher)
+    _units = {"n8crosslink.service": ["active", "enabled"], "n8crosslink-update.path": ["active", "enabled"],
+              "n8crosslink-update.service": ["inactive", "static"], "svxlink.service": ["inactive", "disabled"]}
+
+    async def _fake_run(*cmd, timeout=60):
+        if len(cmd) >= 3 and cmd[-2] in ("is-active", "is-enabled"):
+            st = _units.get(cmd[-1], ["inactive", "disabled"])
+            return 0, st[0] if cmd[-2] == "is-active" else st[1]
+        if cmd and cmd[0] == "sudo":
+            act, unit = cmd[-2], cmd[-1]
+            if unit in _units:
+                _units[unit][0] = {"start": "active", "restart": "active", "stop": "inactive"}.get(act, _units[unit][0])
+                _units[unit][1] = {"enable": "enabled", "disable": "disabled"}.get(act, _units[unit][1])
+            return 0, ""
+        return 1, ""
+    bridge.system._run = _fake_run
     server = uvicorn.Server(uvicorn.Config(create_app(bridge), host="127.0.0.1", port=port, log_level="warning"))
 
     async def scenario() -> None:

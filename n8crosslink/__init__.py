@@ -1,2 +1,2 @@
 """N8 Crosslink – FRN · DMR · Zello Bridge im Die-N8schicht-Design."""
-__version__ = "1.16.0"
+__version__ = "1.17.0"

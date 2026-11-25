@@ -41,14 +41,6 @@ def test_domain_endpoints(monkeypatch):
     assert c.post("/api/admin/domains/Bad_Domain/renew", headers=H).status_code == 400
 
 
-def test_not_for_the_portal():
-    from fastapi.testclient import TestClient
-    from n8crosslink.web.server import create_app
-    _, bridge = make_client()
-    local = TestClient(create_app(bridge), base_url="http://127.0.0.1:8070", client=("127.0.0.1", 5000))
-    assert local.get("/api/admin/domains", headers={"X-HobbyRadioPortal": "1"}).status_code == 401
-
-
 @pytest.mark.skipif(os.geteuid() != 0, reason="der Helfer läuft nur als root")
 def test_helper_validates_input():
     sh = str(ROOT / "n8x-certs.sh")

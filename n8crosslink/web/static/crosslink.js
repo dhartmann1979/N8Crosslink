@@ -194,8 +194,8 @@ function renderNetCards() {
     else if (p.rx) now = '🟡 Empfang gesperrt (Bridge belegt)';
     else now = `<span style="color:var(--text-dim)">${esc(p.enabled ? (p.online ? 'bereit' : (p.state || 'offline')) : 'deaktiviert')}</span>`;
     const meta = [];
-    if (k === 'frn') { meta.push(esc(p.server || '')); if (p.access) meta.push('Zugang ' + esc(p.access)); }
-    if (k === 'dmr') { meta.push(esc(p.server || '')); meta.push(`Peer ${esc(p.peer_id)}`); meta.push(`RX TG ${esc(p.tg_rx)}${p.tg_rx_name ? ' ' + esc(p.tg_rx_name) : ''} · TX TG ${esc(p.tg_tx)}${p.tg_tx_name ? ' ' + esc(p.tg_tx_name) : ''} · TS${esc(p.slot)}`); }
+    if (k === 'frn') { if (p.server) meta.push(esc(p.server)); if (p.access) meta.push('Zugang ' + esc(p.access)); }
+    if (k === 'dmr') { if (p.server) meta.push(esc(p.server)); meta.push(`Peer ${esc(p.peer_id)}`); meta.push(`RX TG ${esc(p.tg_rx)}${p.tg_rx_name ? ' ' + esc(p.tg_rx_name) : ''} · TX TG ${esc(p.tg_tx)}${p.tg_tx_name ? ' ' + esc(p.tg_tx_name) : ''} · TS${esc(p.slot)}`); }
     if (p.watchdog?.reconnects) meta.push(`🔁 ${p.watchdog.reconnects}`);
     if (k === 'zello') { meta.push(esc(p.username || '')); }
     const c = p.counters || {};
@@ -345,7 +345,10 @@ $('#lOk').addEventListener('click', async () => {
 });
 $('#setupBtn').addEventListener('click', () => openLogin('setup'));
 async function loadMe() {
+  const before = S.me ? !!S.me.user : null;
   S.me = await api('/api/me');
+  // Ohne Anmeldung liefert der Server keine IPs/Ports – nach An- oder Abmelden Live-Verbindung und Kopf neu laden
+  if (before !== null && before !== !!S.me.user) { if (ws) ws.close(); loadInfo(); loadEvents(); }
   $('#setupBanner').hidden = true;
   $('#pwBanner').hidden = !S.me.default_password;
   $('#tabAdminBtn').hidden = !S.me.user;

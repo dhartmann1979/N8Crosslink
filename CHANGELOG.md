@@ -2,6 +2,24 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.16.0] – 2026-11-25
+
+**🙈 Ohne Anmeldung sind keine IP-Adressen und Ports mehr sichtbar.**
+
+### 🔒 Öffentliche Ansicht
+- Besucher ohne Anmeldung bekommen alle Live-Daten bereinigt – `/api/state`, `/api/events`, `/api/lastheard`, `/api/info`, die Startseite und
+  die Live-Verbindung `/ws`:
+  - Adressfelder fallen weg (`server` von FRN/DMR/Zello, `host`, `ambeserver_host`, `usb_device`, `web_host`/`web_port` …) – Netzkarten und
+    der Reiter *Netze* zeigen dann keine Server-Zeile.
+  - Texte werden bereinigt: IPv4/IPv6 → `•••`, `host:port` → `host`, `Port 8080 und 443` → `Port •••`, `web_port=8070` → `web_port=•••`,
+    `ws://127.0.0.1:8799/ws` → `ws://•••`. Hostnamen ohne Port, Versionsnummern, Uhrzeiten, Frequenzen, Talkgroups und normale Links bleiben.
+    Das betrifft z. B. „DMR verbunden mit 192.168.79.204 …“ und „FRN: Verbindung zu …:10024 fehlgeschlagen“ im öffentlichen Ereignisprotokoll.
+  - Auch der Servername in der Kopfzeile, falls dort eine IP oder ein Port steht.
+- Angemeldete Admins sehen alles wie bisher; nach An- oder Abmelden baut die Seite die Live-Verbindung neu auf, damit sofort die passende
+  Ansicht kommt. Das HobbyRadioPortal auf demselben Rechner bekommt weiter die vollständigen Daten.
+- Neues Modul `n8crosslink/web/public.py`; Tests `tests/test_public_view.py` (Regeln, anonym ohne Adressen auch über `/ws`, angemeldet alles,
+  Servername). Doku: SICHERHEIT.md.
+
 ## [1.15.0] – 2026-11-25
 
 **📋 Öffentliches FRN-Fehlerprotokoll eingebunden – der Grund für abgelehnte FRN-Anmeldungen steht jetzt direkt im Adminportal.**

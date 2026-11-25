@@ -40,6 +40,21 @@ Rufzeichen, Namen und Orte kommen von FRN-Clients, aus DMR (ID-Liste, Talker Ali
 
 Sitzungs-Cookie `HttpOnly`/`SameSite`; der Standard-Login `n8schicht / n8schicht` wird angemahnt, bis er geändert ist. Mithören läuft über einen eigenen WebSocket, der nur angemeldete Admins annimmt.
 
+## Ohne Anmeldung keine IPs und Ports (ab 1.16.0)
+
+Die Live-Seite ist öffentlich – Serveradressen, IP-Adressen und Ports aber nicht. Für Besucher ohne Anmeldung entfernt N8 Crosslink sie aus
+allem, was die Seite lädt (`/api/state`, `/api/events`, `/api/lastheard`, `/api/info`, die Startseite und die Live-Verbindung `/ws`):
+
+* Felder mit Adressen fallen ganz weg (`server`, `host`, `ambeserver_host`, `usb_device`, `web_port` …) – die Netzkarten und *Netze* zeigen
+  dann z. B. bei FRN/DMR/Zello keine Server-Zeile.
+* In Texten (Status, Ereignisse wie „DMR verbunden mit 192.168.79.204 …“, „Verbindung zu frn.example.org:10024 fehlgeschlagen“) werden
+  IPv4/IPv6 durch `•••` ersetzt, Ports entfernt bzw. maskiert (`host:port` → `host`, `Port 8080` → `Port •••`, `web_port=8070` →
+  `web_port=•••`, `ws://127.0.0.1:8799/ws` → `ws://•••`). Hostnamen ohne Port und normale Links bleiben lesbar.
+* Auch der Servername im Kopf wird so bereinigt, falls dort eine IP oder ein Port steht.
+
+Angemeldete Admins sehen alles; nach dem An- oder Abmelden baut die Seite die Live-Verbindung neu auf. Das HobbyRadioPortal auf demselben
+Rechner bekommt die vollständigen Daten (es entscheidet selbst, was es öffentlich zeigt).
+
 ## HobbyRadioPortal auf diesem Rechner (ohne Token)
 
 - Seit 1.11.0 gibt es **keine API-Tokens** mehr (die Tabelle `api_tokens` wird beim Start gelöscht, `cli api-token` gibt es nicht mehr).

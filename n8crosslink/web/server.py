@@ -105,10 +105,14 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         return u
 
     @app.get("/", response_class=HTMLResponse)
-    async def index() -> str:
+    async def index(request: Request) -> str:
+        from .public import text as _public_text
         g = bridge.cfg["general"]
+        sn = g.get("server_name", "") or ""
+        if not db.session_user(request.cookies.get(COOKIE)):
+            sn = _public_text(sn)          # ohne Anmeldung keine IPs/Ports, auch nicht im Servernamen
         return env.get_template("index.html").render(title=g.get("title", "N8 Crosslink"), nets=nets_label(db.load_config()),
-                                                     server_name=g.get("server_name", ""), version=__version__,
+                                                     server_name=sn, version=__version__,
                                                      theme=_theme(g.get("theme")))
 
     # ------------------------------------------------------------ N8 Theme 2 (gleiche Farbtechnik wie die anderen N8-Seiten)
@@ -180,23 +184,32 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         return resp
 
     # ------------------------------------------------------------ öffentliche Daten
+    # Ohne Anmeldung keine IPs und Ports (public.scrub); angemeldete Admins und das Portal auf diesem Rechner sehen alles.
+    from . import public
+
+    def sees_all(request: Request) -> bool:
+        return bool(db.session_user(request.cookies.get(COOKIE))) or portal_local(request)
+
     @app.get("/api/state")
-    async def state() -> dict:
-        return bridge.router.snapshot()
+    async def state(request: Request) -> dict:
+        snap = bridge.router.snapshot()
+        return snap if sees_all(request) else public.scrub(snap)
 
     @app.get("/api/lastheard")
-    async def lastheard(limit: int = 50) -> list:
-        return db.lh_recent(min(max(limit, 1), 500))
+    async def lastheard(request: Request, limit: int = 50) -> list:
+        rows = db.lh_recent(min(max(limit, 1), 500))
+        return rows if sees_all(request) else public.scrub(rows)
 
     @app.get("/api/stats")
     async def stats(range: str = "today") -> dict:  # noqa: A002
         return db.stats(_since(range))
 
     @app.get("/api/info")
-    async def info() -> dict:
+    async def info(request: Request) -> dict:
         g = bridge.cfg["general"]
         cfg = db.load_config()
-        return {"title": g.get("title"), "server_name": g.get("server_name"), "announcement": g.get("announcement"),
+        sn = g.get("server_name") or ""
+        return {"title": g.get("title"), "server_name": sn if sees_all(request) else public.text(sn), "announcement": g.get("announcement"),
                 "nets": [k for k, _ in NET_LABELS if (cfg.get(k) or {}).get("enabled")], "nets_label": nets_label(cfg),
                 "links": g.get("links", []), "version": __version__, "routes": bridge.cfg["routes"]}
 
@@ -211,19 +224,23 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         return Response(data, media_type=mime or "image/png", headers={"Cache-Control": "public, max-age=3600"})
 
     @app.get("/api/events")
-    async def public_events(limit: int = 20) -> list:
-        return db.events(min(max(limit, 1), 30))
+    async def public_events(request: Request, limit: int = 20) -> list:
+        ev = db.events(min(max(limit, 1), 30))
+        return ev if sees_all(request) else public.scrub(ev)
 
     @app.websocket("/ws")
     async def ws(sock: WebSocket) -> None:
+        # angemeldet? – sonst ohne IPs und Ports. Nach An-/Abmelden baut die Seite die Verbindung neu auf.
+        full = bool(db.session_user(sock.cookies.get(COOKIE)))
+        view = (lambda m: m) if full else public.scrub
         await sock.accept()
         q: asyncio.Queue = asyncio.Queue()
         bridge.router.listeners.add(q)
         try:
-            await sock.send_text(json.dumps(bridge.router.snapshot()))
+            await sock.send_text(json.dumps(view(bridge.router.snapshot()), default=str))
             while True:
                 msg = await q.get()
-                await sock.send_text(json.dumps(msg, default=str))
+                await sock.send_text(json.dumps(view(msg), default=str))
         except (WebSocketDisconnect, RuntimeError):
             pass
         finally:

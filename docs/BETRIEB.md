@@ -53,6 +53,10 @@ Seit **1.19.0** wird jedes unerwartete Ende festgehalten – in allen N8-Systeme
 (7 Tage, als Filter). Neue Befunde erscheinen **direkt nach der Anmeldung als Hinweisfenster** und als roter Zähler im Menü, bis sie als
 gelesen markiert sind. Konsole: `sudo /opt/n8crosslink/scripts/n8-admin.sh crashes`.
 
+**Bereinigen:** In jedem aufgeklappten Befund löscht **🗑 Diesen Befund löschen** ihn samt Protokoll, unten **🗑 Alle löschen**
+(mit Rückfrage) alle – ist oben nach einem Dienst gefiltert, heißt der Knopf **🗑 Angezeigte löschen** und löscht nur diese.
+Auf der Konsole: `sudo …/scripts/n8-admin.sh crashes-clear`. Die laufende Faulthandler-Datei (`crash/fault-*.log`) bleibt.
+
 Dateien: `data/crashes.jsonl` (eine Zeile je Befund, die letzten 300), `data/crash/<id>.log`, `data/crash/fault-n8crosslink.service.log`, `data/crash/ack.json`
 (gelesen), `data/crashwatch.json` (überwachte Dienste). Eingerichtet von Installer, Update und `install.sh --fix-perms`
 (von Hand: `sudo /opt/n8crosslink/scripts/n8-admin.sh setup-crashwatch`).

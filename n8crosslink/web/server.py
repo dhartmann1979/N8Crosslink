@@ -530,6 +530,11 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         ids = data.get("ids") if isinstance(data.get("ids"), list) else None
         return await asyncio.to_thread(_ka().crash_ack, [str(i) for i in ids or []][:500], bool(data.get("all")))
 
+    @app.post("/api/admin/crashes/delete")
+    async def crashes_delete(data: dict = Body(...), _: str = Depends(require_admin)) -> dict:
+        ids = data.get("ids") if isinstance(data.get("ids"), list) else None
+        return await asyncio.to_thread(_ka().crash_delete, [str(i) for i in ids or []][:500], bool(data.get("all")))
+
     @app.get("/api/n8/health")
     async def n8_health(request: Request) -> dict:
         """Für den Keep-Alive: Zustand jedes Netzes – nur direkt von diesem Rechner, nie über einen Proxy."""

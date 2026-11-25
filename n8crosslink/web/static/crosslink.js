@@ -452,6 +452,7 @@ const SCHEMA = {
   backup: { title: '💾 Backup & Neuanfang', custom: renderBackup },
   users: { title: '👥 Benutzer', custom: () => accessView('users') },
   sessions: { title: '🔑 Sitzungen', custom: () => accessView('sessions') },
+  audit: { title: '📜 Protokoll', custom: () => accessView('audit') },
   ports: { title: '🔌 Ports', custom: renderPorts },
   domains: { title: '🔒 Domains & HTTPS', custom: renderDomains },
   system: { title: '🛠️ Bridge & Ereignisse', custom: renderSystem },
@@ -462,7 +463,7 @@ const SCHEMA = {
   'sys-crashes': { title: '💥 Abstürze', custom: () => sysView('crashes') },
 };
 // Admin-Menü: derselbe Baum wie in allen N8-Systemen (N8 Kit) – Betrieb · Benutzer & Zugang · Darstellung · Netz & Domains · System
-const ADMIN_GROUPS = [['betrieb', ['general', 'routes', 'frn', 'dmr', 'zello', 'vocoder', 'ids']], ['zugang', ['users', 'sessions']], ['darstellung', ['appearance']],
+const ADMIN_GROUPS = [['betrieb', ['general', 'routes', 'frn', 'dmr', 'zello', 'vocoder', 'ids']], ['zugang', ['users', 'sessions', 'audit']], ['darstellung', ['appearance']],
   ['netz', ['ports', 'domains']], ['system', ['system', 'sys-update', 'sys-services', 'sys-perms', 'sys-keepalive', 'sys-crashes', 'backup']]];
 const ADMIN_OLD = { update: 'sys-update' };
 // System → Update, Dienste, Berechtigungen & sudo, Keep-Alive: die N8-Kit-Ansichten, in allen N8-Systemen gleich

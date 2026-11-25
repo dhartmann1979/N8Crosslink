@@ -146,7 +146,9 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         user, pw = str(data.get("username", "")), str(data.get("password", ""))
         await asyncio.sleep(0.3)  # Bremse gegen Durchprobieren
         if not db.check_login(user, pw):
+            db.event("warn", f"Anmeldung fehlgeschlagen: {user[:40]} ({_client_ip(request)})")
             raise HTTPException(401, "Benutzername oder Passwort falsch")
+        db.event("info", f"Anmeldung: {user} ({_client_ip(request)})")
         resp = JSONResponse({"ok": True, "user": user})
         resp.set_cookie(COOKIE, db.new_session(user, ip=_client_ip(request), user_agent=request.headers.get("user-agent", "")),
                         httponly=True, samesite="lax", max_age=12 * 3600)
@@ -291,6 +293,8 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
                 ok, _out = await bridge.system.unit_action("n8crosslink.service", "restart")
                 if ok:
                     return
+            from ..n8_crash import mark_planned
+            mark_planned(os.path.dirname(os.path.abspath(db.path)), "n8crosslink.service", "Neustart aus dem Webinterface")
             os._exit(3)  # Fallback: systemd startet den Dienst neu (Restart=always)
         asyncio.create_task(_go())
         return {"ok": True}
@@ -847,6 +851,22 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         db.delete_user(name)
         bridge.router.event("info", f"Benutzer {name} gelöscht durch {me_}")
         return {"ok": True}
+
+    @app.get("/api/admin/audit")
+    async def audit_get(_: str = Depends(require_admin)) -> dict:
+        """📜 Protokoll: Anmeldungen und Änderungen im Adminbereich (aus den Ereignissen der Bridge)."""
+        import re as _re
+        rx = _re.compile(r"^(Anmeldung|Benutzer |Sitzung |System: |Einstellungen|Backup|Wiederherstell|Zurückgesetzt|Update)")
+        out = []
+        for e in db.events(1000):
+            if rx.match(e["text"]):
+                m = _re.search(r"durch (\S+)", e["text"]) or _re.search(r"Anmeldung(?: fehlgeschlagen)?: (\S+)", e["text"])
+                ip = _re.search(r"\(([0-9a-fA-F:.]+)\)$", e["text"])
+                out.append({"ts": e["ts"], "action": e["text"].split(":")[0].split(" ")[0], "username": m.group(1) if m else "",
+                            "detail": e["text"], "ip": ip.group(1) if ip else ""})
+            if len(out) >= 200:
+                break
+        return {"audit": out}
 
     @app.get("/api/admin/sessions")
     async def sessions_get(request: Request, _: str = Depends(require_admin)) -> dict:

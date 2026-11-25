@@ -2,6 +2,18 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.20.1] – 2026-11-25
+
+### 👥 Benutzer & Zugang komplett wie in HBlink4
+- Neu **📜 Protokoll** unter *Benutzer & Zugang*: Anmeldungen (auch fehlgeschlagene, mit IP) und jede Änderung an Benutzern,
+  Sitzungen und Diensten – wie in allen N8-Systemen (👥 Benutzer · 🔑 Sitzungen · 📜 Protokoll). Adresse `GET /api/admin/audit`.
+- Gemeinsame Ansicht verbessert (N8 Kit 1.4): zusätzliche Spalten und Knöpfe je System (z. B. Beiträge und ✍️ Profil im Portal),
+  Vorgabe-Rolle beim Anlegen, „Ports speichern“ nur wenn etwas änderbar ist.
+
+### 🛡️ Absturz-Wächter: geplante Selbst-Neustarts
+- Beendet sich ein Dienst absichtlich selbst (Neustart-Knopf, HTTPS umschalten, Neustart nach Update), meldet er das vorher
+  (`n8_crash.mark_planned`) – der Absturz-Wächter hält das nicht mehr als Absturz fest. Gilt in allen N8-Systemen.
+
 ## [1.20.0] – 2026-11-25
 
 ### 👥 Benutzer & Zugang wie in HBlink4-FreeRadioID – in allen N8-Systemen gleich

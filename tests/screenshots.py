@@ -45,6 +45,8 @@ with sync_playwright() as p:
     page.fill("#lPass", "demo12345")
     page.click("#lOk")
     time.sleep(1.5)
+    page.screenshot(path=f"{OUT}/absturz-hinweis.png") if page.query_selector(".n8-crash-ov") else None
+    page.evaluate("document.querySelectorAll('.n8-crash-ov').forEach(e => e.remove())")
     page.click("button[data-tab=live]")
     time.sleep(1)
     page.screenshot(path=f"{OUT}/banner-update-passwort.png", clip={"x": 0, "y": 0, "width": 1440, "height": 330})
@@ -60,11 +62,11 @@ with sync_playwright() as p:
     for sec, name in [("vocoder", "admin-vocoder"), ("routes", "admin-routing"), ("dmr", "admin-dmr"),
                       ("frn", "admin-frn"), ("zello", "admin-zello"), ("ids", "admin-idlisten-avatare"),
                       ("appearance", "admin-aussehen"), ("update", "admin-updates"), ("backup", "admin-backup"), ("system", "admin-system")]:
-        page.click(f"#adminNav button[data-s={sec}]")
+        page.evaluate(f"S.adminSec='{sec}'; loadAdmin()")
         time.sleep(0.8)
         page.screenshot(path=f"{OUT}/{name}.png", full_page=True)
     # Vocoder: Klang-Popup und Probehören
-    page.click("#adminNav button[data-s=vocoder]")
+    page.evaluate("S.adminSec='vocoder'; loadAdmin()")
     time.sleep(0.8)
     page.click("#vocTuneBtn")
     time.sleep(1.2)
@@ -78,7 +80,7 @@ with sync_playwright() as p:
     page.click("#vpClose")
     time.sleep(0.8)
     # FRN: Passwort anfordern -> Status-Popup
-    page.click("#adminNav button[data-s=frn]")
+    page.evaluate("S.adminSec='frn'; loadAdmin()")
     time.sleep(0.8)
     page.click("#frnPwBtn")
     time.sleep(2)

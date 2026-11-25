@@ -2,6 +2,34 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.22.0] – 2026-11-25
+
+### 📻 Live-Ansicht neu: OnAir wie ein Funkgerät
+- **OnAir-Balken als Funkgerät-Display:** großer Avatar, Name in Display-Schrift, Route als Abzeichen (Quelle → Ziele), Details
+  (Raum/TG, Ort, Land, DMR-ID, Band), **RX/TX-Lampen** und Laufzeit als Digitalanzeige.
+- **Vier Instrumente darunter:**
+  - **Pegel:** 30-Segment-Anzeige −60 … 0 dBFS mit Spitzenwert, Spitze und Durchschnitt des Durchgangs;
+  - **Pegelverlauf:** Live-Grafik der letzten 30 s in der Farbe des Netzes (nach dem Durchgang blass stehen gelassen), Ø-Länge je Durchgang;
+  - **Vocoder:** Qualitätsring in % (grün/gelb/rot) – für den laufenden Durchgang, wenn DMR beteiligt ist, sonst gesamt –, Rahmen
+    Enc/Dec, Fehler, Neustarts, spät/Timeouts;
+  - **Heute:** Balkengrafik der Durchgänge je Stunde (aktuelle Stunde hervorgehoben), Sendezeit, Stationen, Durchgänge je Netz.
+- **Netz-Karten kompakter und symmetrisch:** passen sich der Breite an (gleich breite Spalten), jede Karte mit **Logo der Plattform** – das
+  Icon-Set des verbundenen Servers (FRN-Server, DMR-Server, zello.com), größer (46 px); Status als Punkt, eine Zeile Details, kleine
+  Routen-Abzeichen. Neu als vierte Karte: **Vocoder** mit eigenem Logo, Qualität, Enc/Dec und Art.
+- Neu `neticons.py` + `GET /api/neticon/{frn|dmr|zello}`: holt das größte Icon des Servers (`<link rel=icon|apple-touch-icon>`,
+  sonst übliche Pfade), nur echte Bilder bis 512 kB, SVG ohne Skript, keine IP-Adressen; Zwischenspeicher im Datenordner, täglich erneuert.
+  Logos bleiben beim Aktualisieren stehen (kein Flackern).
+- Doku-Screenshots neu (Skript `tests/screenshots.py` an das Baum-Menü angepasst).
+
+### 🔤 Schriftauswahl mit Vorschau – in allen N8-Systemen (N8 Theme 2.1)
+- Unter *Darstellung → 🎨 Aussehen* neue **Schriftauswahl mit Vorschau** (Rufzeichen, TG, Frequenz, Umlaute, Ziffern in jeder Schrift):
+  **IBM Plex Sans** (neuer Standard, technisch und sehr gut lesbar), Inter, Barlow, Exo 2, Rajdhani oder die Systemschrift. Ein Klick wirkt
+  sofort, gespeichert wird mit dem Aussehen.
+- Zahlen, Anzeigen und Code stehen jetzt überall in **JetBrains Mono** (`--n8-mono`, auch `--mono`).
+- Alle Schriften **selbst gehostet** (`fonts/` neben `n8-theme.js`, Fontsource 5.3.0, Schnitte 400/600/700, Latin + Latin-Extended, SIL OFL 1.1,
+  Lizenz je Ordner) – keine Anfrage an Google Fonts oder andere fremde Server; die Sicherheitsregeln (`font-src 'self'`) bleiben unverändert.
+- Gemeinsame Dateien `n8-theme.js`/`n8-theme.css` (N8 Theme 2.1) und die Prüfung des Themes um `font` erweitert; Doku um „Schrift“ ergänzt.
+
 ## [1.21.1] – 2026-11-25
 
 ### 📋 FRN-Fehlerprotokoll: Erklärung für „unknown owner“

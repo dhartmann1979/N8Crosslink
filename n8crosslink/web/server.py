@@ -946,6 +946,7 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
 
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 _PRESETS = ("n8", "ocean", "aurora", "ember", "violet", "graphite", "daylight")
+_FONTS = ("plex", "inter", "barlow", "exo2", "rajdhani", "system")      # N8 Theme 2.1 (n8-theme.js)
 
 
 def _theme(t) -> dict:  # noqa: ANN001
@@ -963,6 +964,7 @@ def _theme(t) -> dict:  # noqa: ANN001
             return d
     out.update(glow=num("glow", 0, 150, 100), glass=num("glass", 0, 100, 50), radius=num("radius", 0, 28, 22),
                blur=t.get("blur") not in (False, "false", 0))
+    out["font"] = t.get("font") if t.get("font") in _FONTS else "plex"
     return out
 
 

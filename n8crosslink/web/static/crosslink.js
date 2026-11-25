@@ -284,9 +284,9 @@ function routeChips(k) {
 }
 
 function netLogo(k, icon) {
-  const img = k === 'voc' ? '<img src="/static/n8crosslink-icon.svg" alt="" onerror="this.remove()">'
-    : `<img src="/api/neticon/${k}?d=${AVV}" alt="" loading="lazy" onerror="this.remove()">`;
-  return `<span class="nc-logo">${icon}${img}</span>`;
+  const img = k === 'voc' ? '<img src="/static/n8crosslink-icon.svg" alt="" onload="this.classList.add(\'ok\')" onerror="this.remove()">'
+    : `<img src="/api/neticon/${k}?d=${AVV}" alt="" onload="this.classList.add('ok')" onerror="this.remove()">`;
+  return `<span class="nc-logo" data-k="${k}">${icon}${img}</span>`;
 }
 function renderNetCards() {
   const ports = S.state?.ports || {}, act = S.state?.active;
@@ -324,7 +324,10 @@ function renderNetCards() {
       <div class="nc-meta"><span>Qualität ${q.q == null ? '–' : q.q.toFixed(1) + ' %'}</span><span>·</span><span>Enc ${v.enc || 0} · Dec ${v.dec || 0}</span>${q.bad ? `<span>·</span><span>Fehler ${q.bad}</span>` : ''}</div>
       <div class="nc-foot"><div class="nc-routes"><span class="badge dim">${esc(v.mode === 'n8vocoder' ? 'Software' : v.mode === 'usb' ? 'USB-Stick' : v.mode)}</span>${v.version ? `<span class="badge dim">${esc(String(v.version).split(' (')[0])}</span>` : ''}</div></div></div>`);
   }
+  // Logos bleiben stehen (kein Neuladen/Flackern bei jeder Statusmeldung)
+  const keep = {}; $$('#netGrid .nc-logo[data-k]').forEach(el => { keep[el.dataset.k] = el; });
   $('#netGrid').innerHTML = cards.join('');
+  $$('#netGrid .nc-logo[data-k]').forEach(el => { const o = keep[el.dataset.k]; if (o) el.replaceWith(o); });
 }
 
 function renderRoom() {

@@ -409,7 +409,8 @@ tr.perm-ok td:last-child { color: var(--text-dim); }
 .nc-head { gap: 10px; }
 .nc-logo { width: 46px; height: 46px; border-radius: 13px; flex: none; position: relative; overflow: hidden; display: grid; place-items: center; font-size: 24px;
   background: linear-gradient(135deg, color-mix(in srgb, var(--col) 55%, transparent), rgba(255,255,255,.06)); border: 1px solid rgba(255,255,255,.14); }
-.nc-logo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; padding: 5px; background: rgba(255,255,255,.92); border-radius: inherit; }
+.nc-logo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; padding: 5px; border-radius: inherit; opacity: 0; }
+.nc-logo img.ok { opacity: 1; background: rgba(255,255,255,.94); }
 .net-card .nc-title { font-size: 15px; display: flex; align-items: center; gap: 6px; }
 .nc-dot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; flex: none; }
 .nc-dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); } .nc-dot.off { background: var(--red); } .nc-dot.warn { background: var(--amber); }

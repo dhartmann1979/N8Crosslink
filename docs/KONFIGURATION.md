@@ -5,7 +5,7 @@ Anmelden über **🔐 Login** oben rechts – Standard **n8schicht / n8schicht**
 Seit **1.18.0** steht links ein **Baum-Menü** – dasselbe wie in HobbyRadioPortal, ADN-FRN-Server, HBlink4-FreeRadioID und N8 Hotspot:
 **📡 Betrieb** (Allgemein, Routing, FRN, DMR, Zello, Vocoder, ID-Listen & Avatare) · **👥 Benutzer & Zugang** (Benutzer) ·
 **🎨 Darstellung** (Aussehen) · **🌐 Netz & Domains** (Ports, Domains & HTTPS) · **🖥️ System** (Bridge & Ereignisse, Update, Dienste,
-Berechtigungen & sudo, Keep-Alive, Backup & Neuanfang). Auf dem Handy wird es zu einer aufklappbaren Leiste. Alle Werte liegen in SQLite (`/opt/n8crosslink/data/crosslink.db`); Passwörter werden nie im Klartext angezeigt (Feld leer lassen = unverändert).
+Berechtigungen & sudo, Keep-Alive, Backup & Neuanfang). Alle Gruppen sind anfangs zugeklappt – offen ist nur die Gruppe der gewählten Seite. Auf dem Handy wird das Menü zu einer aufklappbaren Leiste. Alle Werte liegen in SQLite (`/opt/n8crosslink/data/crosslink.db`); Passwörter werden nie im Klartext angezeigt (Feld leer lassen = unverändert).
 
 ## 🏠 Allgemein
 | Feld | Bedeutung |

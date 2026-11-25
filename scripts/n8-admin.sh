@@ -186,12 +186,13 @@ EOF
 }
 
 # ---------------------------------------------------------------- Absturz-Wächter (N8 Kit 2.0)
-# Jeder Dienst des Projekts bekommt ein Drop-in /etc/systemd/system/<unit>.d/n8-crashwatch.conf mit ExecStopPost=+… crash-hook:
+# Jeder Dienst des Projekts bekommt ein Drop-in /etc/systemd/system/<unit>.d/n8-crashwatch-<N8_ID>.conf (je Projekt eigenes, falls
+# sich mehrere N8-Systeme einen Dienst wie nginx teilen) mit ExecStopPost=+… crash-hook:
 # systemd ruft es nach JEDEM Ende des Dienstes als root auf und übergibt SERVICE_RESULT, EXIT_CODE und EXIT_STATUS. Geplante Enden
 # (Stoppen/Neustart von Hand, Update, Keep-Alive, Herunterfahren) laufen als systemd-Auftrag und werden übergangen; alles andere –
 # Absturz (Signal), Fehlercode, Watchdog (Prozess hing), Speicher voll (OOM), Zeitüberschreitung, unerwartetes Ende – wird
 # festgehalten: $STATE_DIR/crashes.jsonl (eine Zeile je Befund) und $STATE_DIR/crash/<id>.log (Journal, Python-Stack aus
-# crash/fault.log, Hänger-Befund aus crash/last.json, Coredump-Kurzinfo). Neu gestartet wird der Dienst von systemd selbst
+# crash/fault-<unit>.log, Hänger-Befund aus crash/last-<unit>.json, Coredump-Kurzinfo). Neu gestartet wird der Dienst von systemd selbst
 # (Restart=, bei Diensten ohne Restart= setzt das Drop-in Restart=on-failure); bleibt er „failed“, startet ihn der Keep-Alive neu.
 # Das Webinterface zeigt die Befunde unter System → 💥 Abstürze und nach der Anmeldung als Hinweisfenster (bis „gelesen“).
 crash_units() {
@@ -216,7 +217,7 @@ crash_label() {   # Bezeichnung eines Dienstes (aus N8_UNITS oder den Keep-Alive
 }
 setup_crashwatch() {
   local u d rs sep="" js="" n=0
-  for u in $(crash_units); do rm -f "/etc/systemd/system/$u.d/n8-crashwatch.conf"; done
+  for u in $(crash_units); do rm -f "/etc/systemd/system/$u.d/n8-crashwatch-$N8_ID.conf" "/etc/systemd/system/$u.d/n8-crashwatch.conf"; done
   systemctl daemon-reload >/dev/null 2>&1 || true
   for u in $(crash_units); do
     systemctl cat "$u" >/dev/null 2>&1 || continue
@@ -227,8 +228,8 @@ setup_crashwatch() {
       echo "[Service]"
       echo "ExecStopPost=+$SELF crash-hook $u"
       [[ -z "$rs" || "$rs" == no ]] && { echo "Restart=on-failure"; echo "RestartSec=5"; rs=on-failure; }
-    } > "$d/n8-crashwatch.conf"
-    chmod 644 "$d/n8-crashwatch.conf"
+    } > "$d/n8-crashwatch-$N8_ID.conf"
+    chmod 644 "$d/n8-crashwatch-$N8_ID.conf"
     js+="$sep{\"unit\": \"$u\", \"label\": \"$(crash_label "$u" | sed 's/"/\x27/g')\", \"restart\": \"$rs\"}"; sep=", "; n=$((n + 1))
   done
   systemctl daemon-reload >/dev/null 2>&1 || true
@@ -268,31 +269,36 @@ def run(*cmd):
         return f"({cmd[0]}: {e})"
 
 service, reason, extra = E.get("N8C_LABEL") or unit, E["N8C_REASON"], []
-# Befund der Anwendung: Hänger der Event-Loop (crash/last.json, höchstens 15 min alt)
+# Dateien der Anwendung je Dienst (crash/last-<unit>.json …), ältere Fassung ohne Dienstnamen als Rückfall
+def own(name, ext):
+    p = os.path.join(cdir, f"{name}-{unit}{ext}")
+    return p if os.path.exists(p) else os.path.join(cdir, name + ext)
+# Befund der Anwendung: Hänger der Event-Loop (crash/last-<unit>.json, höchstens 15 min alt)
+f_last, f_fault, f_svcs = own("last", ".json"), own("fault", ".log"), own("services", ".json")
 try:
-    last = json.loads(read(os.path.join(cdir, "last.json")) or "null")
+    last = json.loads(read(f_last) or "null")
 except ValueError:
     last = None
 if isinstance(last, dict) and now - float(last.get("time") or 0) < 900:
     if last.get("service"):
         service = str(last["service"])[:120]
     reason += " – " + str(last.get("reason") or "")[:200]
-    extra.append("=== Befund der Anwendung (crash/last.json) ===\n" + str(last.get("reason") or "") + "\n\n" + str(last.get("detail") or ""))
+    extra.append(f"=== Befund der Anwendung (crash/{os.path.basename(f_last)}) ===\n" + str(last.get("reason") or "") + "\n\n" + str(last.get("detail") or ""))
     try:
-        os.remove(os.path.join(cdir, "last.json"))
+        os.remove(f_last)
     except OSError:
         pass
 # faulthandler-Ausgabe (Python-Stack aller Threads beim harten Ende): nur der Teil seit dem letzten Start, falls er etwas enthält
-fault = read(os.path.join(cdir, "fault.log"))
+fault = read(f_fault)
 blk = fault.rsplit("\n=== ", 1)[-1] if fault else ""
 if "Fatal Python error" in blk or "most recent call first" in blk:
-    extra.append("=== Python-Stack beim Ende (crash/fault.log) ===\n" + blk[-60000:])
+    extra.append(f"=== Python-Stack beim Ende (crash/{os.path.basename(f_fault)}) ===\n" + blk[-60000:])
     m = re.search(r"Fatal Python error: ([^\n]+)", blk)
     if m and m.group(1) not in reason:
         reason += f" ({m.group(1).strip()[:120]})"
     # Zuordnung zum Teil der Anwendung: die Anwendung legt ihre Liste in crash/services.json ab
     try:
-        svcs = [(re.compile(rx), lab) for rx, lab in json.loads(read(os.path.join(cdir, "services.json")) or "[]")]
+        svcs = [(re.compile(rx), lab) for rx, lab in json.loads(read(f_svcs) or "[]")]
     except (ValueError, re.error, TypeError):
         svcs = []
     cur = blk.split("Current thread", 1)[-1] if "Current thread" in blk else blk
@@ -307,7 +313,7 @@ if "Fatal Python error" in blk or "most recent call first" in blk:
             break
     if hits and not (isinstance(last, dict) and last.get("service")):
         service = " ← ".join(hits)
-    with open(os.path.join(cdir, "fault.log"), "a", encoding="utf-8") as f:
+    with open(f_fault, "a", encoding="utf-8") as f:
         f.write("\n=== (Befund " + cid + " festgehalten) ===\n")
 if E.get("N8C_JOURNAL") == "1":
     j = run("journalctl", "-u", unit, "-n", "200", "--no-pager", "-o", "short-iso")
@@ -365,13 +371,19 @@ crash_hook() {   # crash_hook UNIT – systemd ExecStopPost=+ (als root), nach J
 }
 # Keep-Alive-Teil: Dienste im Zustand „failed“ wieder starten, Neustarts ohne Drop-in erkennen, Liste kurz halten
 crash_keepalive() {   # crash_keepalive ZUSTANDSDATEI JETZT PAUSE
-  local st="$1" now="$2" pause="$3" u n old res hour cnt
+  local st="$1" now="$2" pause="$3" u n old res hour cnt miss=0
+  # nach einem Update über eine ältere n8-admin.sh (die den Wächter noch nicht kannte) richtet ihn der Keep-Alive selbst ein
+  for u in $(crash_units); do
+    [[ -f "/etc/systemd/system/$u.d/n8-crashwatch-$N8_ID.conf" ]] && continue
+    systemctl cat "$u" >/dev/null 2>&1 && miss=1
+  done
+  (( miss )) && { ka_log "🛡️ Absturz-Wächter fehlte – wird eingerichtet"; setup_crashwatch >/dev/null 2>&1; }
   for u in $(crash_units); do
     systemctl cat "$u" >/dev/null 2>&1 || continue
     [[ -f "$STATE_DIR/keepalive.hold/$u" ]] && continue
     n="$(systemctl show -p NRestarts --value "$u" 2>/dev/null)"; [[ "$n" =~ ^[0-9]+$ ]] || n=""
     old="$(ka_json "$st" "nrestarts:$u")"
-    if [[ -n "$n" && -n "$old" ]] && (( n > old )) && [[ ! -f "/etc/systemd/system/$u.d/n8-crashwatch.conf" ]]; then
+    if [[ -n "$n" && -n "$old" ]] && (( n > old )) && [[ ! -f "/etc/systemd/system/$u.d/n8-crashwatch-$N8_ID.conf" ]]; then
       res="$(systemctl show -p Result --value "$u" 2>/dev/null)"
       crash_record "$u" restart "systemd hat den Dienst $((n - old))× neu gestartet (Result=${res:-?}; Absturz-Wächter fehlt – sudo $SELF setup-crashwatch)" keepalive 1 1
     fi
@@ -411,7 +423,7 @@ with open(p + ".tmp", "w", encoding="utf-8") as f:
 os.replace(p + ".tmp", p)
 cd = os.path.join(d, "crash")
 for n in os.listdir(cd) if os.path.isdir(cd) else []:
-    if n.endswith(".log") and n[:-4] not in ids and n != "fault.log":
+    if n.endswith(".log") and n[:-4] not in ids and not n.startswith("fault"):
         os.remove(os.path.join(cd, n))
 PY
   crash_own
@@ -493,7 +505,7 @@ check_perms() {
   else ck bad systemd "Update-Auslöser $UPD_PATH fehlt"; fi
   for u in $(crash_units); do
     systemctl cat "$u" >/dev/null 2>&1 || continue
-    grep -qF "ExecStopPost=+$SELF crash-hook $u" "/etc/systemd/system/$u.d/n8-crashwatch.conf" 2>/dev/null \
+    grep -qF "ExecStopPost=+$SELF crash-hook $u" "/etc/systemd/system/$u.d/n8-crashwatch-$N8_ID.conf" 2>/dev/null \
       && ck ok systemd "Absturz-Wächter für $u eingerichtet" || ck bad systemd "Absturz-Wächter für $u fehlt oder ist veraltet"
   done
   if ((${#N8_KA_CHECKS[@]})); then

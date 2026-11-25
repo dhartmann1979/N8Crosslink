@@ -2,20 +2,33 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.19.1] – 2026-11-25
+
+### 💥 Absturz-Erkennung jetzt in allen N8-Systemen (N8 Kit 1.3)
+- Der Absturz-Wächter, die Ansicht **System → 💥 Abstürze** und das Hinweisfenster nach der Anmeldung gibt es jetzt gleich in
+  HobbyRadioPortal, ADN-FRN-Server (auch für den Java-FRN-Server), HBlink4-FreeRadioID (DMR-Server und Dashboard), N8 Hotspot
+  (MMDVMHost, DMRGateway, MQTT, Weboberfläche) und N8 Crosslink.
+- Das Drop-in heißt jetzt `n8-crashwatch-<projekt>.conf` (hier `n8-crashwatch-n8crosslink.conf`), damit sich mehrere N8-Systeme auf
+  einem Server einen Dienst wie nginx teilen können; die Dateien der Anwendung sind je Dienst getrennt (`crash/fault-<dienst>.log`,
+  `crash/last-<dienst>.json`).
+- **Selbstheilung:** fehlt der Absturz-Wächter (z. B. nach einem Update über eine ältere `n8-admin.sh`), richtet ihn der Keep-Alive
+  innerhalb einer Minute selbst ein.
+- Die Bridge setzt den Absturz-Melder robust auf: ist der Datenordner nicht beschreibbar, läuft sie trotzdem (Befunde dann im Journal).
+
 ## [1.19.0] – 2026-11-25
 
 ### 💥 Neu: Absturz-Erkennung – jeder Absturz wird mit Ursache und Protokoll festgehalten, gemeldet und der Dienst neu gestartet
 Die Bridge stürzte im Betrieb häufig ab, ohne dass erkennbar war, **welcher Teil** (FRN, DMR, Zello, Vocoder, Datenbank …) schuld war.
 Ab jetzt wird jedes unerwartete Ende festgehalten – auf derselben Grundlage in allen N8-Systemen (N8 Kit 1.3 / `scripts/n8-admin.sh`):
 
-- **Absturz-Wächter (systemd, als root):** `n8crosslink.service` bekommt ein Drop-in `n8-crashwatch.conf` mit `ExecStopPost=+… crash-hook`.
+- **Absturz-Wächter (systemd, als root):** `n8crosslink.service` bekommt ein Drop-in `n8-crashwatch-n8crosslink.conf` mit `ExecStopPost=+… crash-hook`.
   Nach **jedem** Ende des Dienstes prüft er, ob es geplant war (Stoppen/Neustart von Hand, Update, Keep-Alive, Herunterfahren). Alles andere
   wird festgehalten: **Absturz durch ein Signal** (z. B. SIGSEGV in einer C-Bibliothek), **Fehlercode**, **systemd-Watchdog** (Prozess hing 60 s),
   **Speicher voll (OOM)**, **Zeitüberschreitung**, **unerwartetes Ende** – mit den letzten 200 Zeilen des Journals, Coredump-Kurzinfo und
   dem Python-Stack. systemd startet den Dienst dabei sofort neu; bleibt er ausgefallen (`failed`), startet ihn der Keep-Alive neu
   (`reset-failed`, höchstens 4× je Stunde).
 - **Welcher Teil war es?** Die Bridge selbst trägt bei:
-  - **faulthandler** → `data/crash/fault.log`: der Python-Stack **aller Threads**, wenn der Prozess hart stirbt (auch beim Watchdog-SIGABRT).
+  - **faulthandler** → `data/crash/fault-n8crosslink.service.log`: der Python-Stack **aller Threads**, wenn der Prozess hart stirbt (auch beim Watchdog-SIGABRT).
   - **Hänger-Wächter:** steht die Event-Loop länger als 8 s, wird ihr Stack festgehalten und zugeordnet, z. B. **„Datenbank ← DMR“**
     (= DMR wartete auf die Datenbank). Beendet systemd den Dienst danach, nennt der Befund genau diese Stelle. Auch kürzere Hänger
     (ab 16 s) werden als ⏳ *Hänger* festgehalten.

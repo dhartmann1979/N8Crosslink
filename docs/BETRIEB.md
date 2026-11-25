@@ -42,8 +42,8 @@ Seit **1.19.0** wird jedes unerwartete Ende festgehalten – in allen N8-Systeme
 
 | Ebene | Was festgehalten wird |
 |---|---|
-| **Absturz-Wächter** (systemd, als root) | Drop-in `/etc/systemd/system/n8crosslink.service.d/n8-crashwatch.conf` mit `ExecStopPost=+… crash-hook`. Nach jedem Ende, das nicht geplant war (kein Stoppen/Neustart von Hand, kein Update, kein Keep-Alive, kein Herunterfahren): Art (Signal, Fehlercode, Watchdog, OOM, Zeitüberschreitung), letzte 200 Journal-Zeilen, Coredump-Kurzinfo, Python-Stack. systemd startet den Dienst sofort neu |
-| **Bridge: faulthandler** | `data/crash/fault.log` – Python-Stack aller Threads beim harten Ende (SIGSEGV, SIGABRT vom Watchdog, SIGBUS …) |
+| **Absturz-Wächter** (systemd, als root) | Drop-in `/etc/systemd/system/n8crosslink.service.d/n8-crashwatch-n8crosslink.conf` mit `ExecStopPost=+… crash-hook`. Nach jedem Ende, das nicht geplant war (kein Stoppen/Neustart von Hand, kein Update, kein Keep-Alive, kein Herunterfahren): Art (Signal, Fehlercode, Watchdog, OOM, Zeitüberschreitung), letzte 200 Journal-Zeilen, Coredump-Kurzinfo, Python-Stack. systemd startet den Dienst sofort neu |
+| **Bridge: faulthandler** | `data/crash/fault-n8crosslink.service.log` – Python-Stack aller Threads beim harten Ende (SIGSEGV, SIGABRT vom Watchdog, SIGBUS …) |
 | **Bridge: Hänger-Wächter** | steht die Event-Loop > 8 s, wird ihr Stack festgehalten und einem Teil zugeordnet: **FRN · DMR · Zello · Vocoder · Audio · Datenbank · ID-Listen · Avatare · Update-Prüfung · Ansage · Backup · Router · Webinterface**. Zwei Teile bedeuten „wartet auf“: *Datenbank ← DMR* |
 | **Bridge: Teile** | abgestürzte Verbindungsschleifen, Hintergrundaufgaben, Tasks und Threads (mit Traceback) – der Teil wird neu gestartet, die Bridge läuft weiter |
 | **Vocoder-Prozess** | Absturz (Signal) oder Hänger des N8schicht-Vocoders, mit seiner letzten Ausgabe – wird sofort neu gestartet |
@@ -53,7 +53,7 @@ Seit **1.19.0** wird jedes unerwartete Ende festgehalten – in allen N8-Systeme
 (7 Tage, als Filter). Neue Befunde erscheinen **direkt nach der Anmeldung als Hinweisfenster** und als roter Zähler im Menü, bis sie als
 gelesen markiert sind. Konsole: `sudo /opt/n8crosslink/scripts/n8-admin.sh crashes`.
 
-Dateien: `data/crashes.jsonl` (eine Zeile je Befund, die letzten 300), `data/crash/<id>.log`, `data/crash/fault.log`, `data/crash/ack.json`
+Dateien: `data/crashes.jsonl` (eine Zeile je Befund, die letzten 300), `data/crash/<id>.log`, `data/crash/fault-n8crosslink.service.log`, `data/crash/ack.json`
 (gelesen), `data/crashwatch.json` (überwachte Dienste). Eingerichtet von Installer, Update und `install.sh --fix-perms`
 (von Hand: `sudo /opt/n8crosslink/scripts/n8-admin.sh setup-crashwatch`).
 

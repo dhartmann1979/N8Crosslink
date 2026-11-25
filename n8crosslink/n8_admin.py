@@ -257,10 +257,14 @@ class N8Admin:
                 out.append(e)
         if self.demo and not out:
             now = time.time()
-            out = [{"id": "20261125-031240-d001", "time": now - 7200, "unit": "demo.service", "service": "Datenbank ← DMR", "kind": "watchdog",
-                    "reason": "systemd-Watchdog: keine Rückmeldung (Event-Loop stand 61 s)", "source": "systemd", "restarted": True},
-                   {"id": "20261125-031512-d002", "time": now - 600, "unit": "demo.service", "service": "Vocoder", "kind": "helper",
-                    "reason": "Vocoder-Prozess abgestürzt: Signal 11 (SIGSEGV) – wird neu gestartet", "source": "app", "restarted": True}]
+            unit = next((u["unit"] for u in self.config().get("units", []) if u["unit"].endswith(".service")), "demo.service")
+            out = [{"id": "20261125-031240-d001", "time": now - 26 * 3600, "unit": unit, "service": "Datenbank ← Live-Daten", "kind": "watchdog",
+                    "reason": "systemd-Watchdog: keine Rückmeldung mehr – der Prozess hing und wurde beendet (SIGABRT) – Event-Loop stand 61 s",
+                    "source": "systemd", "restarted": True},
+                   {"id": "20261125-093012-d002", "time": now - 5 * 3600, "unit": unit, "service": unit.split(".")[0], "kind": "keepalive",
+                    "reason": "Keep-Alive: Weboberfläche – keine Antwort (seit 3 min) – neu gestartet", "source": "keepalive", "restarted": True},
+                   {"id": "20261125-151512-d003", "time": now - 600, "unit": unit, "service": "Live-Daten", "kind": "task",
+                    "reason": "ConnectionResetError: [Errno 104] Connection reset by peer (Task live)", "source": "app", "restarted": True}]
         return out
 
     def _crash_ack(self) -> Dict[str, Any]:
@@ -281,6 +285,9 @@ class N8Admin:
             watch = json.loads((self.state_dir / "crashwatch.json").read_text("utf-8"))
         except (OSError, ValueError):
             watch = {}
+        if self.demo and not watch:
+            watch = {"units": [{"unit": u["unit"], "label": u.get("label", u["unit"]), "restart": "always"}
+                               for u in self.config().get("units", []) if u["unit"].endswith(".service")]}
         week = time.time() - 7 * 86400
         by_svc: Dict[str, int] = {}
         for e in items:

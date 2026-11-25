@@ -7,9 +7,9 @@ und nach der Anmeldung als Hinweisfenster (N8 Kit), bis ein Admin sie als gelese
 
 Was die Anwendung selbst beiträgt (der crash-hook allein sieht nur „Dienst beendet, Signal 6“):
 
-* ``crash/fault.log`` – faulthandler: Python-Stack ALLER Threads, wenn der Prozess hart stirbt (SIGSEGV in einer
+* ``crash/fault-<unit>.log`` – faulthandler: Python-Stack ALLER Threads, wenn der Prozess hart stirbt (SIGSEGV in einer
   C-Bibliothek, SIGABRT vom systemd-Watchdog, SIGBUS, SIGFPE, SIGILL). Der crash-hook hängt ihn an den Befund.
-* ``crash/last.json`` – Hänger-Wächter: Steht die asyncio-Event-Loop länger als ``stall_s`` Sekunden, wird der Stack
+* ``crash/last-<unit>.json`` – Hänger-Wächter: Steht die asyncio-Event-Loop länger als ``stall_s`` Sekunden, wird der Stack
   der Loop festgehalten und dem Teil der Anwendung zugeordnet, in dem sie hängt (z. B. „Datenbank ← DMR“).
   Beendet der systemd-Watchdog den Dienst danach, nennt der Befund genau diese Stelle.
 * Ausnahmen, die niemand abfängt (Tasks, Threads, Hauptprogramm), und eigene Meldungen über ``note()``
@@ -61,6 +61,9 @@ class CrashWatch:
         self.services = [(re.compile(rx), label) for rx, label in services]
         self.project_re = re.compile(project_re) if project_re else None
         self.stall_s = float(stall_s)
+        # je Dienst eigene Dateien – mehrere Prozesse eines Projekts (z. B. HBlink4 + Dashboard) teilen sich den Datenordner
+        sfx = "-" + re.sub(r"[^A-Za-z0-9@._-]", "_", unit) if unit else ""
+        self.f_fault, self.f_last, self.f_svcs = f"fault{sfx}.log", f"last{sfx}.json", f"services{sfx}.json"
         self._beat = time.monotonic()
         self._loop_tid: Optional[int] = None
         self._stall: Optional[dict] = None
@@ -129,7 +132,7 @@ class CrashWatch:
         return self.note(svc, reason or f"{type(exc).__name__}: {exc}"[:300], tb, kind=kind)
 
     def _last(self, data: Optional[dict]) -> None:
-        p = os.path.join(self.cdir, "last.json")
+        p = os.path.join(self.cdir, self.f_last)
         try:
             self._mk()
             if data is None:
@@ -145,11 +148,14 @@ class CrashWatch:
 
     # ------------------------------------------------------------ Einrichten
     def install(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
-        self._mk()
+        try:
+            self._mk()
+        except OSError as e:                      # Datenordner nicht beschreibbar: Wächter läuft, Befunde nur im Log
+            log.warning("Absturz-Melder: %s nicht beschreibbar (%s)", self.cdir, e)
         self._faulthandler()
         self._last(None)
         try:   # für den crash-hook (root): ordnet den Python-Stack aus fault.log demselben Teil der Anwendung zu
-            with open(os.path.join(self.cdir, "services.json"), "w", encoding="utf-8") as f:
+            with open(os.path.join(self.cdir, self.f_svcs), "w", encoding="utf-8") as f:
                 json.dump([[rx.pattern, label] for rx, label in self.services], f, ensure_ascii=False)
         except OSError:
             pass
@@ -169,7 +175,7 @@ class CrashWatch:
         threading.Thread(target=self._stall_watch, name="n8-stallwatch", daemon=True).start()
 
     def _faulthandler(self) -> None:
-        p = os.path.join(self.cdir, "fault.log")
+        p = os.path.join(self.cdir, self.f_fault)
         try:
             if os.path.exists(p) and os.path.getsize(p) > 1_000_000:          # nicht endlos wachsen lassen
                 with open(p, "rb") as f:

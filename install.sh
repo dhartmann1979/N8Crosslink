@@ -313,8 +313,8 @@ check_perms() {
   if [[ -x "$APP_DIR/scripts/n8-admin.sh" ]]; then
     systemctl is-enabled n8crosslink-keepalive.timer >/dev/null 2>&1 && grep -qF "ExecStart=$APP_DIR/scripts/n8-admin.sh keepalive" /etc/systemd/system/n8crosslink-keepalive.service 2>/dev/null \
       && ck ok systemd "Keep-Alive (n8crosslink-keepalive.timer) aktiv" || ck bad systemd "Keep-Alive (n8crosslink-keepalive.timer) fehlt oder ist nicht aktiv"
-    grep -qF "ExecStopPost=+$APP_DIR/scripts/n8-admin.sh crash-hook n8crosslink.service" /etc/systemd/system/n8crosslink.service.d/n8-crashwatch.conf 2>/dev/null \
-      && ck ok systemd "Absturz-Wächter (n8-crashwatch.conf) eingerichtet" || ck bad systemd "Absturz-Wächter (n8crosslink.service.d/n8-crashwatch.conf) fehlt oder ist veraltet"
+    grep -qF "ExecStopPost=+$APP_DIR/scripts/n8-admin.sh crash-hook n8crosslink.service" /etc/systemd/system/n8crosslink.service.d/n8-crashwatch-n8crosslink.conf 2>/dev/null \
+      && ck ok systemd "Absturz-Wächter (n8-crashwatch-n8crosslink.conf) eingerichtet" || ck bad systemd "Absturz-Wächter (n8crosslink.service.d/n8-crashwatch-n8crosslink.conf) fehlt oder ist veraltet"
   fi
   # Quelle (daraus installiert update.sh als root)
   if [[ -f "$APP_DIR/.source" ]]; then

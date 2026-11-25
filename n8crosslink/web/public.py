@@ -12,7 +12,7 @@ from typing import Any
 MASK = "•••"
 # Felder mit Adressen/Geräten, die öffentlich ganz wegfallen
 DROP_KEYS = {"server", "host", "address", "ip", "peer", "peer_ip", "remote", "ambeserver_host", "ambeserver_port",
-             "usb_device", "device", "web_host", "web_port", "port", "local_port", "backup_server", "backup_port"}
+             "usb_device", "device", "web_host", "web_port", "port", "local_port", "backup_server", "backup_port", "cluster"}
 
 _URL = re.compile(r"\b(?:wss?|https?|udp|tcp)://[^\s,;)\]\"'<>]+", re.I)
 _IP4 = re.compile(r"(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?(?![\w.])")

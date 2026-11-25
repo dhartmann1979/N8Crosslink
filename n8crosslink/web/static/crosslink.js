@@ -398,6 +398,7 @@ const SCHEMA = {
   frn: { title: '📻 FRN', fields: [
     F('enabled', 'FRN aktiv', 'bool'), F('server', 'Server'), F('port', 'Port', 'number'),
     F('backup_server', 'Backup-Server'), F('backup_port', 'Backup-Port', 'number'),
+    F('cluster_auto', 'Master & Backup erkennen, Master hat Vorrang', 'bool', { help: 'Fragt das Dashboard des FRN-Servers (ADN-FRN-Server ab 2.21), wer Master und wer Backup ist. Der Master ist immer Priorität 1: nach einem Ausfall geht es zum Backup, und sobald der Master wieder läuft (3 Prüfungen im Minutentakt), zwischen zwei Durchgängen zurück zum Master. Ohne Erkennung gilt „Server“ vor „Backup-Server“.' }),
     F('email', 'E-Mail (FRN-Konto)'), F('password', 'Passwort (FRN)', 'password', { help: 'leer lassen = unverändert' }),
     F('callsign', 'Rufzeichen'), F('op_name', 'Name / Bezeichnung'),
     F('client_type', 'Client-Typ', 'select', { options: [[0, '0 – Crosslink'], [1, '1 – Gateway'], [2, '2 – PC Only']] }),

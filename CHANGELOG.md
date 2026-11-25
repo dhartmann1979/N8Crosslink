@@ -2,6 +2,22 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.21.0] – 2026-11-25
+
+### 🔁 FRN Master & Backup erkennen – der Master hat immer Vorrang
+- Neu **„Master & Backup erkennen, Master hat Vorrang“** (FRN-Einstellungen, Standard an): Der Crosslink fragt das Dashboard des
+  FRN-Servers (ADN-FRN-Server ab 2.21, `/api/info` → `cluster`), welcher Server Master und welcher Backup ist. Der **Master ist immer
+  Priorität 1** – auch wenn unter *Server* das Backup steht.
+- **Ausfall → Backup** wie bisher. **Neu: zurück zum Master.** Auf dem Backup prüft der Crosslink jede Minute, ob der Master wieder
+  bereit ist (FRN-Port erreichbar, Java-FRN-Server läuft ohne Fehler beim SystemManager, keine Wartung). Nach 3 erfolgreichen Prüfungen
+  hintereinander wechselt er **zwischen zwei Durchgängen** zurück (wartet höchstens 2 Minuten auf eine Pause). Der geplante Wechsel
+  erscheint nicht als Störung.
+- Anzeige: FRN-Karte und Ereignisprotokoll nennen „Master“ bzw. „Backup“; `info()` liefert `cluster` (Master, Backup, verbunden mit,
+  letzte Prüfung) – in der öffentlichen Ansicht ausgeblendet.
+- Ohne ADN-Dashboard bleibt es bei *Server* vor *Backup-Server*; die Rückkehr prüft dann nur den FRN-Port.
+- Neues Modul `frn_cluster.py`; Ablauftest `tests/test_frn_master_backup.py` mit zwei nachgebauten FRN-Servern (Ausfall → Backup →
+  Master zurück). Doku KONFIGURATION.md und BETRIEB.md.
+
 ## [1.20.4] – 2026-11-25
 
 ### 🗑 Abstürze bereinigen – in allen N8-Systemen

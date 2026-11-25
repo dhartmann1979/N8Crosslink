@@ -108,6 +108,13 @@ class FrnPort(Port):
         self.net_info = ""
         self.nets: list[str] = []
         self.using_backup = False
+        # FRN Master & Backup (frn_cluster.py): Master ist immer Priorität 1
+        self.cluster: dict | None = None     # erkannt über das Dashboard des FRN-Servers
+        self.cluster_at = 0.0
+        self.target = ("", 0)                # aktuell verbundener Server
+        self.return_to_master = False        # geplanter Wechsel zurück zum Master
+        self.master_streak = 0
+        self.master_check = ""               # letztes Ergebnis der Prüfung, ob der Master wieder bereit ist
         # RX
         self.rx_dec: gsm.GsmDecoder | None = None
         self.rx_index = 0
@@ -164,14 +171,82 @@ class FrnPort(Port):
             return
         self.main_task = self.spawn(self._run())
         self.spawn(self._watchdog())
+        self.spawn(self._master_watch())
+
+    # ------------------------------------------------------------ Master & Backup
+    def targets(self) -> tuple[tuple[str, int], tuple[str, int] | None]:
+        """(Master bzw. Server, Backup) – mit erkanntem Master & Backup ist der Master immer der erste."""
+        s = self.section
+        prim = (s["server"], int(s["port"]))
+        sec = (s["backup_server"], int(s.get("backup_port") or s["port"])) if s.get("backup_server") else None
+        c = self.cluster if s.get("cluster_auto", True) else None
+        if c:
+            if c.get("master"):
+                prim = tuple(c["master"])
+            if c.get("backup"):
+                sec = tuple(c["backup"])
+        return prim, sec
+
+    async def _detect_cluster(self, force: bool = False) -> None:
+        s = self.section
+        if not s.get("cluster_auto", True):
+            self.cluster = None
+            return
+        if not force and time.time() - self.cluster_at < 600:
+            return
+        self.cluster_at = time.time()
+        from . import frn_cluster
+        c = await frn_cluster.adetect(s.get("server", ""), s.get("backup_server", ""))
+        if c and (not self.cluster or (c["master"], c["backup"]) != (self.cluster.get("master"), self.cluster.get("backup"))):
+            m = f"{c['master'][0]}:{c['master'][1]}" if c.get("master") else "?"
+            b = f"{c['backup'][0]}:{c['backup'][1]}" if c.get("backup") else "–"
+            self.router.event("info", f"FRN: Master & Backup erkannt – Master {m} (Priorität 1), Backup {b}")
+        if c or not self.cluster:
+            self.cluster = c
+
+    def on_master(self) -> bool:
+        prim, _ = self.targets()
+        return tuple(self.target) == tuple(prim)
+
+    async def _master_watch(self) -> None:
+        """Läuft der Crosslink auf dem Backup: jede Minute prüfen, ob der Master wieder bereit ist. Nach 3 erfolgreichen
+        Prüfungen hintereinander zurück zum Master – zwischen zwei Durchgängen."""
+        from . import frn_cluster
+        while True:
+            await asyncio.sleep(60)
+            try:
+                if not self.online or self.on_master() or not self.section.get("cluster_auto", True):
+                    self.master_streak, self.master_check = 0, ""
+                    continue
+                await self._detect_cluster()
+                (host, port), _ = self.targets()
+                ok, why = await frn_cluster.amaster_ready(host, port, bool(self.cluster))
+                self.master_streak = self.master_streak + 1 if ok else 0
+                self.master_check = f"{why} ({self.master_streak}/3)" if ok else why
+                self.router.notify()
+                if self.master_streak < 3:
+                    continue
+                self.router.event("info", f"FRN: Master {host}:{port} ist wieder bereit – wechsle vom Backup zurück zum Master")
+                for _ in range(240):                    # höchstens 2 Minuten auf eine Pause warten
+                    if not self.rx_active and not self.rx_accepted and self.tx_state == "idle":
+                        break
+                    await asyncio.sleep(0.5)
+                self.return_to_master = True
+                self.master_streak = 0
+                self._drop_connection()                 # _run verbindet sich dann mit dem Master
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:  # noqa: BLE001
+                log.warning("FRN: Prüfung des Masters fehlgeschlagen: %s", e)
 
     async def _run(self) -> None:
         delay = 5
         while True:
             s = self.section
-            host, port = s["server"], int(s["port"])
-            if self.using_backup and s.get("backup_server"):
-                host, port = s["backup_server"], int(s.get("backup_port") or port)
+            await self._detect_cluster()
+            prim, sec = self.targets()
+            host, port = sec if (self.using_backup and sec) else prim
+            self.target = (host, port)
             try:
                 self.set_state(False, "verbinde", f"{host}:{port}")
                 reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), 15)
@@ -183,11 +258,13 @@ class FrnPort(Port):
                 await self._session(reader)
                 delay = 5
             except asyncio.IncompleteReadError:
-                self.router.event("warn", f"FRN: Server {host}:{port} hat die Verbindung getrennt")
-                self.check_errorlog("Verbindung getrennt")
+                if not self.return_to_master:
+                    self.router.event("warn", f"FRN: Server {host}:{port} hat die Verbindung getrennt")
+                    self.check_errorlog("Verbindung getrennt")
             except (OSError, asyncio.TimeoutError, ConnectionError) as e:
-                self.router.event("warn", f"FRN: Verbindung zu {host}:{port} fehlgeschlagen ({e or type(e).__name__})")
-                self.check_errorlog("Verbindung fehlgeschlagen")
+                if not self.return_to_master:
+                    self.router.event("warn", f"FRN: Verbindung zu {host}:{port} fehlgeschlagen ({e or type(e).__name__})")
+                    self.check_errorlog("Verbindung fehlgeschlagen")
             except asyncio.CancelledError:
                 raise
             except Exception as e:  # noqa: BLE001
@@ -195,8 +272,15 @@ class FrnPort(Port):
                 self.router.event("warn", f"FRN: Fehler {e}")
             finally:
                 self._drop_connection()
-            if self.section.get("backup_server"):
+            if self.return_to_master:                   # geplanter Wechsel: sofort zum Master
+                self.return_to_master, self.using_backup = False, False
+                self.set_state(False, "wechsle zum Master")
+                await asyncio.sleep(1)
+                delay = 5
+                continue
+            if self.targets()[1]:
                 self.using_backup = not self.using_backup
+                await self._detect_cluster(force=True)  # vielleicht hat sich die Rolle geändert
             self.set_state(False, "getrennt", f"neuer Versuch in {delay} s")
             await asyncio.sleep(delay)
             delay = min(delay * 2, 120)
@@ -243,8 +327,9 @@ class FrnPort(Port):
             self.check_errorlog("Login abgelehnt")
             await asyncio.sleep(25)
             raise ConnectionError(f"Login {self.access or 'fehlgeschlagen'}")
-        self.router.event("info", f"FRN verbunden mit Raum „{s['net']}“ ({self.access})")
-        self.set_state(True, "online", f"Raum {s['net']}")
+        role = ("Master" if self.on_master() else "Backup") if self.cluster else ("Server" if not self.using_backup else "Backup-Server")
+        self.router.event("info", f"FRN verbunden mit Raum „{s['net']}“ ({self.access}) auf {role} {self.target[0]}:{self.target[1]}")
+        self.set_state(True, "online", f"Raum {s['net']} · {role}")
         self.cmd("RX0")
         self.cmd("ST:0")
         self.cmd("P")
@@ -313,7 +398,8 @@ class FrnPort(Port):
                             "status": t.get("S", ""), "muted": t.get("M", "") == "1", "id": t.get("ID", ""),
                             "description": t.get("DS", "")})
         self.clients = clients
-        self.detail = f"Raum {self.section['net']} · {len(clients)} Stationen"
+        role = ("Master" if self.on_master() else "Backup") if self.cluster else ""
+        self.detail = f"Raum {self.section['net']} · {len(clients)} Stationen" + (f" · {role}" if role else "")
         self.router.notify()
 
     def _on_list(self, kind: str, lines: list[str]) -> None:
@@ -446,5 +532,9 @@ class FrnPort(Port):
     def extra_info(self) -> dict:
         return {"clients": self.clients, "access": self.access, "server_version": self.server_version,
                 "net": self.section.get("net"), "net_info": self.net_info,
-                "server": f"{self.section.get('server')}:{self.section.get('port')}",
-                "tx_state": self.tx_state}
+                "server": f"{self.target[0]}:{self.target[1]}" if self.target[0] else f"{self.section.get('server')}:{self.section.get('port')}",
+                "tx_state": self.tx_state,
+                "cluster": None if not self.cluster else {
+                    "master": "{}:{}".format(*self.cluster["master"]) if self.cluster.get("master") else "",
+                    "backup": "{}:{}".format(*self.cluster["backup"]) if self.cluster.get("backup") else "",
+                    "on": "master" if self.on_master() else "backup", "check": self.master_check}}

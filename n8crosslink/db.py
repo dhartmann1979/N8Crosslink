@@ -51,6 +51,7 @@ DEFAULTS: dict = {
         "enabled": True,
         "server": "frn.auf-der-nachtschicht.de", "port": 10024,
         "backup_server": "", "backup_port": 10024,
+        "cluster_auto": True,        # Master & Backup über das Dashboard erkennen, nach einem Ausfall zum Master zurück
         "email": "", "password": "",
         "callsign": "N8XLINK", "op_name": "Crosslink",
         "client_type": 0,            # 0 = Crosslink, 1 = Gateway, 2 = PC Only

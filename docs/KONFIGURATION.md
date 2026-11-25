@@ -41,6 +41,25 @@ Matrix mit allen sechs Richtungen. Wirkt sofort, ohne Neustart.
 ## 📻 FRN
 Server, Backup-Server, Konto, Rufzeichen/Name (erscheint im FRN-Raum als „Rufzeichen, Name“), Client-Typ (0 = Crosslink, 1 = Gateway, 2 = PC Only), Band/Kanal, Raum. *Ende-Erkennung RX* ist die Zeit ohne Sprachpaket, nach der ein Durchgang als beendet gilt. 
 
+### 🔁 FRN Master & Backup – Master hat immer Vorrang
+
+Mit **„Master & Backup erkennen, Master hat Vorrang“** (Standard an) fragt der Crosslink das Dashboard des FRN-Servers
+(ADN-FRN-Server ab 2.21, öffentliches `/api/info`), wer **Master** und wer **Backup** ist – z. B. Master
+`frn.auf-der-nachtschicht.de`, Backup `frn-backup.auf-der-nachtschicht.de`. Dann gilt, egal welcher der beiden unter *Server* steht:
+
+- **Master ist Priorität 1.** Beim Start und nach jeder Störung wird zuerst der Master versucht.
+- **Fällt der Master aus**, geht es zum Backup (abwechselnd, Backoff 5 s → 2 min). Im Ereignisprotokoll und auf der FRN-Karte steht,
+  auf welchem Server der Crosslink gerade ist („· Master“ / „· Backup“).
+- **Läuft der Crosslink auf dem Backup**, prüft er **jede Minute**, ob der Master wieder wirklich bereit ist: FRN-Port erreichbar,
+  Java-FRN-Server läuft (`/api/live`), keine Ablehnung durch den SystemManager, keine Wartung („An das Backup übergeben“). Nach
+  **3 erfolgreichen Prüfungen hintereinander** wechselt er **zwischen zwei Durchgängen** (wartet höchstens 2 Minuten auf eine Pause)
+  zurück zum Master: „FRN: Master … ist wieder bereit – wechsle vom Backup zurück zum Master“.
+- Die Erkennung wird alle 10 Minuten und nach jeder Störung aufgefrischt; ändert sich die Rolle, folgt der Crosslink.
+- Tipp: Trag zusätzlich den **Backup-Server** ein. Dann findet der Crosslink das Backup auch, wenn der Master samt Dashboard beim
+  Start schon nicht erreichbar ist.
+- Ohne ADN-Dashboard (anderer FRN-Server) oder mit ausgeschalteter Erkennung gilt wie bisher *Server* vor *Backup-Server*; die
+  Rückkehr prüft dann nur, ob der FRN-Port des Servers erreichbar ist.
+
 ### 📋 FRN-Fehlerprotokoll – bei Problemen immer zuerst hier
 
 Lehnt der FRN-Server die Anmeldung ab oder trennt er, nennt er den Grund meist nicht. Den schreibt der FRN System Manager in das

@@ -122,6 +122,40 @@ class FrnPort(Port):
         self.tx_packets = 0
         self.tx_gen = 0
         self.last_rx = 0.0
+        self.errorlog_last = 0.0         # letzter Blick ins öffentliche FRN-Fehlerprotokoll
+        self.errorlog_seen: set = set()  # schon gemeldete Einträge
+
+    # ------------------------------------------------------------ öffentliches FRN-Fehlerprotokoll
+    def errorlog_scope(self) -> tuple[list[str], list[str]]:
+        s = self.section
+        return [s.get("callsign", "")], [s.get("server", ""), s.get("backup_server", "")]
+
+    def check_errorlog(self, reason: str) -> None:
+        """Nach einem FRN-Problem ins öffentliche Fehlerprotokoll schauen (höchstens alle 2 Minuten) und den Grund melden,
+        den der FRN-Server selbst nicht nennt (z. B. falsches FRN-Passwort, Mehrfachverbindung)."""
+        if time.time() - self.errorlog_last < 120:
+            return
+        self.errorlog_last = time.time()
+        self.spawn(self._errorlog_task(reason))
+
+    async def _errorlog_task(self, reason: str) -> None:
+        from . import frn_errorlog as el
+        await asyncio.sleep(4)                       # der System Manager schreibt den Eintrag kurz nach der Ablehnung
+        entries, err = await el.fetch(force=True)
+        if err:
+            log.info("FRN-Fehlerprotokoll: %s", err)
+            return
+        cs, hosts = self.errorlog_scope()
+        recent = [e for e in el.relevant(entries, cs, hosts) if e["time"] >= time.time() - 1800]
+        new = [g for g in el.summarize(recent) if (g["kind"], g["id"], g["message"]) not in self.errorlog_seen]
+        for g in new[:3]:
+            self.errorlog_seen.add((g["kind"], g["id"], g["message"]))
+            who = f"Client {g['id']}" + (f", {g['name']}" if g["name"] else "") if g["kind"] == "Client" else f"Server {g['id']}"
+            self.router.event("warn", f"FRN-Fehlerprotokoll ({reason}): {who} – {g['message']}"
+                                      + (f" ({g['count']}× seit {g['first'][11:16]})" if g["count"] > 1 else "")
+                                      + (f" → {g['hint']}" if g["hint"] else "") + f" · {el.PAGE}")
+        if not new and not recent:
+            log.info("FRN-Fehlerprotokoll: kein Eintrag zu %s / %s", cs, hosts)
 
     # ------------------------------------------------------------ Lebenszyklus
     async def start(self) -> None:
@@ -150,8 +184,10 @@ class FrnPort(Port):
                 delay = 5
             except asyncio.IncompleteReadError:
                 self.router.event("warn", f"FRN: Server {host}:{port} hat die Verbindung getrennt")
+                self.check_errorlog("Verbindung getrennt")
             except (OSError, asyncio.TimeoutError, ConnectionError) as e:
                 self.router.event("warn", f"FRN: Verbindung zu {host}:{port} fehlgeschlagen ({e or type(e).__name__})")
+                self.check_errorlog("Verbindung fehlgeschlagen")
             except asyncio.CancelledError:
                 raise
             except Exception as e:  # noqa: BLE001
@@ -202,7 +238,9 @@ class FrnPort(Port):
         self.server_version = tags.get("SV", ver)
         self.net_info = re.sub(r"<[^>]+>", " ", tags.get("MT", "")).strip()[:300]
         if self.access in ("WRONG", "BLOCK", ""):
-            self.router.event("warn", f"FRN-Login abgelehnt ({self.access or resp[:60]}) – E-Mail/Passwort/Raum prüfen")
+            self.router.event("warn", f"FRN-Login abgelehnt ({self.access or resp[:60]}) – E-Mail/Passwort/Raum prüfen, "
+                                      "Grund steht im FRN-Fehlerprotokoll (Admin → FRN)")
+            self.check_errorlog("Login abgelehnt")
             await asyncio.sleep(25)
             raise ConnectionError(f"Login {self.access or 'fehlgeschlagen'}")
         self.router.event("info", f"FRN verbunden mit Raum „{s['net']}“ ({self.access})")

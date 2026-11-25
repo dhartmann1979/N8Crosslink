@@ -109,6 +109,16 @@ async def main(port: int) -> None:
     bridge.updater.raw_url = lambda path: f"{base}/raw/{path}"
     await bridge.updater.check()
     import json as _j
+    # öffentliches FRN-Fehlerprotokoll (Demo ohne Internet): Beispiel mit den typischen Meldungen
+    from n8crosslink import frn_errorlog as _el
+    import time as _t
+    _c = db.load_config()["frn"]["callsign"]
+    _ago = lambda m: _t.strftime("%Y-%m-%d %H:%M:%S", _t.localtime(_t.time() - m * 60))
+    _demo_log = "\n".join([f"{_ago(52 - i * 6)} ERROR - Client [{_c}, Crosslink], DE/DE, Request CC - wrong FRN password - Hint: Perform an FRN password request and use the assigned FRN password !" for i in range(7)]
+                           + [f"{_ago(40)} ERROR - Server [127.0.0.1:{sim.FRN_PORT}], DE, Request SC - multiple connections at the same time with the same connection data are not permitted",
+                              f"{_ago(12)} ERROR - Server [uhf3radionet.ddns.net:10024], GR, Request SC - not listening on specified port - Hint: Check the firewall settings and port forwarding settings, if applicable !",
+                              f"{_ago(3)} ERROR - Client [DL9XYZ, Gateway], DE/DE, Request CC - wrong FRN password - Hint: Perform an FRN password request and use the assigned FRN password !"])
+    _el._get = lambda timeout: _j.dumps({"log": _demo_log})
     open(os.path.join(os.path.dirname(db.path), "system.json"), "w").write(_j.dumps({"sudo": True, "systemctl": "/usr/bin/systemctl", "reboot": True, "fix_perms": True, "build_vocoder": True, "certs": True, "check_perms": True, "units": [
         {"unit": "n8crosslink.service", "label": "N8 Crosslink", "actions": ["restart"]},
         {"unit": "svxlink.service", "label": "svxlink (alt)", "actions": ["start", "stop", "restart", "enable", "disable"]}]}))

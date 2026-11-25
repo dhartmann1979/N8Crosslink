@@ -460,6 +460,17 @@ if [[ "${1:-}" == "--diagnose" ]]; then
   echo "== Vocoder-Test: $( (cd "$APP_DIR" && runuser -u "$SVC_USER" -- env N8X_DB="$DB" "$APP_DIR/venv/bin/python" -m n8crosslink.cli vocoder-test) 2>&1 | tail -1)"
   echo "== Zello-Schlüssel: $(cli zello-key-info 2>&1 | tail -1); Schlüsseldateien: $(find "$APP_DIR" -maxdepth 2 -iname 'zello*.key' 2>/dev/null | wc -l)"
   echo "== sudo-Freigaben: $(grep -c NOPASSWD /etc/sudoers.d/n8crosslink 2>/dev/null || echo 0)"
+  echo "== Öffentliches FRN-Fehlerprotokoll (http://log.freeradionetwork.de:60080/error_log.php) – Einträge zu Rufzeichen/Servern:"
+  cli show frn 2>/dev/null | (cd "$APP_DIR" && "$APP_DIR/venv/bin/python" -c '
+import asyncio, json, sys
+from n8crosslink import frn_errorlog as el
+s = json.load(sys.stdin)
+entries, err = asyncio.run(el.fetch(force=True))
+if err: print("   " + err); raise SystemExit
+mine = el.summarize(el.relevant(entries, [s.get("callsign", "")], [s.get("server", ""), s.get("backup_server", "")]))
+print("   (keine – in den letzten %d Einträgen)" % len(entries) if not mine else "\n".join(
+    "   %s  %s %s  %s (%d×)%s" % (g["ts"], g["kind"], g["id"], g["message"], g["count"], ("\n      → " + g["hint"]) if g["hint"] else "") for g in mine))
+' 2>&1 || echo "   (nicht abrufbar)")
   echo "== Log n8crosslink (letzte 40):"; journalctl -u n8crosslink -n 40 --no-pager -o cat 2>/dev/null
   } 2>&1 | tee /tmp/n8crosslink-diagnose.txt
   echo; echo "(gespeichert in /tmp/n8crosslink-diagnose.txt – enthält keine Passwörter)"; exit 0

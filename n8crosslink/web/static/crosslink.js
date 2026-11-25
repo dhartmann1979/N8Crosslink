@@ -408,7 +408,12 @@ const SCHEMA = {
     F('sysman_server', 'System Manager (für „Passwort anfordern“)', 'text', { help: 'Standard sysman.freeradionetwork.eu – bei eigenem FRN-Netz dessen System Manager' }),
     F('sysman_port', 'System-Manager-Port', 'number'),
   ], extra: `<div class="banner" style="margin:12px 4px 0">🔑 <span class="grow">Noch kein FRN-Passwort? Rufzeichen, Name, E-Mail, Band/Kanal, Land und Ort ausfüllen und anfordern – das Passwort kommt per E-Mail.</span>
-      <button class="btn" type="button" id="frnPwBtn">📧 Passwort anfordern</button></div>` },
+      <button class="btn" type="button" id="frnPwBtn">📧 Passwort anfordern</button></div>
+    <h2 class="section-header">📋 FRN-Fehlerprotokoll <span id="frnElBadge"></span></h2>
+    <p style="padding:0 4px;color:var(--text-dim);font-size:13px">Bei Problemen zuerst hier schauen: Das öffentliche Fehlerprotokoll von freeradionetwork.de nennt den Grund für abgelehnte Anmeldungen (falsches FRN-Passwort, Mehrfachverbindung, Port nicht erreichbar …), den der FRN-Server selbst nicht mitteilt. Gezeigt werden Einträge zu deinem Rufzeichen und deinen FRN-Servern; N8 Crosslink schaut nach jeder Ablehnung von selbst hinein und schreibt den Grund ins Ereignisprotokoll.</p>
+    <div class="card" id="frnElList"><div class="empty">lade …</div></div>
+    <div class="form-actions" style="justify-content:flex-start"><button class="btn secondary" type="button" id="frnElReload">🔄 Neu laden</button>
+      <a class="btn secondary" href="http://log.freeradionetwork.de:60080/error_log.php" target="_blank" rel="noopener">📋 Komplettes Fehlerprotokoll öffnen ↗</a></div>` },
   dmr: { title: '📡 DMR', fields: [
     F('enabled', 'DMR aktiv', 'bool'), F('host', 'Server (HBlink4 / FreeDMR)'), F('port', 'Port', 'number'), F('local_port', 'Eigener UDP-Port', 'number', { help: '0 = beliebiger freier Port · fest z. B. für Firewall-Regeln (alle Ports: 🔌 Ports)' }),
     F('password', 'Passwort (Passphrase)', 'password', { help: 'leer lassen = unverändert · Bei HBlink4-FreeRadioID: persönliches FreeRadioID-Passwort – mit der Server-Passphrase ist die Bridge nur Gast und darf nicht in TG 262 senden' }),
@@ -458,7 +463,7 @@ async function loadAdmin() {
   const sec = SCHEMA[S.adminSec];
   if (sec.custom) return sec.custom();
   renderForm(S.adminSec, sec.fields, sec.extra || '');
-  if (S.adminSec === 'frn') $('#frnPwBtn').onclick = requestFrnPassword;
+  if (S.adminSec === 'frn') { $('#frnPwBtn').onclick = requestFrnPassword; $('#frnElReload').onclick = () => loadFrnErrorlog(true); loadFrnErrorlog(); }
   if (S.adminSec === 'general') $('#annBtn').onclick = previewAnnounce;
 }
 
@@ -855,6 +860,23 @@ async function startUpdate(u) {
 $('#pwChangeBtn')?.addEventListener('click', () => { S.adminSec = 'users'; showTab('admin'); });
 
 $('#spOk').addEventListener('click', () => $('#statusModal').classList.remove('open'));
+
+/* ---------- FRN: öffentliches Fehlerprotokoll (freeradionetwork.de) ---------- */
+async function loadFrnErrorlog(force) {
+  const box = $('#frnElList'); if (!box) return;
+  box.innerHTML = '<div class="empty">lade das Fehlerprotokoll …</div>';
+  let d; try { d = await api('/api/admin/frn/errorlog' + (force ? '?force=1' : '')); } catch (e) { box.innerHTML = `<div class="empty">⚠️ ${esc(e.message)}</div>`; return; }
+  const n = d.mine.reduce((a, g) => a + g.count, 0);
+  $('#frnElBadge').innerHTML = d.error ? '<span class="badge warn">nicht erreichbar</span>' : n ? `<span class="badge off">${n} Einträge zu dir</span>` : '<span class="badge ok">nichts zu dir</span>';
+  const row = (g) => `<tr><td style="white-space:nowrap">${esc(g.ts.slice(8, 10) + '.' + g.ts.slice(5, 7) + '. ' + g.ts.slice(11, 16))}${g.count > 1 ? `<div class="lh-name">${g.count}× seit ${esc(g.first.slice(11, 16))}</div>` : ''}</td>
+      <td><span class="badge">${g.kind === 'Client' ? '👤 Client' : '🖥️ Server'}</span><div class="lh-name">${esc(g.id)}${g.name ? ', ' + esc(g.name) : ''}</div></td>
+      <td><b>${esc(g.message)}</b>${g.hint ? `<div style="margin-top:3px">💡 ${esc(g.hint)}</div>` : g.hint_en ? `<div class="lh-name">${esc(g.hint_en)}</div>` : ''}</td></tr>`;
+  const scope = `Rufzeichen ${esc(d.scope.callsigns.join(', ') || '–')} · Server ${esc(d.scope.servers.join(', ') || '–')}`;
+  box.innerHTML = (d.error ? `<div class="empty">⚠️ ${esc(d.error)}</div>` : '')
+    + (d.mine.length ? `<table class="tbl"><thead><tr><th>Zeit</th><th>Wer</th><th>Meldung</th></tr></thead><tbody>${d.mine.map(row).join('')}</tbody></table>`
+      : d.error ? '' : `<div class="empty">✅ Keine Einträge zu dir in den letzten ${d.total} Einträgen des Protokolls${d.span ? ` (${esc(d.span[0].slice(11, 16))}–${esc(d.span[1].slice(11, 16))} Uhr)` : ''}.</div>`)
+    + `<div class="lh-name" style="padding:8px 12px">${scope}${d.others && d.others.length ? ` · andere Stationen im Protokoll: ${d.others.slice(0, 6).map(g => esc(g.id)).join(', ')}` : ''}</div>`;
+}
 
 /* ---------- FRN: Passwort anfordern ---------- */
 async function requestFrnPassword() {

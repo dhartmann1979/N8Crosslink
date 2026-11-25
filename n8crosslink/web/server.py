@@ -63,7 +63,7 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
     # Proxy-Kopfzeile (nginx/Caddy kommen auch von 127.0.0.1, setzen aber X-Forwarded-For). Abschalten: N8X_PORTAL_LOCAL=0.
     PORTAL_PATHS = {"/api/admin/settings", "/api/admin/restart", "/api/admin/vocoder/params", "/api/admin/vocoder/options",
                    "/api/admin/vocoder/preview", "/api/admin/vocoder-test", "/api/admin/announce/preview",
-                   "/api/admin/frn/request-password", "/api/admin/events", "/api/admin/ids", "/api/admin/ids/update",
+                   "/api/admin/frn/request-password", "/api/admin/frn/errorlog", "/api/admin/events", "/api/admin/ids", "/api/admin/ids/update",
                    "/api/admin/avatars/refresh", "/api/admin/serial-ports"}
 
     def portal_local(request: Request) -> bool:
@@ -589,6 +589,20 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
                                      "all": "Komplett zurückgesetzt (Standard-Login n8schicht/n8schicht)"}[scope] + f" von {user}")
         await bridge.restart()
         return {"ok": True, "relogin": scope == "all"}
+
+    # ---- FRN: öffentliches Fehlerprotokoll von freeradionetwork.de (Grund für abgelehnte Anmeldungen)
+    @app.get("/api/admin/frn/errorlog")
+    async def frn_errorlog(force: bool = False, _: str = Depends(require_admin)) -> dict:
+        from .. import frn_errorlog as el
+        s = db.load_config()["frn"]
+        cs, hosts = [s.get("callsign", "")], [s.get("server", ""), s.get("backup_server", "")]
+        entries, err = await el.fetch(force=force)
+        mine = el.relevant(entries, cs, hosts)
+        seen = {(e["ts"], e["kind"], e["id"]) for e in mine}
+        return {"ok": not err, "error": err, "page": el.PAGE, "fetched": el._cache["t"], "total": len(entries),
+                "span": [entries[0]["ts"], entries[-1]["ts"]] if entries else None,
+                "scope": {"callsigns": [c for c in cs if c], "servers": [h for h in hosts if h]},
+                "mine": el.summarize(mine), "others": el.summarize([e for e in entries if (e["ts"], e["kind"], e["id"]) not in seen])[:15]}
 
     # ---- FRN: Passwort anfordern (Registrierung beim System Manager)
     last_frn_req = {"t": 0.0}

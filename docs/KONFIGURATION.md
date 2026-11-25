@@ -36,6 +36,31 @@ Matrix mit allen sechs Richtungen. Wirkt sofort, ohne Neustart.
 ## 📻 FRN
 Server, Backup-Server, Konto, Rufzeichen/Name (erscheint im FRN-Raum als „Rufzeichen, Name“), Client-Typ (0 = Crosslink, 1 = Gateway, 2 = PC Only), Band/Kanal, Raum. *Ende-Erkennung RX* ist die Zeit ohne Sprachpaket, nach der ein Durchgang als beendet gilt. 
 
+### 📋 FRN-Fehlerprotokoll – bei Problemen immer zuerst hier
+
+Lehnt der FRN-Server die Anmeldung ab oder trennt er, nennt er den Grund meist nicht. Den schreibt der FRN System Manager in das
+**öffentliche FRN-Fehlerprotokoll** von freeradionetwork.de (dort im Seitenmenü *Hilfe → Fehlerprotokoll*, direkt:
+<http://log.freeradionetwork.de:60080/error_log.php>). N8 Crosslink nutzt es an drei Stellen (ab 1.15.0):
+
+* **Admin → 📻 FRN → 📋 FRN-Fehlerprotokoll:** Einträge zu deinem **Rufzeichen** (Client) und deinen **FRN-Servern** (Server und
+  Backup-Server) aus den letzten Einträgen des Protokolls – gleiche Meldungen zusammengefasst („7× seit 09:47“), mit deutscher Erklärung, was zu
+  tun ist. Darunter **🔄 Neu laden** und **📋 Komplettes Fehlerprotokoll öffnen**.
+* **Automatisch:** Nach jeder Ablehnung (`WRONG`/`BLOCK`), Trennung oder fehlgeschlagenen Verbindung schaut N8 Crosslink nach ein paar Sekunden ins
+  Protokoll (höchstens alle 2 Minuten) und schreibt den Grund ins **Ereignisprotokoll**, z. B.
+  `FRN-Fehlerprotokoll (Login abgelehnt): Client N8XLINK, Crosslink – wrong FRN password → Falsches FRN-Passwort – …`.
+* **Diagnose:** `sudo /opt/n8crosslink/install.sh --diagnose` gibt die Einträge zu Rufzeichen und Servern mit aus.
+
+![FRN-Fehlerprotokoll](screenshots/admin-frn-errorlog.png)
+
+| Meldung im Protokoll | Bedeutung / was tun |
+|---|---|
+| `wrong FRN password` | Falsches FRN-Passwort – **📧 Passwort anfordern** und genau das zugeteilte Passwort mit derselben E-Mail und demselben Rufzeichen/Namen eintragen |
+| `multiple connections at the same time with the same connection data are not permitted` | Mit denselben Zugangsdaten läuft schon eine Verbindung – zweite Instanz (alte Bridge, SvxLink, zweiter Server, Backup mit gleichen Daten) beenden |
+| `not listening on specified port` | (Server) Port von außen nicht erreichbar – Firewall und Portweiterleitung (TCP) prüfen |
+
+Das Protokoll zeigt nur die letzten etwa 100 Fehler des ganzen FRN-Netzes; ist es nicht erreichbar (Port 60080 ausgehend gesperrt), steht das als
+Hinweis da.
+
 ### 💬 Sprechername als Textnachricht
 Ist *Sprechername als FRN-Textnachricht* an, schickt die Bridge vor jedem Durchgang aus DMR/Zello eine Textnachricht wie „DO1TEST Tobias (DMR)“.
 

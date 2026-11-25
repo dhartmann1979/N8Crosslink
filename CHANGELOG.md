@@ -2,6 +2,29 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.15.0] – 2026-11-25
+
+**📋 Öffentliches FRN-Fehlerprotokoll eingebunden – der Grund für abgelehnte FRN-Anmeldungen steht jetzt direkt im Adminportal.**
+
+### 📋 FRN-Fehlerprotokoll (freeradionetwork.de)
+- Der FRN-Server nennt bei einer Ablehnung meist keinen Grund; der FRN System Manager schreibt ihn aber in das öffentliche Fehlerprotokoll
+  (<http://log.freeradionetwork.de:60080/error_log.php>, auf freeradionetwork.de unter *Hilfe → Fehlerprotokoll*). N8 Crosslink nutzt es jetzt
+  überall, wo FRN im Spiel ist:
+  - **Admin → 📻 FRN → 📋 FRN-Fehlerprotokoll:** Einträge zu eigenem Rufzeichen (Client) und den eigenen FRN-Servern (Server, Backup-Server),
+    gleiche Meldungen zusammengefasst („7× seit 09:47“), mit deutscher Erklärung und Abhilfe; Abzeichen „nichts zu dir“ / „8 Einträge zu dir“ /
+    „nicht erreichbar“; **🔄 Neu laden** und **📋 Komplettes Fehlerprotokoll öffnen**.
+  - **Automatisch nach jedem FRN-Problem** (Login `WRONG`/`BLOCK`, Trennung, Verbindungsfehler): ein paar Sekunden später Blick ins Protokoll
+    (höchstens alle 2 Minuten) und der Grund als Eintrag im **Ereignisprotokoll** – jede Meldung nur einmal. Die Meldung „FRN-Login abgelehnt“
+    verweist darauf.
+  - **`install.sh --diagnose`** gibt die passenden Einträge mit aus.
+- Bekannte Meldungen mit Abhilfe: *wrong FRN password* (Passwort anfordern, genau das zugeteilte eintragen), *multiple connections …*
+  (zweite Instanz mit denselben Zugangsdaten), *not listening on specified port* (Firewall/Portweiterleitung); weitere (gesperrt, unbekannt,
+  Version, E-Mail) per Stichwort; Unbekanntes erscheint unverändert mit dem englischen Hinweis.
+- Neues Modul `n8crosslink/frn_errorlog.py` (Abruf als JSON `?action=getLog`, 60 s Zwischenspeicher, Auswertung, Zuordnung, Zusammenfassung).
+  API: `GET /api/admin/frn/errorlog[?force=1]` – Admins und das HobbyRadioPortal auf demselben Rechner.
+- Tests: `tests/test_frn_errorlog.py` (Format, Zuordnung, Zusammenfassen, API, nicht erreichbar, automatische Meldung nur einmal).
+  Die Demo zeigt ein Beispielprotokoll.
+
 ## [1.14.1] – 2026-11-25
 
 **🐛 Domains & HTTPS und Berechtigungskorrektur scheiterten aus dem Webinterface mit „Read-only file system“.**

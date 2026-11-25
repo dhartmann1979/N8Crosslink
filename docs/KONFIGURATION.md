@@ -1,6 +1,11 @@
 # Konfiguration / Adminportal
 
-Anmelden über **🔐 Login** oben rechts – Standard **n8schicht / n8schicht** (bitte ändern, das Dashboard erinnert daran). Alle Werte liegen in SQLite (`/opt/n8crosslink/data/crosslink.db`); Passwörter werden nie im Klartext angezeigt (Feld leer lassen = unverändert).
+Anmelden über **🔐 Login** oben rechts – Standard **n8schicht / n8schicht** (bitte ändern, das Dashboard erinnert daran).
+
+Seit **1.18.0** steht links ein **Baum-Menü** – dasselbe wie in HobbyRadioPortal, ADN-FRN-Server, HBlink4-FreeRadioID und N8 Hotspot:
+**📡 Betrieb** (Allgemein, Routing, FRN, DMR, Zello, Vocoder, ID-Listen & Avatare) · **👥 Benutzer & Zugang** (Benutzer) ·
+**🎨 Darstellung** (Aussehen) · **🌐 Netz & Domains** (Ports, Domains & HTTPS) · **🖥️ System** (Bridge & Ereignisse, Update, Dienste,
+Berechtigungen & sudo, Keep-Alive, Backup & Neuanfang). Auf dem Handy wird es zu einer aufklappbaren Leiste. Alle Werte liegen in SQLite (`/opt/n8crosslink/data/crosslink.db`); Passwörter werden nie im Klartext angezeigt (Feld leer lassen = unverändert).
 
 ## 🏠 Allgemein
 | Feld | Bedeutung |
@@ -130,8 +135,8 @@ Oben rechts neben *Links* schaltet **DE | EN** die Oberfläche um – Standard i
 
 ![Englisch](screenshots/dashboard-englisch.png)
 
-## ⬆️ Updates
-Kachel im N8-Kit-Stil: installiert, auf GitHub, zuletzt geprüft, automatische Prüfung, letztes Update (erfolgreich/zurückgenommen), Update-Dienst, Neuerungen, **↻ Jetzt prüfen**, **⬆️ Update jetzt installieren** und das Update-Protokoll. Ablauf und Rollback: [BETRIEB.md](BETRIEB.md#updates).
+## ⬆️ Update (System)
+Dieselbe Ansicht wie in allen N8-Systemen: installiert, auf GitHub, zuletzt geprüft, automatische Prüfung, letztes Update (erfolgreich/zurückgenommen), Update-Dienst, Neuerungen, **↻ Jetzt prüfen**, **⬆️ Update jetzt installieren** (ohne Passwort) und daneben das Update-Protokoll. Ablauf und Rollback: [BETRIEB.md](BETRIEB.md#updates).
 
 ## 🎛️ Vocoder
 Betriebsart (N8schicht-Vocoder, USB-Stick, AMBEserver, Test), Pegel und Watchdog. Beim N8schicht-Vocoder öffnet **🎚️ Klang-Einstellungen** auf der Karte ein Popup mit Reglern (wirken sofort), Grundabstimmung und Probehören – alle Regler erklärt in [VOCODER.md](VOCODER.md#-klang-einstellungen-popup).
@@ -195,5 +200,5 @@ Ports um (`nginx -t` vorher, sonst bleibt der alte Stand). Danach steht oben, wa
 API: `GET/POST /api/admin/ports`, `POST /api/admin/ports/apply` (nur angemeldete Admins). Der eigene DMR-Port steht zusätzlich unter
 *📡 DMR → Erweitert* (`dmr.local_port`).
 
-## 👥 Benutzer · 🛠️ System
-Benutzer anlegen/löschen/Passwort ändern. System: **Dienste** (N8 Crosslink, Update-Auslöser, erkannte alte Dienste wie svxlink/mmdvm_bridge/Zello-Bridge) schlank mit Status, Autostart-Schalter und Starten/Stoppen/Neu starten; **🔐 Berechtigungen & sudo** (Liste aller Prüfungen, **🛠️ Korrigieren** repariert und prüft erneut); **Server neu starten** (falls bei der Installation erlaubt); Bridge neu starten (nur die Netze), Dienst neu starten, ID-Listen aktualisieren, Konfiguration exportieren/importieren (ohne Passwörter), Ereignisprotokoll. Siehe [BETRIEB.md](BETRIEB.md).
+## 👥 Benutzer · 🖥️ System
+Benutzer anlegen/löschen/Passwort ändern. Unter **System**: **🧩 Dienste** (N8 Crosslink, Update-Auslöser, erkannte alte Dienste wie svxlink/mmdvm_bridge/Zello-Bridge) schlank mit Status, Autostart-Schalter und Starten/Stoppen/Neu starten; **🔐 Berechtigungen & sudo** (zeigt, was nicht stimmt, **🛠️ Korrigieren** repariert und prüft erneut); **💓 Keep-Alive**; **🛠️ Bridge & Ereignisse** mit **Server neu starten** (falls bei der Installation erlaubt), Bridge neu starten (nur die Netze), Dienst neu starten, ID-Listen aktualisieren, Konfiguration exportieren/importieren (ohne Passwörter), Ereignisprotokoll. Siehe [BETRIEB.md](BETRIEB.md).

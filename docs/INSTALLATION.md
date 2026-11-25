@@ -54,7 +54,7 @@ Bei jeder Installation und jedem Update (auch „Update jetzt“ aus dem Webinte
 | USB-Stick | Gruppe `dialout` (bzw. Gerätegruppe) | Dienstbenutzer wird ergänzt |
 
 Von Hand: `sudo /opt/n8crosslink/install.sh --check-perms` (nur prüfen) bzw. `--fix-perms` (prüfen, korrigieren inkl. sudo, erneut prüfen)
-oder Admin → 🛠️ System → **🔐 Berechtigungen & sudo**. Alle Prüfungen im Einzelnen: [BETRIEB.md](BETRIEB.md#berechtigungen--sudo-prüfen-und-korrigieren).
+oder Admin → 🖥️ System → **🔐 Berechtigungen & sudo**. Alle Prüfungen im Einzelnen: [BETRIEB.md](BETRIEB.md#berechtigungen--sudo-prüfen-und-korrigieren).
 
 ## Wichtige Befehle
 

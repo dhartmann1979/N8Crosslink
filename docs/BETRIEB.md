@@ -1,4 +1,4 @@
-# Betrieb: Watchdogs, Updates, sudo & Berechtigungen
+# Betrieb: Watchdogs, Keep-Alive, Updates, sudo & Berechtigungen
 
 ## Watchdogs
 
@@ -13,21 +13,41 @@
 
 Jeder Verbindungsverlust und jede Wiederherstellung steht in den Ereignissen; Zähler (Wiederverbindungen, Neuaufbauten, letzter Grund, online/offline seit) unter **Netze**.
 
+### 💓 Keep-Alive (von außen, als root)
+
+![Keep-Alive](screenshots/admin-keepalive.png)
+
+Seit **1.18.0** wacht zusätzlich ein Keep-Alive **von außerhalb** der Bridge – derselbe wie in HobbyRadioPortal, ADN-FRN-Server,
+HBlink4-FreeRadioID und N8 Hotspot (N8 Admin-Kit, `scripts/n8-admin.sh`). `n8crosslink-keepalive.timer` startet **jede Minute als root**
+`scripts/n8-admin.sh keepalive` und fragt `/api/n8/health` (nur lokal erreichbar):
+
+| Was | Wie |
+|---|---|
+| **Weboberfläche** | antwortet sie? |
+| **FRN · DMR · Zello · Vocoder** | jedes eingeschaltete Netz wirklich verbunden (FRN angemeldet, DMR am Master, Zello im Kanal), Vocoder bereit |
+| **Neustart** | die Bridge verbindet sich selbst neu – erst wenn ein Netz **5 Minuten** weg bleibt (oder der Dienst `failed` ist), startet der Keep-Alive `n8crosslink.service` neu, **höchstens 4× je Stunde** |
+| **Internet-Ausfall** | 1.1.1.1, 9.9.9.9 und github.com (Port 443) nicht erreichbar → keine sinnlosen Neustarts; ist das Netz nach mindestens 60 s wieder da, wird die Bridge einmal neu gestartet, damit alle drei Netze sofort wieder stehen |
+| **Heartbeat** | optional jede Minute ein Ping an Uptime Kuma („Push“) oder Healthchecks.io, bei Fehlern an die Fehler-Adresse |
+| **Wartung** | **⏸ 1 h pausieren**; ein unter *Dienste* gestoppter Dienst bleibt gestoppt |
+
+Einstellungen unter **⚙️ Admin → 🖥️ System → 💓 Keep-Alive**; Dateien `data/keepalive.conf`, `keepalive.json`, `keepalive.log`.
+Eingerichtet von Installer, Update und `install.sh --fix-perms`.
+
 ## Updates
 
 Hinweis, Updates-Seite und Fortschritt kommen aus dem **N8 Kit** und sehen in N8 Crosslink, HBlink4-FreeRadioID, adn-frn-server und N8-HotSpot gleich aus (siehe [SICHERHEIT.md](SICHERHEIT.md#n8-kit)).
 
 * Prüfung **stündlich zur vollen Stunde** (und kurz nach dem Start): Versionsnummer in `n8crosslink/__init__.py` auf GitHub (`dhartmann1979/N8Crosslink`, Branch `main`) gegen die installierte Version.
-* Neue Version → Hinweis unter der Statusleiste für angemeldete Admins: *Update verfügbar: 1.6.0 → 1.7.0* mit **Was ist neu?** (aus `CHANGELOG.md`), **Jetzt aktualisieren**, **Details** (öffnet Admin → Updates) und **Später** (blendet den Hinweis für diese Version einen Tag aus).
+* Neue Version → Hinweis unter der Statusleiste für angemeldete Admins: *Update verfügbar: 1.6.0 → 1.7.0* mit **Was ist neu?** (aus `CHANGELOG.md`), **Jetzt aktualisieren**, **Details** (öffnet Admin → System → Update) und **Später** (blendet den Hinweis für diese Version einen Tag aus).
 * **Jetzt aktualisieren** öffnet ein Fenster mit den Neuerungen; nach der Bestätigung drei Schritte mit Fortschritt: *Update wird geladen und eingespielt → Dienst startet neu → Weboberfläche wird geprüft*. Technisch startet es über sudo `n8crosslink-update.service` (als root) → `update.sh --auto`: Quellen holen, Installer im Update-Modus (Abhängigkeiten, Berechtigungen, sudo-Freigaben), Dienst neu starten, Weboberfläche per HTTP prüfen. Antwortet sie nicht, stellt `update.sh` die vorige Version wieder her. Die Seite lädt danach von selbst neu.
-* Ergebnis unter **Admin → Updates → Letztes Update** (*erfolgreich* oder *zurückgenommen*), gespeichert in `data/update.result` – dasselbe Format wie in den anderen N8schicht-Projekten.
+* Ergebnis unter **Admin → System → ⬆️ Update** (Kachel *Update-Protokoll*) (*erfolgreich* oder *zurückgenommen*), gespeichert in `data/update.result` – dasselbe Format wie in den anderen N8schicht-Projekten.
 * Ersatzweg ohne sudo: `n8crosslink-update.path` reagiert auf `data/update.request`.
 
 ![Updates](screenshots/admin-updates.png)
 
 ## Dienste
 
-**⚙️ Admin → 🛠️ System → Dienste** zeigt schlank alle freigegebenen Dienste: Status (läuft / gestoppt / Fehler), **Autostart** als Schalter
+**⚙️ Admin → 🖥️ System → 🧩 Dienste** zeigt schlank alle freigegebenen Dienste: Status (läuft / gestoppt / Fehler), **Autostart** als Schalter
 (aktivieren/deaktivieren beim Booten) und je nach Zustand **🔄 Neu starten** und **⏹ Stoppen** oder **▶ Starten**. Dabei sind
 `n8crosslink.service`, der Update-Auslöser `n8crosslink-update.path` und erkannte alte Dienste (svxlink, mmdvm_bridge, analog_bridge,
 ambeserver, Zello-Bridge). Stoppen oder Autostart aus fragt nach; wer N8 Crosslink selbst stoppt, startet es danach nur auf der Konsole wieder
@@ -64,7 +84,7 @@ sudo /opt/n8crosslink/install.sh --check-perms     # nur prüfen, ändert nichts
 sudo /opt/n8crosslink/install.sh --fix-perms       # prüfen → korrigieren (auch sudo) → erneut prüfen
 ```
 
-Im Webinterface: **⚙️ Admin → 🛠️ System → 🔐 Berechtigungen & sudo** – die Liste wird beim Öffnen geprüft, **🛠️ Korrigieren** repariert
+Im Webinterface: **⚙️ Admin → 🖥️ System → 🔐 Berechtigungen & sudo** – die Liste wird beim Öffnen geprüft, **🛠️ Korrigieren** repariert
 und zeigt das Ergebnis der zweiten Prüfung.
 
 ![Berechtigungen & sudo](screenshots/admin-perms.png)

@@ -36,12 +36,12 @@ Alles läuft in **einem** Python-Dienst mit Live-Dashboard und Adminportal – i
 | 💾 **Backup** | Alles als vollständig verschlüsselte Datei zum Download (AES-256-GCM). **Der Schlüssel ist das Superadmin-Passwort – im Passwortsafe aufbewahren!** Wiederherstellen im Webinterface, per CLI oder direkt im Installer. |
 | ♻️ **Neuanfang** | Zurücksetzen im Webinterface (Verlauf / Einstellungen / alles) und `uninstall.sh` mit „Daten behalten“ oder „komplett entfernen“, inkl. Wiedereinschalten der alten Dienste |
 | 📊 **Dashboard** | On-Air-Anzeige mit Pegel und Zeit, Netzkarten mit RX/TX – **LEDs: 🔴 Rot = Senden, 🟣 Magenta = Empfangen, 🟢 Grün = Dienst ok** –, Last Heard, FRN-Raumliste, Ereignisse, Statistik (Heute … 90 Tage) |
-| ⚙️ **Adminportal** | Alle Einstellungen in SQLite, Benutzerverwaltung, Bridge-/Dienst-Neustart, ID-Datenbank-Update, Export/Import |
+| ⚙️ **Adminportal** | Baum-Menü und Bereich *System* wie in allen N8-Systemen, alle Einstellungen in SQLite, Benutzerverwaltung, Bridge-/Dienst-Neustart, ID-Datenbank-Update, Export/Import |
 | 🔊 **Sprachansage & Sprechername** | Optional: Computerstimme sagt das Rufzeichen am Anfang des Durchgangs an (espeak-ng, Buchstaben oder NATO, je Zielnetz). Sprechername als FRN-Textnachricht – öffentlich oder **privat nur an ausgewählte Stationen** |
-| 🐕 **Watchdogs** | Jede Verbindung (FRN, DMR, Zello) baut sich nach einem Abbruch selbst neu auf; zusätzlich baut ein Watchdog ein Netz komplett neu auf, wenn es zu lange offline bleibt oder seine Verbindungsschleife stirbt. Der Vocoder wird bei Ausfall neu geöffnet (AMBEserver im Lockstep mit neuem Socket nach jedem Timeout), und der systemd-Watchdog startet den Dienst neu, falls er hängt |
+| 🐕 **Watchdogs** | Jede Verbindung (FRN, DMR, Zello) baut sich nach einem Abbruch selbst neu auf; zusätzlich baut ein Watchdog ein Netz komplett neu auf, wenn es zu lange offline bleibt oder seine Verbindungsschleife stirbt. Der Vocoder wird bei Ausfall neu geöffnet (AMBEserver im Lockstep mit neuem Socket nach jedem Timeout), und der systemd-Watchdog startet den Dienst neu, falls er hängt. **💓 Keep-Alive** von außen (jede Minute als root): prüft jedes Netz, startet nach 5 Minuten Ausfall neu, erkennt Internet-Ausfälle, meldet sich bei Uptime Kuma / Healthchecks.io |
 | 🗂️ **ID-Listen** | Alle Listen der FreeRadioID.net-API (alle DMR-IDs, registrierte IDs, Einzelabfrage unbekannter IDs) plus Talkgroup-Namen aus `n8schicht/talkgroup_ids.json` – 1× täglich und per Knopf |
 | 🖼️ **Avatare** | In SQLite zwischengespeichert (192 px WebP), 1× täglich oder per Knopf aktualisiert: FreeRadioID-Bilder für DMR, Rufzeichen-Zuordnung für FRN und Zello, eigene Zello-Bilder per Upload |
-| ⬆️ **Updates** | Prüfung stündlich zur vollen Stunde, Banner mit Änderungen, **„Update jetzt“** direkt im Webinterface |
+| ⬆️ **Updates** | Prüfung stündlich zur vollen Stunde, Banner mit Änderungen, **„Update jetzt“** direkt im Webinterface (ohne Passwort, mit Update-Protokoll) |
 | 🛠️ **Alles im Webinterface** | Dank eng begrenztem `sudo`: Dienst-Neustart, N8schicht-Vocoder bauen, alte Dienste (Start/Stopp/Autostart), Berechtigungen prüfen, Server-Neustart |
 | 🧭 **Geführter Installer** | Fragt alles Schritt für Schritt ab, prüft und korrigiert bei jeder Installation und jedem Update die Berechtigungen und sudo (Berechtigungsprüfer `install.sh --check-perms` / `--fix-perms`, auch im Webinterface), richtet sudo ein, löst auf Wunsch SvxLink & alte Zello-Bridge ab |
 
@@ -95,15 +95,15 @@ Senden in die Netze:
 |---|---|
 | ![FRN-Passwort](docs/screenshots/admin-frn-passwort-anfordern.png) | ![FRN](docs/screenshots/admin-frn.png) |
 
-| Admin – ID-Listen & Avatare | Admin – Updates |
+| Admin – ID-Listen & Avatare | Admin – System → Update (Baum-Menü wie in allen N8-Systemen) |
 |---|---|
 | ![ID-Listen](docs/screenshots/admin-idlisten-avatare.png) | ![Updates](docs/screenshots/admin-updates.png) |
 | **🎨 Aussehen** – N8 Theme 2, gleiche Farbprofile wie die anderen N8-Seiten | **🌐 Englisch** – Umschalter DE \| EN oben rechts |
 | ![Aussehen](docs/screenshots/admin-aussehen.png) | ![Englisch](docs/screenshots/dashboard-englisch.png) |
 
-| Admin – System (Dienste über sudo, Demo ohne systemd) | Admin – DMR |
+| Admin – System → 💓 Keep-Alive | Admin – DMR |
 |---|---|
-| ![System](docs/screenshots/admin-system.png) | ![DMR](docs/screenshots/admin-dmr.png) |
+| ![Keep-Alive](docs/screenshots/admin-keepalive.png) | ![DMR](docs/screenshots/admin-dmr.png) |
 
 | Hinweise: Update & Standard-Login | Mobil |
 |---|---|
@@ -117,7 +117,7 @@ Senden in die Netze:
 * [Zello verbinden – Schritt für Schritt](docs/ZELLO.md)
 * [Umstieg von SvxLink und der alten Zello-Bridge](docs/MIGRATION.md)
 * [Technik & Protokolle](docs/TECHNIK.md)
-* [Betrieb: Watchdogs, Updates, sudo & Berechtigungen](docs/BETRIEB.md)
+* [Betrieb: Watchdogs, Keep-Alive, Updates, sudo & Berechtigungen](docs/BETRIEB.md)
 * [Sicherheit, Sprache DE/EN & N8 Kit (gemeinsam mit HBlink4, adn-frn-server, N8-HotSpot)](docs/SICHERHEIT.md)
 * [Backup & Wiederherstellung](docs/BACKUP.md)
 * [Deinstallation & von vorn beginnen](docs/DEINSTALLATION.md)

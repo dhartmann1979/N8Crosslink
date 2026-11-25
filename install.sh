@@ -10,6 +10,10 @@
 #    N8X_WEB_PORT=8070                        Web-Port auf dem neuen Server (sonst der aus dem Backup)
 #    N8X_LOCAL_LINKS=1                        FRN- und DMR-Server auf 127.0.0.1 umstellen (laufen auf demselben Rechner)
 #    N8X_PORTAL_TOKEN_FILE=/pfad/datei        API-Token „HobbyRadioPortal“ anlegen und hierhin schreiben (600)
+#
+#  Ohne Rückfragen neu einrichten (z. B. Web-Installer des HobbyRadioPortals, „N8 Crosslink neu installieren“):
+#    N8X_SETUP_FILE=/pfad/setup.json          {"general": {...}, "frn": {...}, "dmr": {...}, "zello": {...}, "vocoder": {...},
+#                                             "admin_user": "n8schicht", "admin_password": "…"} – Felder wie im Adminportal
 # =============================================================================
 set -euo pipefail
 
@@ -307,6 +311,10 @@ if [[ -n "${N8X_RESTORE:-}" ]]; then
   [[ -f "$N8X_RESTORE" ]] || fail "Backup nicht gefunden: $N8X_RESTORE"
   [[ -f "${N8X_RESTORE_PASSWORD_FILE:-}" ]] || fail "N8X_RESTORE_PASSWORD_FILE fehlt (Superadmin-Passwort des Backups)"
   info "Umzug ohne Rückfragen aus $(basename "$N8X_RESTORE")"
+elif [[ -n "${N8X_SETUP_FILE:-}" ]]; then
+  [[ -f "$N8X_SETUP_FILE" ]] || fail "N8X_SETUP_FILE nicht gefunden: $N8X_SETUP_FILE"
+  MODE="neu"; UNATTENDED=2
+  info "Neueinrichtung ohne Rückfragen aus $(basename "$N8X_SETUP_FILE")"
 elif [[ -f "$DB" && "${N8X_UPDATE:-0}" == "1" ]]; then
   MODE="update"
 elif [[ -f "$DB" ]]; then
@@ -354,7 +362,7 @@ runuser -u "$SVC_USER" -- "$APP_DIR/venv/bin/python" -c "import sys; sys.path.in
   || fail "libgsm/libopus konnten nicht geladen werden"
 ok "Abhängigkeiten installiert, GSM- und Opus-Codec geprüft"
 
-if (( UNATTENDED )); then
+if (( UNATTENDED == 1 )); then
   step 4 "Backup einspielen (Umzug)"
   install -m 600 -o "$SVC_USER" -g "$SVC_USER" "$N8X_RESTORE" "$DATA_DIR/restore.n8xbak"
   if head -n1 "$N8X_RESTORE_PASSWORD_FILE" | cli restore "$DATA_DIR/restore.n8xbak"; then
@@ -368,6 +376,25 @@ if (( UNATTENDED )); then
     ok "FRN- und DMR-Server auf 127.0.0.1 umgestellt (laufen auf diesem Rechner)"
   fi
   ok "Backup eingespielt – alle Einstellungen, Benutzer und Daten übernommen"
+fi
+
+if [[ "$MODE" == "neu" ]] && (( UNATTENDED == 2 )); then
+  # ---------------------------------------------------------------- 4–8 aus N8X_SETUP_FILE
+  step 4 "Einstellungen aus $(basename "$N8X_SETUP_FILE")"
+  install -m 600 -o "$SVC_USER" -g "$SVC_USER" "$N8X_SETUP_FILE" "$DATA_DIR/.setup.json"
+  if OUT=$(cli apply-setup "$DATA_DIR/.setup.json" 2>&1); then
+    rm -f "$DATA_DIR/.setup.json"; ok "Einstellungen und Superadmin übernommen: $OUT"
+  else
+    rm -f "$DATA_DIR/.setup.json"; fail "$OUT"
+  fi
+  if [[ -n "${N8X_WEB_PORT:-}" ]]; then setcfg general web_port "$N8X_WEB_PORT"; ok "Web-Port $N8X_WEB_PORT"; fi
+  if [[ "${N8X_LOCAL_LINKS:-0}" == 1 ]]; then setcfg frn server 127.0.0.1; setcfg dmr host 127.0.0.1; ok "FRN- und DMR-Server auf 127.0.0.1"; fi
+  step 5 "–"; step 6 "–"; step 7 "–"
+  step 8 "Vocoder für DMR (AMBE+2)"
+  if cli show vocoder | grep -q '"vocoder_mode": "n8vocoder"'; then
+    build_vocoder || warn "Vocoder kann später unter Admin → 🎛️ Vocoder → „Vocoder bauen“ nachgeholt werden"
+  else info "Vocoder: $(cli show vocoder | grep -o '"vocoder_mode": "[a-z0-9]*"')"; fi
+  MODE="setup"
 fi
 
 if [[ "$MODE" == "neu" ]]; then
@@ -500,7 +527,7 @@ case "$VOC" in
      ask V "AMBEserver-Port" "2460"; setcfg vocoder ambeserver_port "$V" ;;
   *) info "Vocoder wird später im Adminportal gewählt (Admin → 🎛️ Vocoder)." ;;
 esac
-else
+elif [[ "$MODE" != "setup" ]]; then
   step 4 "Einstellungen bleiben erhalten"; ok "$([[ "$MODE" == restored ]] && echo "aus dem Backup übernommen" || echo "Update-Modus")"
   # md380-emu (bis 1.3) und „droidstar“ (1.4/1.5) -> N8schicht-Vocoder; bauen nur wenn nötig; md380-emu entfernen
   if sqlite3 "$DB" "SELECT value FROM settings WHERE section='vocoder' AND key='vocoder_mode'" 2>/dev/null | grep -qE 'md380|droidstar'; then

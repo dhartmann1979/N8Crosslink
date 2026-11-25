@@ -2,6 +2,30 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.10.0] – 2026-11-25
+
+**Installer: Neueinrichtung ohne Rückfragen mit `N8X_SETUP_FILE`.** Bisher ging „ohne Fragen“ nur als Umzug aus einem Backup.
+Jetzt kann der Web-Installer des [HobbyRadioPortals](https://github.com/dhartmann1979/HobbyRadioPortal) (ab 0.11.0) N8 Crosslink auch
+**frisch installieren** (*Crosslink → ✨ N8 Crosslink neu installieren*). Ausführlich: [docs/INSTALLATION.md](docs/INSTALLATION.md#ohne-rückfragen-neu-einrichten-ab-1100).
+
+### ⌨️ `N8X_SETUP_FILE=/pfad/setup.json`
+- Ersetzt die Fragen der Schritte 4–8 (Dashboard, FRN, DMR, Zello, Vocoder). Abschnitte `general`, `frn`, `dmr`, `zello`, `vocoder` mit den
+  Feldnamen des Adminportals, dazu `admin_user` und `admin_password`.
+- Die Werte laufen durch dieselbe Typprüfung wie im Adminportal (`_coerce`); unbekannte Abschnitte oder Felder brechen mit einer klaren
+  Meldung ab, statt still ignoriert zu werden.
+- Ein eigener Superadmin-Name ersetzt den Standard-Login `n8schicht/n8schicht`. Ohne Passwort bleibt der Standard-Login, und das
+  Dashboard erinnert wie gewohnt ans Ändern.
+- Ist der N8schicht-Vocoder gewählt, wird er gleich gebaut. Die nginx-Frage am Ende entfällt (im Portal übernimmt nginx des Portals).
+- Kombinierbar mit `N8X_WEB_PORT`, `N8X_LOCAL_LINKS=1` und `N8X_PORTAL_TOKEN_FILE`.
+- Die Datei wird mit Rechten 600 an den Dienstbenutzer übergeben und sofort wieder gelöscht.
+
+### ⌨️ `python -m n8crosslink.cli apply-setup DATEI`
+- Neuer CLI-Befehl, den der Installer dafür nutzt. Er gibt aus, welche Abschnitte gesetzt wurden und wer Superadmin ist.
+
+### 🧪 Tests
+- `tests/test_apply_setup.py`: Abschnitte samt Typen (Ports, IDs, Schalter), Superadmin ersetzt den Standard-Login, fehlerhafte Eingaben
+  werden abgewiesen, CLI-Aufruf und `install.sh` (Zweig vorhanden, Syntax in Ordnung).
+
 ## [1.9.1] – 2026-11-25
 
 **N8schicht-Vocoder: neue Standard-Abstimmung „N8schicht“ – die im Livebetrieb nach Gehör eingestellten Klangwerte sind jetzt der Standard.**

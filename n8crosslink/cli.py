@@ -5,6 +5,7 @@
   python -m n8crosslink.cli --db DB show [SECTION]
   python -m n8crosslink.cli --db DB users
   python -m n8crosslink.cli --db DB api-token NAME        (legt einen Portal-Token an und gibt ihn aus)
+  python -m n8crosslink.cli --db DB apply-setup DATEI     (Neueinrichtung ohne Fragen aus JSON – install.sh N8X_SETUP_FILE)
 """
 from __future__ import annotations
 
@@ -16,6 +17,45 @@ import sys
 
 from .db import DEFAULTS, Database
 from .web.server import _coerce
+
+
+SETUP_SECTIONS = ("general", "frn", "dmr", "zello", "vocoder")
+
+
+def apply_setup(db: Database, data: dict) -> dict:
+    """Neueinrichtung ohne Fragen (install.sh mit N8X_SETUP_FILE, z. B. aus dem Web-Installer des HobbyRadioPortals).
+
+    {"general": {...}, "frn": {...}, "dmr": {...}, "zello": {...}, "vocoder": {...},
+     "admin_user": "n8schicht", "admin_password": "…"}   – Schlüssel wie im Adminportal (DEFAULTS), unbekannte werden abgewiesen.
+    Ein anderer Superadmin-Name ersetzt den Standard-Login n8schicht/n8schicht; ohne Passwort bleibt der Standard-Login."""
+    if not isinstance(data, dict):
+        raise ValueError("JSON-Objekt erwartet")
+    unknown = [k for k in data if k not in SETUP_SECTIONS + ("admin_user", "admin_password")]
+    if unknown:
+        raise ValueError("unbekannte Schlüssel: " + ", ".join(unknown))
+    done: dict = {"sections": {}}
+    for sec in SETUP_SECTIONS:
+        vals = data.get(sec) or {}
+        if not isinstance(vals, dict):
+            raise ValueError(f"{sec}: Objekt erwartet")
+        bad = [k for k in vals if k not in DEFAULTS[sec]]
+        if bad:
+            raise ValueError(f"{sec}: unbekannte Felder " + ", ".join(bad))
+        if vals:
+            db.save_section(sec, _coerce(sec, vals))
+            done["sections"][sec] = sorted(vals)
+    pw = str(data.get("admin_password") or "")
+    user = str(data.get("admin_user") or "n8schicht").strip()
+    if pw:
+        if len(pw) < 8:
+            raise ValueError("admin_password: mindestens 8 Zeichen")
+        if not user.replace(".", "").replace("_", "").replace("-", "").isalnum() or len(user) > 32:
+            raise ValueError("admin_user: nur Buchstaben, Ziffern, . _ -")
+        db.set_user(user, pw, "superadmin")
+        if user != "n8schicht":
+            db.delete_user("n8schicht")          # Standard-Login n8schicht/n8schicht gibt es dann nicht mehr
+        done["superadmin"] = user
+    return done
 
 
 def main() -> int:
@@ -45,6 +85,8 @@ def main() -> int:
     r.add_argument("file")
     t = sub.add_parser("api-token", help="API-Token für das HobbyRadioPortal anlegen (wird einmal ausgegeben)")
     t.add_argument("name")
+    st = sub.add_parser("apply-setup", help="Neueinrichtung ohne Fragen aus einer JSON-Datei (install.sh N8X_SETUP_FILE)")
+    st.add_argument("file")
     args = ap.parse_args()
     db = Database(args.db)
 
@@ -149,6 +191,14 @@ def main() -> int:
             print(f"Wiederherstellung fehlgeschlagen: {e}", file=sys.stderr)
             return 2
         print(f"Backup vom {manifest.get('created')} (Version {manifest.get('version')}) eingespielt")
+        return 0
+    if args.cmd == "apply-setup":
+        try:
+            done = apply_setup(db, json.load(open(args.file, encoding="utf-8")))
+        except (OSError, ValueError) as e:
+            print(f"Einrichtung fehlgeschlagen: {e}", file=sys.stderr)
+            return 2
+        print(json.dumps(done, ensure_ascii=False))
         return 0
     if args.cmd == "api-token":
         try:

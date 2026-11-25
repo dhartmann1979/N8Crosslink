@@ -121,11 +121,15 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
     @app.get("/api/me")
     async def me(request: Request) -> dict:
         u = current_user(request)
-        return {"user": u, "setup_required": not db.has_users(), "version": __version__,
+        return {"user": u, "role": db.user_role(u) if u else None, "setup_required": not db.has_users(), "version": __version__,
                 "default_password": bool(u) and db.default_password_active()}
 
+    def _client_ip(request: Request) -> str:
+        fwd = request.headers.get("x-forwarded-for", "")
+        return (fwd.split(",")[0].strip() if fwd else "") or (request.client.host if request.client else "")
+
     @app.post("/api/setup")
-    async def setup(data: dict = Body(...)) -> JSONResponse:
+    async def setup(request: Request, data: dict = Body(...)) -> JSONResponse:
         if db.has_users():
             raise HTTPException(403, "Superadmin existiert bereits")
         user, pw = str(data.get("username", "")).strip(), str(data.get("password", ""))
@@ -133,17 +137,19 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
             raise HTTPException(400, "Benutzername min. 3, Passwort min. 8 Zeichen")
         db.set_user(user, pw, "superadmin")
         resp = JSONResponse({"ok": True, "user": user})
-        resp.set_cookie(COOKIE, db.new_session(user), httponly=True, samesite="lax", max_age=12 * 3600)
+        resp.set_cookie(COOKIE, db.new_session(user, ip=_client_ip(request), user_agent=request.headers.get("user-agent", "")),
+                        httponly=True, samesite="lax", max_age=12 * 3600)
         return resp
 
     @app.post("/api/login")
-    async def login(data: dict = Body(...)) -> JSONResponse:
+    async def login(request: Request, data: dict = Body(...)) -> JSONResponse:
         user, pw = str(data.get("username", "")), str(data.get("password", ""))
         await asyncio.sleep(0.3)  # Bremse gegen Durchprobieren
         if not db.check_login(user, pw):
             raise HTTPException(401, "Benutzername oder Passwort falsch")
         resp = JSONResponse({"ok": True, "user": user})
-        resp.set_cookie(COOKIE, db.new_session(user), httponly=True, samesite="lax", max_age=12 * 3600)
+        resp.set_cookie(COOKIE, db.new_session(user, ip=_client_ip(request), user_agent=request.headers.get("user-agent", "")),
+                        httponly=True, samesite="lax", max_age=12 * 3600)
         return resp
 
     @app.post("/api/logout")
@@ -775,23 +781,83 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
     async def events(limit: int = 200, _: str = Depends(require_admin)) -> list:
         return db.events(min(limit, 1000))
 
+    # ---- 👥 Benutzer & Zugang – wie HBlink4-FreeRadioID (N8 Kit: N8Kit.access.view, gleiche Adressen in allen N8-Systemen)
+    ROLES = ("superadmin", "admin")
+
+    def _user_row(u: dict) -> dict:
+        return {"id": u["username"], "username": u["username"], "display_name": u.get("display_name") or "", "role": u["role"],
+                "disabled": bool(u.get("disabled")), "last_login": u.get("last_login"), "created": u.get("created")}
+
+    def _may_manage(me_: str, target_role: str) -> None:
+        if target_role == "superadmin" and db.user_role(me_) != "superadmin":
+            raise HTTPException(403, "Nur ein Superadmin darf Superadmins ändern")
+
     @app.get("/api/admin/users")
-    async def users(_: str = Depends(require_admin)) -> list:
-        return db.list_users()
+    async def users(_: str = Depends(require_admin)) -> dict:
+        return {"users": [_user_row(u) for u in db.list_users()]}
 
     @app.post("/api/admin/users")
-    async def add_user(data: dict = Body(...), _: str = Depends(require_admin)) -> dict:
+    async def add_user(data: dict = Body(...), me_: str = Depends(require_admin)) -> dict:
         user, pw = str(data.get("username", "")).strip(), str(data.get("password", ""))
+        role = str(data.get("role") or "admin")
         if len(user) < 3 or len(pw) < 8:
             raise HTTPException(400, "Benutzername min. 3, Passwort min. 8 Zeichen")
-        db.set_user(user, pw, data.get("role", "admin"))
+        if role not in ROLES:
+            raise HTTPException(400, "Unbekannte Rolle")
+        if db.user_role(user):
+            raise HTTPException(400, "Den Benutzer gibt es schon")
+        _may_manage(me_, role)
+        db.set_user(user, pw, role)
+        db.update_user(user, display_name=str(data.get("display_name") or ""))
+        bridge.router.event("info", f"Benutzer {user} angelegt durch {me_}")
+        return {"ok": True}
+
+    @app.patch("/api/admin/users/{name}")
+    async def edit_user(name: str, data: dict = Body(...), me_: str = Depends(require_admin)) -> dict:
+        cur = db.user_role(name)
+        if not cur:
+            raise HTTPException(404, "Benutzer nicht gefunden")
+        _may_manage(me_, cur)
+        role = data.get("role")
+        if role is not None:
+            if role not in ROLES:
+                raise HTTPException(400, "Unbekannte Rolle")
+            _may_manage(me_, role)
+            if name == me_ and role != cur:
+                raise HTTPException(400, "Die eigene Rolle lässt sich nicht ändern")
+        if data.get("disabled") and name == me_:
+            raise HTTPException(400, "Das eigene Konto lässt sich nicht sperren")
+        pw = str(data.get("password") or "")
+        if pw and len(pw) < 8:
+            raise HTTPException(400, "Passwort min. 8 Zeichen")
+        db.update_user(name, display_name=data.get("display_name"), role=role,
+                       disabled=None if "disabled" not in data else bool(data.get("disabled")), password=pw or None)
+        bridge.router.event("info", f"Benutzer {name} geändert durch {me_}")
         return {"ok": True}
 
     @app.delete("/api/admin/users/{name}")
     async def del_user(name: str, me_: str = Depends(require_admin)) -> dict:
         if name == me_:
             raise HTTPException(400, "Eigenes Konto kann nicht gelöscht werden")
+        cur = db.user_role(name)
+        if cur:
+            _may_manage(me_, cur)
+            if cur == "superadmin" and sum(1 for u in db.list_users() if u["role"] == "superadmin") <= 1:
+                raise HTTPException(400, "Der letzte Superadmin kann nicht gelöscht werden")
         db.delete_user(name)
+        bridge.router.event("info", f"Benutzer {name} gelöscht durch {me_}")
+        return {"ok": True}
+
+    @app.get("/api/admin/sessions")
+    async def sessions_get(request: Request, _: str = Depends(require_admin)) -> dict:
+        mine = Database.session_id(request.cookies.get(COOKIE) or "")
+        return {"sessions": [{**{k: v for k, v in x.items() if k != "_token"}, "current": x["id"] == mine} for x in db.list_sessions()]}
+
+    @app.delete("/api/admin/sessions/{sid}")
+    async def sessions_revoke(sid: str, me_: str = Depends(require_admin)) -> dict:
+        if not db.revoke_session(sid):
+            raise HTTPException(404, "Sitzung nicht gefunden")
+        bridge.router.event("info", f"Sitzung {sid} beendet durch {me_}")
         return {"ok": True}
 
     @app.get("/api/admin/export")

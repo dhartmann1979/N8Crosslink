@@ -175,6 +175,7 @@ class Database:
         CREATE TABLE IF NOT EXISTS avatars (key TEXT PRIMARY KEY, has INTEGER, mime TEXT, data BLOB, url TEXT, fetched_at REAL);
         """)
         self.conn.commit()
+        self._migrate_access()
         if not self.has_users():
             # Standard-Login beim ersten Start – im Adminportal ändern!
             self.set_user(DEFAULT_USER, DEFAULT_PASSWORD, "superadmin")
@@ -233,14 +234,46 @@ class Database:
         return out
 
     # ------------------------------------------------------------ Benutzer
+    def _migrate_access(self) -> None:
+        """1.20: Benutzer & Zugang wie in HBlink4 – Anzeigename, gesperrt, letzte Anmeldung; Sitzungen mit IP, Browser, zuletzt aktiv."""
+        with self.lock:
+            have = lambda t: {r[1] for r in self.conn.execute(f"PRAGMA table_info({t})")}  # noqa: E731
+            for col, sql in (("display_name", "TEXT DEFAULT ''"), ("disabled", "INTEGER DEFAULT 0"), ("last_login", "REAL")):
+                if col not in have("users"):
+                    self.conn.execute(f"ALTER TABLE users ADD COLUMN {col} {sql}")
+            for col, sql in (("ip", "TEXT DEFAULT ''"), ("user_agent", "TEXT DEFAULT ''"), ("created", "REAL"), ("last_seen", "REAL")):
+                if col not in have("sessions"):
+                    self.conn.execute(f"ALTER TABLE sessions ADD COLUMN {col} {sql}")
+            self.conn.commit()
+
     def has_users(self) -> bool:
         with self.lock:
             return self.conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] > 0
 
     def set_user(self, username: str, password: str, role: str = "admin") -> None:
         with self.lock:
-            self.conn.execute("INSERT OR REPLACE INTO users VALUES (?,?,?,?)",
-                              (username, hash_password(password), role, time.time()))
+            if self.conn.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
+                self.conn.execute("UPDATE users SET pw_hash=?, role=? WHERE username=?", (hash_password(password), role, username))
+            else:
+                self.conn.execute("INSERT INTO users (username, pw_hash, role, created) VALUES (?,?,?,?)",
+                                  (username, hash_password(password), role, time.time()))
+            self.conn.commit()
+
+    def update_user(self, username: str, display_name: str | None = None, role: str | None = None,
+                    disabled: bool | None = None, password: str | None = None) -> None:
+        with self.lock:
+            if not self.conn.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
+                raise KeyError(username)
+            if display_name is not None:
+                self.conn.execute("UPDATE users SET display_name=? WHERE username=?", (display_name[:60], username))
+            if role is not None:
+                self.conn.execute("UPDATE users SET role=? WHERE username=?", (role, username))
+            if disabled is not None:
+                self.conn.execute("UPDATE users SET disabled=? WHERE username=?", (1 if disabled else 0, username))
+                if disabled:
+                    self.conn.execute("DELETE FROM sessions WHERE username=?", (username,))
+            if password:
+                self.conn.execute("UPDATE users SET pw_hash=? WHERE username=?", (hash_password(password), username))
             self.conn.commit()
 
     def delete_user(self, username: str) -> None:
@@ -251,7 +284,9 @@ class Database:
 
     def list_users(self) -> list[dict]:
         with self.lock:
-            return [dict(r) for r in self.conn.execute("SELECT username, role, created FROM users ORDER BY username")]
+            return [dict(r) for r in self.conn.execute(
+                "SELECT username, role, created, COALESCE(display_name, '') AS display_name, COALESCE(disabled, 0) AS disabled, last_login "
+                "FROM users ORDER BY CASE role WHEN 'superadmin' THEN 0 ELSE 1 END, username COLLATE NOCASE")]
 
     def user_role(self, username: str) -> str | None:
         with self.lock:
@@ -279,24 +314,54 @@ class Database:
 
     def check_login(self, username: str, password: str) -> bool:
         with self.lock:
-            row = self.conn.execute("SELECT pw_hash FROM users WHERE username=?", (username,)).fetchone()
-        return bool(row) and verify_password(password, row["pw_hash"])
+            row = self.conn.execute("SELECT pw_hash, COALESCE(disabled, 0) AS disabled FROM users WHERE username=?", (username,)).fetchone()
+        ok = bool(row) and not row["disabled"] and verify_password(password, row["pw_hash"])
+        if ok:
+            with self.lock:
+                self.conn.execute("UPDATE users SET last_login=? WHERE username=?", (time.time(), username))
+                self.conn.commit()
+        return ok
 
-    def new_session(self, username: str, hours: int = 12) -> str:
+    def new_session(self, username: str, hours: int = 12, ip: str = "", user_agent: str = "") -> str:
         token = secrets.token_urlsafe(32)
+        now = time.time()
         with self.lock:
-            self.conn.execute("DELETE FROM sessions WHERE expires < ?", (time.time(),))
-            self.conn.execute("INSERT INTO sessions VALUES (?,?,?)", (token, username, time.time() + hours * 3600))
+            self.conn.execute("DELETE FROM sessions WHERE expires < ?", (now,))
+            self.conn.execute("INSERT INTO sessions (token, username, expires, ip, user_agent, created, last_seen) VALUES (?,?,?,?,?,?,?)",
+                              (token, username, now + hours * 3600, ip[:64], user_agent[:300], now, now))
             self.conn.commit()
         return token
+
+    @staticmethod
+    def session_id(token: str) -> str:
+        return hashlib.sha256(token.encode()).hexdigest()[:16]
+
+    def list_sessions(self) -> list[dict]:
+        with self.lock:
+            rows = self.conn.execute("SELECT s.token, s.username, s.expires, s.ip, s.user_agent, s.created, s.last_seen, u.role "
+                                     "FROM sessions s LEFT JOIN users u ON u.username = s.username WHERE s.expires > ? "
+                                     "ORDER BY COALESCE(s.last_seen, s.created) DESC", (time.time(),)).fetchall()
+        return [{"id": self.session_id(r["token"]), "username": r["username"], "role": r["role"] or "", "ip": r["ip"] or "",
+                 "user_agent": r["user_agent"] or "", "last_seen": r["last_seen"] or r["created"], "expires_at": r["expires"],
+                 "_token": r["token"]} for r in rows]
+
+    def revoke_session(self, sid: str) -> bool:
+        for s in self.list_sessions():
+            if s["id"] == sid:
+                self.end_session(s["_token"])
+                return True
+        return False
 
     def session_user(self, token: str | None) -> str | None:
         if not token:
             return None
         with self.lock:
-            row = self.conn.execute("SELECT username, expires FROM sessions WHERE token=?", (token,)).fetchone()
-        if row and row["expires"] > time.time():
-            return row["username"]
+            row = self.conn.execute("SELECT username, expires, last_seen FROM sessions WHERE token=?", (token,)).fetchone()
+            if row and row["expires"] > time.time():
+                if time.time() - (row["last_seen"] or 0) > 60:          # „zuletzt aktiv“ höchstens einmal je Minute schreiben
+                    self.conn.execute("UPDATE sessions SET last_seen=? WHERE token=?", (time.time(), token))
+                    self.conn.commit()
+                return row["username"]
         return None
 
     def end_session(self, token: str) -> None:

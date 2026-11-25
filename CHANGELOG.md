@@ -2,6 +2,25 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.20.0] – 2026-11-25
+
+### 👥 Benutzer & Zugang wie in HBlink4-FreeRadioID – in allen N8-Systemen gleich
+- **👥 Benutzer** im Stil von HBlink4: Tabelle mit Avatar-Kürzel, Anzeigename, Rolle (Superadmin/Admin), **Letzte Anmeldung**, gesperrte
+  Konten ausgegraut; oben „＋ Benutzer anlegen“ in einer Zeile, je Benutzer **Bearbeiten** (Anzeigename, neues Passwort, Rolle, **gesperrt**,
+  Löschen mit Rückfrage). Gesperrte Benutzer können sich nicht mehr anmelden, ihre Sitzungen enden sofort.
+- **🔑 Sitzungen** (neu): alle aktuellen Anmeldungen mit Benutzer, IP-Adresse, Browser, zuletzt aktiv und Ablauf – „Abmelden“ beendet eine
+  Sitzung sofort; die eigene ist markiert.
+- Regeln: Superadmins verwaltet nur ein Superadmin; das eigene Konto lässt sich nicht löschen, sperren oder in der Rolle ändern; der letzte
+  Superadmin bleibt.
+- Datenbank: Benutzer bekommen Anzeigename, gesperrt, letzte Anmeldung; Sitzungen IP, Browser, angelegt, zuletzt aktiv (wird beim Start
+  automatisch ergänzt). Gemeinsame Ansicht `N8Kit.access.view` (N8 Kit 1.4), gleiche Adressen wie HBlink4:
+  `GET/POST /api/admin/users`, `PATCH/DELETE /api/admin/users/<name>`, `GET /api/admin/sessions`, `DELETE /api/admin/sessions/<id>`.
+
+### 🌐 Rubrik „Netz, Ports & Domains“
+- Die Gruppe im Admin-Menü heißt jetzt in allen N8-Systemen **🌐 Netz, Ports & Domains** – mit **🔌 Ports** und **🔒 Domains & HTTPS** nach dem
+  Vorbild von N8 Crosslink.
+- **Web-Adresse (Bind)** und **Web-Port** stehen nur noch dort (unter 🔌 Ports), nicht mehr zusätzlich unter *Allgemein*.
+
 ## [1.19.2] – 2026-11-25
 
 ### 🐛 Behoben: „Fehler -15“ beim Neustart des eigenen Dienstes (Admin → System → Dienste)

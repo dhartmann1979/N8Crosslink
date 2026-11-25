@@ -376,8 +376,6 @@ const F = (key, label, type = 'text', opt = {}) => ({ key, label, type, ...opt }
 const SCHEMA = {
   general: { title: '🏠 Allgemein', fields: [
     F('title', 'Titel im Dashboard'), F('server_name', 'Servername / Domain'),
-    F('web_host', 'Web-Adresse (Bind)', 'text', { help: '0.0.0.0 = alle Schnittstellen · Neustart des Dienstes nötig' }),
-    F('web_port', 'Web-Port', 'number', { help: 'Neustart des Dienstes nötig' }),
     F('hang_time_ms', 'Sperrzeit nach Aussendung (ms)', 'number', { help: 'Schützt vor Ping-Pong zwischen den Netzen' }),
     F('jitter_ms', 'Vorpuffer DMR/Zello-Ausgang (ms)', 'number', { help: 'FRN liefert 200-ms-Blöcke – 240 ms sind ein guter Wert' }),
     F('tot_s', 'Time-Out-Timer pro Durchgang (s)', 'number'), F('keep_days', 'Last Heard aufbewahren (Tage)', 'number'),
@@ -452,7 +450,8 @@ const SCHEMA = {
   ids: { title: '🗂️ ID-Listen & Avatare', custom: renderIds },
   appearance: { title: '🎨 Aussehen', custom: renderAppearance },
   backup: { title: '💾 Backup & Neuanfang', custom: renderBackup },
-  users: { title: '👥 Benutzer', custom: renderUsers },
+  users: { title: '👥 Benutzer', custom: () => accessView('users') },
+  sessions: { title: '🔑 Sitzungen', custom: () => accessView('sessions') },
   ports: { title: '🔌 Ports', custom: renderPorts },
   domains: { title: '🔒 Domains & HTTPS', custom: renderDomains },
   system: { title: '🛠️ Bridge & Ereignisse', custom: renderSystem },
@@ -463,7 +462,7 @@ const SCHEMA = {
   'sys-crashes': { title: '💥 Abstürze', custom: () => sysView('crashes') },
 };
 // Admin-Menü: derselbe Baum wie in allen N8-Systemen (N8 Kit) – Betrieb · Benutzer & Zugang · Darstellung · Netz & Domains · System
-const ADMIN_GROUPS = [['betrieb', ['general', 'routes', 'frn', 'dmr', 'zello', 'vocoder', 'ids']], ['zugang', ['users']], ['darstellung', ['appearance']],
+const ADMIN_GROUPS = [['betrieb', ['general', 'routes', 'frn', 'dmr', 'zello', 'vocoder', 'ids']], ['zugang', ['users', 'sessions']], ['darstellung', ['appearance']],
   ['netz', ['ports', 'domains']], ['system', ['system', 'sys-update', 'sys-services', 'sys-perms', 'sys-keepalive', 'sys-crashes', 'backup']]];
 const ADMIN_OLD = { update: 'sys-update' };
 // System → Update, Dienste, Berechtigungen & sudo, Keep-Alive: die N8-Kit-Ansichten, in allen N8-Systemen gleich
@@ -606,19 +605,16 @@ function renderVocoder() {
   };
 }
 
-async function renderUsers() {
-  const list = await api('/api/admin/users');
-  $('#adminBody').innerHTML = `<table class="tbl" style="margin:8px 0"><thead><tr><th>Benutzer</th><th>Rolle</th><th>Angelegt</th><th></th></tr></thead><tbody>
-    ${list.map(u => `<tr><td>👤 ${esc(u.username)}</td><td>${esc(u.role)}</td><td>${u.created ? new Date(u.created * 1000).toLocaleDateString('de-DE') : ''}</td>
-    <td class="num">${u.username === S.me.user ? '<span class="badge">du</span>' : `<button class="btn secondary" data-del="${esc(u.username)}">Löschen</button>`}</td></tr>`).join('')}</tbody></table>
-    <div class="form"><div class="field"><label>Neuer Benutzer / Passwort ändern</label><input type="text" id="nuUser" placeholder="Benutzername"></div>
-    <div class="field"><label>Passwort (min. 8 Zeichen)</label><input type="password" id="nuPass" autocomplete="new-password"></div></div>
-    <div class="form-actions"><button class="btn" id="nuBtn">💾 Speichern</button></div>`;
-  $$('[data-del]').forEach(b => b.onclick = async () => { if (confirm('Benutzer ' + b.dataset.del + ' löschen?')) { await api('/api/admin/users/' + encodeURIComponent(b.dataset.del), { method: 'DELETE' }); renderUsers(); } });
-  $('#nuBtn').onclick = async () => {
-    try { await api('/api/admin/users', { method: 'POST', body: { username: $('#nuUser').value.trim(), password: $('#nuPass').value } }); toast('✅ Benutzer gespeichert'); renderUsers(); }
-    catch (e) { toast('⚠️ ' + e.message); }
-  };
+// 👥 Benutzer & 🔑 Sitzungen – die Ansichten des N8 Kit nach dem Vorbild von HBlink4-FreeRadioID, gleich in allen N8-Systemen
+function accessView(name) {
+  const el = $('#adminBody'); el.classList.remove('card');
+  return N8Kit.access.view(el, name, {
+    req: (m, u, b) => api(u, m === 'GET' ? {} : { method: m, body: b || {} }), me: { username: S.me.user, role: S.me.role || 'admin' },
+    roles: [{ id: 'superadmin', label: 'Superadmin', assign: 'superadmin' }, { id: 'admin', label: 'Admin', assign: 'all' }],
+    fields: ['display_name'], toast: (m, bad) => toast((bad ? '⚠️ ' : '✅ ') + m),
+    intro: 'Wer sich am Adminbereich anmelden darf. Superadmins dürfen zusätzlich Backups wiederherstellen, alles zurücksetzen und andere Superadmins verwalten.',
+    locked: (u, me) => u.username === me.username ? 'du' : (u.role === 'superadmin' && me.role !== 'superadmin' ? 'nur Superadmin' : ''),
+  });
 }
 
 // ---------------------------------------------------------------- 🔌 Ports – alles an einer Stelle (wie „HTTPS & web“ bei HBlink4)

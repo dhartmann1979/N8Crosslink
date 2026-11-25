@@ -225,12 +225,16 @@ function renderToday() {
 function renderOnAir() {
   const a = S.state?.active, box = $('#onair');
   const ports = S.state?.ports || {};
-  $('#oaRx').classList.toggle('on', !!a);
-  $('#oaTx').classList.toggle('on', ORDER.some(k => ports[k]?.tx));
+  // LEDs wie beim N8 Hotspot: RX Magenta · TX Rot · Dienst ok Grün (aus = Gelb, offline = Rot)
+  const led = (id, cls) => { const e = $('#' + id); if (e) e.className = 'led ' + cls; };
+  led('oaRx', a ? 'on m pulse' : '');
+  led('oaTx', ORDER.some(k => ports[k]?.tx) ? 'on r' : '');
+  ORDER.forEach(k => { const p = ports[k] || {}; led('led' + k[0].toUpperCase() + k.slice(1), !p.enabled ? 'dim' : p.online ? 'on g' : 'on r'); });
+  const v = S.state?.vocoder; led('ledVoc', !v ? 'dim' : v.online ? 'on g' : 'on r');
   if (!a) {
     box.classList.remove('live');
     $('#stActive').textContent = '–';
-    $('#oaKicker').textContent = 'On Air'; $('#oaRoute').innerHTML = '';
+    $('#oaKicker').textContent = 'Ruhe'; $('#oaRoute').innerHTML = '';
     const last = S.lh.find(x => x.status !== 'blocked');
     $('#oaName').textContent = 'Ruhe auf allen Netzen';
     if ($('#oaAv').dataset.k) { $('#oaAv').outerHTML = '<div class="big-av" id="oaAv"><span class="av-fb">N8</span></div>'; }
@@ -275,6 +279,7 @@ function setSegMeter(lvl) {
 }
 setInterval(() => {
   const a = S.state?.active;
+  const ck = $('#lcdClock'); if (ck) ck.textContent = new Date().toLocaleTimeString('de-DE');
   if (a) { const d = Math.max(0, Date.now() / 1000 - a.since); $('#oaTimer').textContent = `${String(Math.floor(d / 60)).padStart(2, '0')}:${String(Math.floor(d % 60)).padStart(2, '0')}`; }
 }, 250);
 

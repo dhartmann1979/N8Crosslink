@@ -2,6 +2,19 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.23.0] – 2026-11-25
+
+### 📻 Der Crosslink als Funkgerät (Vorlage: N8 Hotspot)
+- Die Live-Ansicht ist jetzt **ein Gerät über die ganze Breite** im Stil des N8 Hotspot: Gehäuse mit Kopfleiste (Modell, Zustand) und
+  **LEDs RX · TX · FRN · DMR · ZELLO · VOC** – RX **Magenta**, TX **Rot**, Dienst ok **Grün** (offline Rot, aus gedimmt).
+- **Zwei Displays nebeneinander:** *On Air* (Route, Uhr, Avatar, Name in Display-Schrift, Details, Laufzeit, Pegel-Segmentanzeige)
+  und *Pegelverlauf* (letzte 30 s, Spitze/Ø, Ø-Länge je Durchgang).
+- **Instrumente im Gerät:** Vocoder-Qualität (Ring) und Durchgänge je Stunde.
+- **Kanäle im Gerät:** die Netz-Karten sitzen jetzt im Funkgerät, **kleiner** (Schrift, Abzeichen, Abstände), die **Logos größer
+  (52 px) und ohne weißen Rand** – sie füllen ihr Feld.
+- **Tageszahlen im Gerät** (Netze online, gerade aktiv in Magenta, Durchgänge, Sendezeit, Stationen, blockiert) statt der Karten oben.
+- Doku-Screenshots neu.
+
 ## [1.22.0] – 2026-11-25
 
 ### 📻 Live-Ansicht neu: OnAir wie ein Funkgerät

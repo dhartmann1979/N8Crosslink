@@ -421,3 +421,114 @@ tr.perm-ok td:last-child { color: var(--text-dim); }
 .nc-routes .badge { font-size: 10px; padding: 1px 7px; }
 .net-card.voc { --col: #bf5af2; }
 .onair:not(.live) .oa-timer { color: var(--text-dim); opacity: .55; }
+
+/* ===================================================================================
+   1.23.0: der Crosslink als Funkgerät (Vorlage: N8 Hotspot) – LEDs, Displays, Instrumente,
+   Kanäle (Netze) und Tageszahlen in einem Gerät über die ganze Breite
+   =================================================================================== */
+.radio { position: relative; border-radius: 26px; padding: 14px 14px 12px;
+    background: linear-gradient(180deg, rgba(42, 48, 66, .92), rgba(20, 24, 36, .96));
+    border: 1px solid rgba(255, 255, 255, .10);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), inset 0 -2px 0 rgba(0, 0, 0, .45), 0 18px 50px rgba(0, 0, 0, .45); }
+.radio::before { content: ""; position: absolute; inset: 6px; border-radius: 21px; pointer-events: none;
+    background: repeating-linear-gradient(90deg, rgba(255, 255, 255, .018) 0 2px, transparent 2px 5px); }
+.radio-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 6px 10px; flex-wrap: wrap; position: relative; }
+.radio-brand { display: flex; align-items: center; gap: 8px; }
+.radio-badge { font-weight: 800; font-size: 12px; letter-spacing: .08em; padding: 3px 7px; border-radius: 7px; color: #0b1224;
+    background: linear-gradient(180deg, var(--accent), #2a8bd8); box-shadow: 0 0 14px rgba(90, 200, 250, .35); }
+.radio-model { font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--text-dim); font-weight: 700; }
+
+.leds { display: flex; gap: 12px; flex-wrap: wrap; }
+.led { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 800; letter-spacing: .12em; color: rgba(235, 240, 250, .38); }
+.led b { font-weight: 800; }
+.led i { width: 11px; height: 11px; border-radius: 50%; background: #262b38; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .7), 0 0 0 1px rgba(255, 255, 255, .06); }
+.led.on { color: var(--text); }
+.led.dim i { background: #3a4152; }
+.led.on.g i { background: radial-gradient(circle at 35% 30%, #c9ffd6, #30d158 45%, #14802f); box-shadow: 0 0 10px #30d158, 0 0 2px #fff inset; }
+.led.on.r i { background: radial-gradient(circle at 35% 30%, #ffd1cc, #ff453a 45%, #a3150c); box-shadow: 0 0 12px #ff453a, 0 0 2px #fff inset; }
+.led.on.a i { background: radial-gradient(circle at 35% 30%, #fff3b8, #ffd60a 45%, #a98400); box-shadow: 0 0 10px #ffd60a; }
+.led.on.m i { background: radial-gradient(circle at 35% 30%, #ffd1f5, #ff2dd1 45%, #a3007f); box-shadow: 0 0 12px #ff2dd1, 0 0 2px #fff inset; }
+.led.on.m.pulse i { animation: ledpulse-m 1s ease-in-out infinite; }
+@keyframes ledpulse-m { 50% { filter: brightness(1.35); box-shadow: 0 0 18px #ff2dd1; } }
+.led.on.b i { background: radial-gradient(circle at 35% 30%, #d4f0ff, #5ac8fa 45%, #1b6fa8); box-shadow: 0 0 10px #5ac8fa; }
+.led.pulse i { animation: ledpulse 1s ease-in-out infinite; }
+.led.blink i { animation: ledblink 1.2s steps(2, start) infinite; }
+@keyframes ledpulse { 50% { filter: brightness(1.35); box-shadow: 0 0 18px #30d158; } }
+@keyframes ledblink { to { visibility: hidden; } }
+
+.lcd { position: relative; border-radius: 16px; padding: 10px 14px 9px; overflow: hidden;
+    background: radial-gradient(120% 140% at 30% 0%, rgba(90, 200, 250, .16), transparent 60%), linear-gradient(180deg, #0a1a24, #07121b);
+    border: 1px solid rgba(90, 200, 250, .25); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .6), inset 0 8px 30px rgba(0, 0, 0, .55), 0 0 30px rgba(90, 200, 250, .08);
+    color: #cfefff; font-variant-numeric: tabular-nums; }
+.lcd::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(255, 255, 255, .025) 0 1px, transparent 1px 3px); }
+.lcd-top, .lcd-bot { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font-family: var(--n8-mono, ui-monospace, monospace); font-size: 12.5px; color: rgba(207, 239, 255, .78); }
+.lcd-top { padding-bottom: 8px; border-bottom: 1px dashed rgba(90, 200, 250, .22); }
+.lcd-bot { padding-top: 7px; border-top: 1px dashed rgba(90, 200, 250, .22); font-size: 11.5px; color: rgba(207, 239, 255, .55); }
+.lcd-call { font-weight: 800; color: #eaf8ff; letter-spacing: .06em; }
+.radio-today { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 10px; position: relative; }
+.radio-today .rt { display: flex; flex-direction: column; padding: 7px 10px; border-radius: 12px; background: rgba(255, 255, 255, .04); border: 1px solid rgba(255, 255, 255, .07); }
+.radio-today small { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); font-weight: 700; }
+.radio-today b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.radio-today b small { font-size: 11px; letter-spacing: 0; text-transform: none; margin-left: 4px; color: var(--text-dim); }
+
+
+.xl-radio { margin-bottom: 14px; display: flex; flex-direction: column; gap: 10px; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.xl-radio.live { box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 0 0 1px rgba(var(--led-rx-rgb), .45), 0 0 40px rgba(var(--led-rx-rgb), .18), 0 18px 50px rgba(0,0,0,.45); }
+.xl-radio .radio-bar { padding-bottom: 0; }
+.xl-radio .rd-note { margin-left: 10px; font-size: 11.5px; color: var(--text-dim); text-transform: none; letter-spacing: 0; }
+/* LEDs: RX Magenta · TX Rot · Dienst ok Grün */
+.led.on.m i { background: radial-gradient(circle at 35% 30%, #ffd1f5, #ff2dd1 45%, #a3007f); box-shadow: 0 0 12px #ff2dd1, 0 0 2px #fff inset; }
+.led.on.m.pulse i { animation: ledpulse-m 1s ease-in-out infinite; }
+@keyframes ledpulse-m { 50% { filter: brightness(1.35); box-shadow: 0 0 18px #ff2dd1; } }
+.xl-radio .rd-main { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 10px; position: relative; }
+.xl-radio .rd-main > .lcd { display: flex; flex-direction: column; min-width: 0; }
+.xl-radio .oa-top { display: flex; align-items: center; gap: 14px; flex: 1; padding: 10px 0; }
+.xl-radio .big-av { width: 78px; height: 78px; border-radius: 18px; flex: none; display: grid; place-items: center; font-weight: 800; font-size: 22px;
+  background: rgba(90, 200, 250, .08); border: 1px solid rgba(90, 200, 250, .25); color: #8fdcff; font-family: var(--n8-mono, monospace); }
+.xl-radio.live .big-av { border-color: rgba(var(--led-rx-rgb), .7); box-shadow: 0 0 18px rgba(var(--led-rx-rgb), .35); }
+.xl-radio .oa-main { flex: 1; min-width: 0; }
+.xl-radio .oa-name { font-family: var(--n8-mono, monospace); font-size: 28px; font-weight: 800; color: #f4fbff; letter-spacing: .04em; margin: 0 0 4px;
+  text-shadow: 0 0 12px rgba(143, 220, 255, .35); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.xl-radio .oa-sub { font-size: 12.5px; color: rgba(207, 239, 255, .7); }
+.xl-radio .oa-timer { font-family: var(--n8-mono, monospace); font-size: 34px; font-weight: 800; color: #f4fbff; min-width: 0; text-align: right; }
+.xl-radio:not(.live) .oa-timer { color: rgba(207, 239, 255, .35); opacity: 1; }
+.xl-radio .oa-route { display: inline-flex; gap: 4px; align-items: center; }
+.xl-radio .lcd-bot { flex-wrap: nowrap; }
+.xl-radio .lcd-bot .vu { flex: 1; height: 14px; grid-template-columns: repeat(30, 1fr); gap: 2px; }
+.xl-radio .lcd-bot b { color: #eaf8ff; min-width: 54px; text-align: right; }
+.xl-radio .lcd-bot .grow-r { margin-left: auto; }
+.xl-radio .vu i { background: rgba(207, 239, 255, .10); }
+.xl-radio .lcd-chart .oa-canvas { flex: 1; min-height: 120px; height: auto; margin: 8px 0; }
+.xl-radio .rd-inst { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 10px; margin: 0; position: relative; }
+.xl-radio .inst { background: linear-gradient(180deg, rgba(8, 18, 27, .85), rgba(7, 14, 22, .92)); border: 1px solid rgba(90, 200, 250, .18);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .5), inset 0 6px 22px rgba(0, 0, 0, .45); border-radius: 14px; opacity: 1; }
+.xl-radio .inst-h b { font-family: var(--n8-mono, monospace); color: #8fdcff; }
+.xl-radio .radio-today { grid-template-columns: repeat(6, minmax(0, 1fr)); margin-top: 0; }
+.xl-radio .radio-today .rt.hl b { color: #ff7ae4; }
+.xl-radio .radio-today b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Kanäle (Netze) im Gerät: kleiner, Logo größer und ohne weißen Rand */
+.xl-radio .net-grid { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px; margin: 0; position: relative; }
+.xl-radio .net-card { padding: 8px 10px; gap: 4px; border-radius: 14px; background: rgba(255, 255, 255, .035); border: 1px solid rgba(255, 255, 255, .08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.xl-radio .net-card::before { height: 2px; }
+.xl-radio .nc-logo { width: 52px; height: 52px; border-radius: 14px; background: rgba(0, 0, 0, .25); border: 0; font-size: 26px; }
+.xl-radio .nc-logo img { padding: 0; object-fit: cover; border-radius: inherit; }
+.xl-radio .nc-logo img.ok { background: none; }
+.xl-radio .net-card .nc-title { font-size: 14px; }
+.xl-radio .nc-sub { font-size: 11.5px; }
+.xl-radio .nc-now { font-size: 12px; min-height: 18px; }
+.xl-radio .nc-meta { font-size: 11px; }
+.xl-radio .net-card .badge, .xl-radio .nc-routes .badge { font-size: 9.5px; padding: 1px 6px; line-height: 1.5; }
+.xl-radio .net-card .rt span { font-size: 9.5px; padding: 1px 5px; }
+.xl-radio .net-card.txing { box-shadow: 0 0 0 1px rgba(255, 69, 58, .5), 0 0 20px rgba(255, 69, 58, .15); }
+.xl-radio .net-card.rxing { box-shadow: 0 0 0 1px rgba(var(--led-rx-rgb), .55), 0 0 20px rgba(var(--led-rx-rgb), .18); }
+@media (max-width: 1100px) { .xl-radio .rd-main { grid-template-columns: 1fr; } .xl-radio .radio-today { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .xl-radio .rd-inst { grid-template-columns: 1fr; } .xl-radio .oa-name { font-size: 20px; } .xl-radio .big-av { width: 56px; height: 56px; }
+  .xl-radio .oa-timer { font-size: 22px; } .xl-radio .leds { gap: 8px; } }
+.xl-radio .lcd-clock { margin-left: auto; color: #eaf8ff; font-weight: 700; }
+.xl-radio .oa-top { flex: 1 1 auto; }
+.xl-radio .lcd-chart .oa-canvas { flex: none; height: 150px; min-height: 0; }
+.xl-radio .rd-inst .oa-canvas { height: 70px; }
+.xl-radio .rd-main { align-items: stretch; }

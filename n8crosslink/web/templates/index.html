@@ -95,42 +95,42 @@
 
   <!-- ============================== LIVE ============================== -->
   <section class="tab-pane" id="tab-live">
-    <div class="stats-bar">
-      <div class="stat-card"><div class="stat-label">🔌 Netze online</div><div class="stat-value" id="stNets">–</div></div>
-      <div class="stat-card hl"><div class="stat-label">🎙️ Gerade aktiv</div><div class="stat-value" id="stActive">–</div></div>
-      <div class="stat-card"><div class="stat-label">📞 Durchgänge heute</div><div class="stat-value" id="stTalks">–</div></div>
-      <div class="stat-card"><div class="stat-label">⏱️ Sendezeit heute</div><div class="stat-value" id="stAir">–</div></div>
-      <div class="stat-card"><div class="stat-label">👥 Stationen heute</div><div class="stat-value" id="stStations">–</div></div>
-      <div class="stat-card"><div class="stat-label">🚫 Blockiert heute</div><div class="stat-value" id="stBlocked">–</div></div>
-    </div>
-
-    <div class="onair radio" id="onair">
-      <div class="oa-top">
-        <div class="big-av" id="oaAv">N8</div>
-        <div class="oa-main">
-          <div class="oa-kicker"><span class="onair-dot"></span><span id="oaKicker">On Air</span><span class="oa-route" id="oaRoute"></span></div>
-          <div class="oa-name" id="oaName">Ruhe auf allen Netzen</div>
-          <div class="oa-sub" id="oaSub">Warte auf die nächste Durchsage …</div>
-        </div>
-        <div class="oa-right">
-          <div class="oa-lamps"><span class="lamp rx" id="oaRx">RX</span><span class="lamp tx" id="oaTx">TX</span></div>
-          <div class="oa-timer lcd" id="oaTimer">00:00</div>
+    <!-- the crosslink as one radio (template: N8 Hotspot): LEDs, on-air display, level display, instruments, channels, today -->
+    <div class="radio xl-radio onair" id="onair">
+      <div class="radio-bar">
+        <div class="radio-brand"><span class="radio-badge">N8</span><span class="radio-model">Crosslink · FRN · DMR · Zello</span>
+          <small class="rd-note" id="oaKicker">On Air</small></div>
+        <div class="leds" role="status">
+          <span class="led" id="oaRx" title="Empfang (eine Station spricht)"><i></i>RX</span>
+          <span class="led" id="oaTx" title="Senden in die anderen Netze"><i></i>TX</span>
+          <span class="led" id="ledFrn" title="FRN"><i></i>FRN</span>
+          <span class="led" id="ledDmr" title="DMR"><i></i>DMR</span>
+          <span class="led" id="ledZello" title="Zello"><i></i>ZELLO</span>
+          <span class="led" id="ledVoc" title="Vocoder"><i></i>VOC</span>
         </div>
       </div>
-      <div class="oa-inst">
-        <div class="inst">
-          <div class="inst-h"><span>Pegel</span><b class="lcd" id="oaDb">– dB</b></div>
-          <div class="vu" id="oaVu"></div>
-          <div class="vu-scale"><span>-60</span><span>-40</span><span>-20</span><span>-6</span><span>0 dBFS</span></div>
-          <div class="inst-f" id="oaLvlInfo">Spitze – · Ø –</div>
+      <div class="rd-main">
+        <div class="lcd lcd-onair">
+          <div class="lcd-top"><span class="lcd-call">ON AIR</span><span class="oa-route" id="oaRoute"></span><span class="lcd-clock" id="lcdClock">--:--:--</span></div>
+          <div class="oa-top">
+            <div class="big-av" id="oaAv">N8</div>
+            <div class="oa-main">
+              <div class="oa-name" id="oaName">Ruhe auf allen Netzen</div>
+              <div class="oa-sub" id="oaSub">Warte auf die nächste Durchsage …</div>
+            </div>
+            <div class="oa-timer" id="oaTimer">00:00</div>
+          </div>
+          <div class="lcd-bot"><span>Pegel</span><div class="vu" id="oaVu"></div><b id="oaDb">– dB</b></div>
         </div>
-        <div class="inst">
-          <div class="inst-h"><span>Pegelverlauf</span><b class="lcd" id="oaGraphInfo">30 s</b></div>
-          <canvas class="oa-canvas" id="oaGraph" height="70"></canvas>
-          <div class="inst-f" id="oaPkts">Pakete –</div>
+        <div class="lcd lcd-chart">
+          <div class="lcd-top"><span class="lcd-call">PEGELVERLAUF</span><span class="lcd-clock" id="oaGraphInfo">30 s</span></div>
+          <canvas class="oa-canvas" id="oaGraph"></canvas>
+          <div class="lcd-bot"><span id="oaLvlInfo">Spitze – · Ø –</span><span id="oaPkts" class="grow-r">–</span></div>
         </div>
+      </div>
+      <div class="rd-inst">
         <div class="inst">
-          <div class="inst-h"><span>Vocoder</span><b class="lcd" id="oaVocQ">–</b></div>
+          <div class="inst-h"><span>Vocoder</span><b id="oaVocQ">–</b></div>
           <div class="oa-voc">
             <svg class="ring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" class="ring-bg"/><circle cx="22" cy="22" r="18" class="ring-fg" id="oaVocRing"/></svg>
             <div class="voc-t" id="oaVocT">–</div>
@@ -138,14 +138,21 @@
           <div class="inst-f" id="oaVocF">–</div>
         </div>
         <div class="inst">
-          <div class="inst-h"><span>Heute</span><b class="lcd" id="oaTodayN">–</b></div>
-          <canvas class="oa-canvas" id="oaHours" height="70"></canvas>
+          <div class="inst-h"><span>Heute je Stunde</span><b id="oaTodayN">–</b></div>
+          <canvas class="oa-canvas" id="oaHours"></canvas>
           <div class="inst-f" id="oaTodayF">–</div>
         </div>
       </div>
+      <div class="net-grid" id="netGrid"></div>
+      <div class="radio-today">
+        <span class="rt"><small>Netze online</small><b id="stNets">–</b></span>
+        <span class="rt hl"><small>Gerade aktiv</small><b id="stActive">–</b></span>
+        <span class="rt"><small>Durchgänge</small><b id="stTalks">–</b></span>
+        <span class="rt"><small>Sendezeit</small><b id="stAir">–</b></span>
+        <span class="rt"><small>Stationen</small><b id="stStations">–</b></span>
+        <span class="rt"><small>Blockiert</small><b id="stBlocked">–</b></span>
+      </div>
     </div>
-
-    <div class="net-grid" id="netGrid"></div>
 
     <h2 class="section-header collapsible" data-section="lh"><span class="collapse-caret">▾</span>Last Heard <span class="count" id="lhCount"></span><span class="grow"></span></h2>
     <div class="card" data-body="lh">

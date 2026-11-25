@@ -2,6 +2,12 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.21.1] – 2026-11-25
+
+### 📋 FRN-Fehlerprotokoll: Erklärung für „unknown owner“
+- Meldet der SystemManager zu einem FRN-Server „unknown owner“, steht jetzt die passende Erklärung dabei: Die Besitzer-E-Mail des
+  Servers (`server_owner`) ist kein bekanntes FRN-Konto – Sache des Server-Betreibers (beim ADN-FRN-Server: Einstellungen → Operator).
+
 ## [1.21.0] – 2026-11-25
 
 ### 🔁 FRN Master & Backup erkennen – der Master hat immer Vorrang

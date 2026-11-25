@@ -30,6 +30,8 @@ HINTS = [
     (r"not listening on specified port", "Der Server ist auf dem angegebenen Port von außen nicht erreichbar – Firewall und "
                                          "Portweiterleitung (TCP) im Router prüfen."),
     (r"blocked|banned|locked", "Zugang gesperrt – beim Betreiber des FRN-Netzes nachfragen."),
+    (r"unknown owner", "Unbekannter Besitzer: Die Besitzer-E-Mail des FRN-Servers (server_owner) ist beim System Manager kein bekanntes "
+                       "FRN-Konto – Sache des Server-Betreibers (beim ADN-FRN-Server: Einstellungen → Operator)."),
     (r"unknown|not registered|no account|not found", "Zugang beim System Manager unbekannt – Passwort anfordern bzw. Schreibweise von "
                                                      "E-Mail, Rufzeichen und Name prüfen."),
     (r"version", "Protokollversion wird abgelehnt – Feld „Protokollversion“ prüfen (Standard 2014003)."),

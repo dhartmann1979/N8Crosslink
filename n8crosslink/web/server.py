@@ -106,6 +106,49 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
     async def favicon() -> Response:
         return Response((ICONS / "favicon.ico").read_bytes(), media_type="image/x-icon", headers=LONG)
 
+    # Logos der verbundenen Systeme (Icon-Set des jeweiligen Servers, siehe neticons.py)
+    from ..neticons import NetIcons
+    from urllib.parse import urlparse as _urlparse
+    _icons = NetIcons(os.path.dirname(os.path.abspath(db.path)))
+    _icon_busy: set = set()
+
+    def _icon_host(net: str) -> str:
+        c = bridge.cfg
+        if net == "frn":
+            p = bridge.router.ports.get("frn") if getattr(bridge, "router", None) else None
+            t = getattr(p, "target", ("", 0)) if p else ("", 0)
+            return (t[0] if t and t[0] else c.get("frn", {}).get("server", "")) or ""
+        if net == "dmr":
+            return c.get("dmr", {}).get("host", "") or ""
+        if net == "zello":
+            try:
+                return _urlparse(c.get("zello", {}).get("server", "")).hostname or ""
+            except ValueError:
+                return ""
+        return ""
+
+    @app.get("/api/neticon/{net}")
+    async def neticon(net: str) -> Response:
+        if net not in ("frn", "dmr", "zello"):
+            raise HTTPException(404)
+        host = _icon_host(net)
+        if not host:
+            raise HTTPException(404)
+        if _icons.due(host) and host not in _icon_busy:
+            _icon_busy.add(host)
+
+            async def _bg() -> None:
+                try:
+                    await asyncio.to_thread(_icons.refresh, host)
+                finally:
+                    _icon_busy.discard(host)
+            asyncio.create_task(_bg())
+        c = _icons.cached(host)
+        if not c:
+            raise HTTPException(404)
+        return Response(c[0], media_type=c[1], headers={"Cache-Control": "public, max-age=86400",
+                        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox"})
+
     @app.get("/apple-touch-icon.png")
     @app.get("/apple-touch-icon-precomposed.png")
     async def apple_icon() -> Response:

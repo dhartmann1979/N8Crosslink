@@ -128,31 +128,131 @@ function renderState() {
   if ($('#tab-nets') && !$('#tab-nets').classList.contains('hidden')) renderNetDetails();
 }
 
+/* ---------- On Air: Display wie ein Funkgerät, mit Pegel, Verlauf, Vocoder und Tagesstatistik ---------- */
+const OA = { talk: 0, hist: [], last: [], peak: -90, sum: 0, n: 0, voc0: null, src: '' };
+(function buildVu() {
+  const m = $('#oaVu'); if (!m) return;
+  m.innerHTML = Array.from({ length: 30 }, (_, i) => { const db = -60 + (i + 1) * 2; return `<i class="${db > -6 ? 'r' : db > -18 ? 'y' : 'g'}"></i>`; }).join('');
+})();
+function setVu(lvl, peak) {
+  const segs = $$('#oaVu i'); if (!segs.length) return;
+  const n = Math.max(0, Math.min(30, Math.round((lvl + 60) / 2))), pk = Math.max(0, Math.min(30, Math.round((peak + 60) / 2))) - 1;
+  segs.forEach((el, i) => { el.classList.toggle('lit', i < n); el.classList.toggle('peak', i === pk && peak > -60); });
+}
+function cssVar(name, fb) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fb; }
+function drawGraph(hist, col, faded) {
+  const c = $('#oaGraph'); if (!c) return;
+  const w = c.clientWidth || 300, h = c.clientHeight || 70, dpr = window.devicePixelRatio || 1;
+  if (c.width !== w * dpr) { c.width = w * dpr; c.height = h * dpr; }
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  g.strokeStyle = 'rgba(255,255,255,.07)'; g.lineWidth = 1;
+  [-20, -40].forEach(db => { const y = h * (-db / 60); g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); });
+  if (!hist.length) return;
+  const t1 = hist[hist.length - 1].t, span = 30;
+  const x = t => w - (t1 - t) / span * w, y = l => h - Math.max(0, Math.min(1, (l + 60) / 60)) * h;
+  g.beginPath(); g.moveTo(x(hist[0].t), h);
+  hist.forEach(p => g.lineTo(x(p.t), y(p.l)));
+  g.lineTo(x(t1), h); g.closePath();
+  const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, col + (faded ? '55' : 'aa')); gr.addColorStop(1, col + '08');
+  g.fillStyle = gr; g.fill();
+  g.beginPath(); hist.forEach((p, k) => k ? g.lineTo(x(p.t), y(p.l)) : g.moveTo(x(p.t), y(p.l)));
+  g.strokeStyle = col; g.globalAlpha = faded ? .5 : 1; g.lineWidth = 1.6; g.stroke(); g.globalAlpha = 1;
+}
+function drawHours(hours, now) {
+  const c = $('#oaHours'); if (!c || !hours) return;
+  const w = c.clientWidth || 300, h = c.clientHeight || 70, dpr = window.devicePixelRatio || 1;
+  if (c.width !== w * dpr) { c.width = w * dpr; c.height = h * dpr; }
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const max = Math.max(1, ...hours), bw = w / 24, acc = cssVar('--accent', '#5ac8fa');
+  hours.forEach((v, i) => {
+    const bh = v ? Math.max(3, (v / max) * (h - 12)) : 2;
+    g.fillStyle = i === now ? acc : v ? acc + '88' : 'rgba(255,255,255,.08)';
+    g.fillRect(i * bw + 1.5, h - 10 - bh, bw - 3, bh);
+  });
+  g.fillStyle = 'rgba(235,240,250,.45)'; g.font = '9px ' + (cssVar('--n8-mono', 'monospace'));
+  [0, 6, 12, 18].forEach(hh => g.fillText(String(hh).padStart(2, '0'), hh * bw + 1, h - 1));
+}
+const NETCOL = { frn: '#0a84ff', dmr: '#30d158', zello: '#ff9f0a' };
+function vocQuality(v, base) {
+  const f = k => (v?.[k] || 0) - (base?.[k] || 0);
+  const frames = f('enc') + f('dec'), bad = f('errors') + f('timeouts') + f('late') + f('erasures');
+  return { frames, bad, enc: f('enc'), dec: f('dec'), q: frames ? Math.max(0, 100 * (1 - bad / frames)) : null };
+}
+function renderInstruments(a) {
+  const st = S.state || {}, v = st.vocoder;
+  // Pegel + Verlauf
+  const now = Date.now() / 1000;
+  if (a) {
+    if (OA.talk !== a.since) { OA.talk = a.since; OA.hist = []; OA.peak = -90; OA.sum = 0; OA.n = 0; OA.voc0 = v ? { ...v } : null; OA.src = a.source; }
+    const lvl = st.ports?.[a.source]?.rx_level ?? -90;
+    OA.hist.push({ t: now, l: lvl }); OA.hist = OA.hist.filter(p => now - p.t <= 30);
+    if (lvl > -60) { OA.peak = Math.max(OA.peak, lvl); OA.sum += lvl; OA.n++; }
+    OA.last = OA.hist.slice();
+    setVu(lvl, OA.peak);
+    $('#oaDb').textContent = lvl > -60 ? `${Math.round(lvl)} dB` : '– dB';
+    drawGraph(OA.hist, NETCOL[a.source] || '#5ac8fa', false);
+  } else {
+    setVu(-90, -90); $('#oaDb').textContent = '– dB';
+    drawGraph(OA.last, NETCOL[OA.src] || '#5ac8fa', true);
+  }
+  $('#oaLvlInfo').textContent = OA.n ? `Spitze ${Math.round(OA.peak)} dB · Ø ${Math.round(OA.sum / OA.n)} dB` + (a ? '' : ' (letzter Durchgang)') : 'Spitze – · Ø –';
+  const tdy = S.today || {};
+  $('#oaGraphInfo').textContent = a ? fmtDur(now - a.since) : '30 s';
+  $('#oaPkts').textContent = tdy.talks ? `Ø ${fmtDur((tdy.airtime || 0) / tdy.talks)} je Durchgang · ${tdy.talks} heute` : 'noch kein Durchgang heute';
+  // Vocoder: Qualität des laufenden Durchgangs (wenn DMR beteiligt), sonst gesamt
+  const ring = $('#oaVocRing');
+  if (!v) {
+    $('#oaVocQ').textContent = 'aus'; $('#oaVocT').innerHTML = 'kein Vocoder eingerichtet'; $('#oaVocF').textContent = '–';
+    ring.style.strokeDashoffset = 113.1; return;
+  }
+  const dmrIn = a && (a.source === 'dmr' || (a.targets || []).includes('dmr'));
+  const cur = dmrIn ? vocQuality(v, OA.voc0) : null, all = vocQuality(v, null);
+  const show = cur && cur.frames ? cur : all;
+  const q = show.q;
+  $('#oaVocQ').textContent = q == null ? (v.online ? 'bereit' : 'offline') : `${q.toFixed(q >= 99.95 ? 0 : 1)} %`;
+  ring.style.strokeDashoffset = 113.1 * (1 - (q == null ? 0 : q / 100));
+  ring.style.stroke = q == null ? 'var(--text-dim)' : q >= 98 ? 'var(--green)' : q >= 90 ? 'var(--amber)' : 'var(--red)';
+  $('#oaVocT').innerHTML = `${dmrIn ? 'dieser Durchgang' : 'gesamt'}<br>⇡ Enc <b>${show.enc}</b> · ⇣ Dec <b>${show.dec}</b><br>Fehler <b>${show.bad}</b>${v.restarts ? ` · Neustarts <b>${v.restarts}</b>` : ''}`;
+  $('#oaVocF').textContent = `${v.online ? '●' : '○'} ${v.name || v.mode}${v.late ? ' · spät ' + v.late : ''}${v.timeouts ? ' · Timeouts ' + v.timeouts : ''}`;
+}
+function renderToday() {
+  const t = S.today; if (!t) return;
+  $('#oaTodayN').textContent = `${t.talks} Durchg.`;
+  drawHours(t.hours, new Date().getHours());
+  const by = t.by_source || {};
+  $('#oaTodayF').textContent = `${fmtDur(t.airtime)} Sendezeit · ${t.stations} Stationen` + ORDER.filter(k => by[k]?.talks).map(k => ` · ${NET[k].label} ${by[k].talks}`).join('');
+}
 function renderOnAir() {
   const a = S.state?.active, box = $('#onair');
+  const ports = S.state?.ports || {};
+  $('#oaRx').classList.toggle('on', !!a);
+  $('#oaTx').classList.toggle('on', ORDER.some(k => ports[k]?.tx));
   if (!a) {
     box.classList.remove('live');
     $('#stActive').textContent = '–';
-    $('#oaKicker').textContent = 'On Air';
+    $('#oaKicker').textContent = 'On Air'; $('#oaRoute').innerHTML = '';
     const last = S.lh.find(x => x.status !== 'blocked');
     $('#oaName').textContent = 'Ruhe auf allen Netzen';
     if ($('#oaAv').dataset.k) { $('#oaAv').outerHTML = '<div class="big-av" id="oaAv"><span class="av-fb">N8</span></div>'; }
-    $('#oaSub').innerHTML = last ? `Zuletzt: <b>${esc(last.name || last.callsign)}</b> ${badge(last.source)} · vor ${ago(last.ts_end || last.ts_start)}` : 'Warte auf die nächste Durchsage …';
+    $('#oaSub').innerHTML = last ? `Zuletzt: <b>${esc(last.name || last.callsign)}</b> ${badge(last.source)} · vor ${ago(last.ts_end || last.ts_start)} · ${fmtDur(last.duration)}` : 'Warte auf die nächste Durchsage …';
     box.style.removeProperty('--srccol');
-    $('#oaTimer').textContent = '';
+    $('#oaTimer').textContent = '00:00';
+    renderInstruments(null);
     return;
   }
-  const t = a.talker, [cs, nm] = splitName(t);
+  const t = a.talker, [cs] = splitName(t);
   box.classList.add('live');
   box.style.setProperty('--srccol', `var(--${a.source})`);
   $('#stActive').textContent = cs;
   const k = avatarKey(a.source, t);
   if ($('#oaAv').dataset.k !== a.source + k) { $('#oaAv').dataset.k = a.source + k; $('#oaAv').outerHTML = avatar(a.source, k, cs, 'big-av').replace('class="big-av', 'id="oaAv" data-k="' + esc(a.source + k) + '" class="big-av'); }
   $('#oaKicker').textContent = `On Air · über ${NET[a.source].label}`;
+  $('#oaRoute').innerHTML = `${badge(a.source)} <span class="arrow">→</span> ${a.targets.length ? a.targets.map(x => badge(x)).join(' ') : '<span class="badge off">kein Ziel online</span>'}`;
   $('#oaName').textContent = t.name || cs;
-  const tg = a.targets.length ? a.targets.map(k => badge(k)).join(' ') : '<span class="badge off">kein Ziel online</span>';
   const frid = t.extra?.frid ? ' <span class="frid-tag" title="Registriert bei FreeRadioID.net">FRID</span>' : '';
-  $('#oaSub').innerHTML = `${badge(a.source)} <span class="arrow">→</span> ${tg} · ${esc(t.detail || '')}${t.city ? ' · ' + esc(t.city) : ''}${t.dmr_id ? ' · ID ' + t.dmr_id : ''}${frid}`;
+  const parts = [t.detail, t.city, t.extra?.country, t.dmr_id ? 'ID ' + t.dmr_id : '', t.extra?.band].filter(Boolean).map(esc);
+  $('#oaSub').innerHTML = parts.join(' · ') + frid;
+  renderInstruments(a);
 }
 
 /* Segmentierte Pegelanzeige: 20 Segmente à 3 dB (−60 … 0 dBFS), grün bis −18, gelb bis −6, rot darüber, mit Spitzenwert */
@@ -175,7 +275,7 @@ function setSegMeter(lvl) {
 }
 setInterval(() => {
   const a = S.state?.active;
-  if (a) $('#oaTimer').textContent = fmtDur(Date.now() / 1000 - a.since);
+  if (a) { const d = Math.max(0, Date.now() / 1000 - a.since); $('#oaTimer').textContent = `${String(Math.floor(d / 60)).padStart(2, '0')}:${String(Math.floor(d % 60)).padStart(2, '0')}`; }
 }, 250);
 
 function routeChips(k) {
@@ -183,31 +283,48 @@ function routeChips(k) {
   return ORDER.filter(o => o !== k).map(o => `<span class="badge ${r[k + '_' + o] ? o : 'dim'}" title="${NET[k].label} → ${NET[o].label}">→ ${NET[o].label} ${r[k + '_' + o] ? '✓' : '✕'}</span>`).join('');
 }
 
+function netLogo(k, icon) {
+  const img = k === 'voc' ? '<img src="/static/n8crosslink-icon.svg" alt="" onerror="this.remove()">'
+    : `<img src="/api/neticon/${k}?d=${AVV}" alt="" loading="lazy" onerror="this.remove()">`;
+  return `<span class="nc-logo">${icon}${img}</span>`;
+}
 function renderNetCards() {
-  const ports = S.state?.ports || {};
-  $('#netGrid').innerHTML = ORDER.map(k => {
+  const ports = S.state?.ports || {}, act = S.state?.active;
+  const cards = ORDER.map(k => {
     const p = ports[k] || {}; const n = NET[k];
-    const pill = !p.enabled ? '<span class="badge warn">AUS</span>' : p.online ? '<span class="badge ok">ONLINE</span>' : '<span class="badge off">OFFLINE</span>';
+    const dot = !p.enabled ? 'warn' : p.online ? 'on' : 'off';
     let now = '';
-    if (p.tx && p.tx_talker) now = `🔴 sendet: <b>${esc(p.tx_talker.name)}</b> ${badge(p.tx_talker.source)}`;
-    else if (p.rx && S.state.active?.source === k) now = `🟣 empfängt: <b>${esc(S.state.active.talker.name)}</b>`;
+    if (p.tx && p.tx_talker) now = `🔴 sendet <b>${esc(p.tx_talker.name)}</b> ${badge(p.tx_talker.source)}`;
+    else if (p.rx && act?.source === k) now = `🟣 empfängt <b>${esc(act.talker.name)}</b>`;
     else if (p.rx) now = '🟡 Empfang gesperrt (Bridge belegt)';
     else now = `<span style="color:var(--text-dim)">${esc(p.enabled ? (p.online ? 'bereit' : (p.state || 'offline')) : 'deaktiviert')}</span>`;
     const meta = [];
-    if (k === 'frn') { if (p.server) meta.push(esc(p.server)); if (p.access) meta.push('Zugang ' + esc(p.access)); }
-    if (k === 'dmr') { if (p.server) meta.push(esc(p.server)); meta.push(`Peer ${esc(p.peer_id)}`); meta.push(`RX TG ${esc(p.tg_rx)}${p.tg_rx_name ? ' ' + esc(p.tg_rx_name) : ''} · TX TG ${esc(p.tg_tx)}${p.tg_tx_name ? ' ' + esc(p.tg_tx_name) : ''} · TS${esc(p.slot)}`); }
+    if (k === 'frn') { if (p.cluster) meta.push(p.cluster.on === 'master' ? 'Master' : '<span style="color:var(--amber)">Backup</span>'); if (p.access) meta.push('Zugang ' + esc(p.access)); }
+    if (k === 'dmr') { meta.push(`Peer ${esc(p.peer_id)}`); if (p.stats) meta.push(`Pakete ⇣${p.stats.rx_pkts || 0} ⇡${p.stats.tx_pkts || 0}`); }
+    if (k === 'zello') { if (p.users_online != null) meta.push(`${p.users_online} online`); }
     if (p.watchdog?.reconnects) meta.push(`🔁 ${p.watchdog.reconnects}`);
-    if (k === 'zello') { meta.push(esc(p.username || '')); }
     const c = p.counters || {};
     meta.push(`⇣ ${c.rx || 0} · ⇡ ${c.tx || 0}`);
-    return `<div class="net-card ${k} ${p.tx ? 'txing' : ''} ${p.rx && S.state.active?.source === k ? 'rxing' : ''}">
-      <div class="nc-head"><div class="nc-icon">${n.icon}</div>
-        <div class="grow"><div class="nc-title">${n.label}</div><div class="nc-sub">${esc(p.detail || p.state || '')}</div></div>
-        <div class="rt"><span class="rx ${p.rx ? 'on' : ''}">RX</span><span class="tx ${p.tx ? 'on' : ''}">TX</span></div>${pill}</div>
+    return `<div class="net-card ${k} ${p.tx ? 'txing' : ''} ${p.rx && act?.source === k ? 'rxing' : ''}">
+      <div class="nc-head">${netLogo(k, n.icon)}
+        <div class="grow"><div class="nc-title"><span class="nc-dot ${dot}"></span>${n.label}</div><div class="nc-sub">${esc(p.detail || p.state || '')}</div></div>
+        <div class="rt"><span class="rx ${p.rx ? 'on' : ''}">RX</span><span class="tx ${p.tx ? 'on' : ''}">TX</span></div></div>
       <div class="nc-now">${now}</div>
       <div class="nc-meta">${meta.filter(Boolean).map(m => `<span>${m}</span>`).join('<span>·</span>')}</div>
-      <div class="nc-routes">${routeChips(k)}</div></div>`;
-  }).join('');
+      <div class="nc-foot"><div class="nc-routes">${routeChips(k)}</div></div></div>`;
+  });
+  const v = S.state?.vocoder;
+  if (v) {
+    const q = vocQuality(v, null), dmrIn = act && (act.source === 'dmr' || (act.targets || []).includes('dmr'));
+    cards.push(`<div class="net-card voc ${dmrIn ? 'rxing' : ''}">
+      <div class="nc-head">${netLogo('voc', '🎛️')}
+        <div class="grow"><div class="nc-title"><span class="nc-dot ${v.online ? 'on' : 'off'}"></span>Vocoder</div><div class="nc-sub">${esc(v.name || v.mode)}</div></div>
+        <div class="rt"><span class="rx ${dmrIn ? 'on' : ''}">AMBE</span></div></div>
+      <div class="nc-now">${dmrIn ? '🟣 wandelt <b>AMBE ⇄ PCM</b>' : `<span style="color:var(--text-dim)">${v.online ? 'bereit' : 'offline'}</span>`}</div>
+      <div class="nc-meta"><span>Qualität ${q.q == null ? '–' : q.q.toFixed(1) + ' %'}</span><span>·</span><span>Enc ${v.enc || 0} · Dec ${v.dec || 0}</span>${q.bad ? `<span>·</span><span>Fehler ${q.bad}</span>` : ''}</div>
+      <div class="nc-foot"><div class="nc-routes"><span class="badge dim">${esc(v.mode === 'n8vocoder' ? 'Software' : v.mode === 'usb' ? 'USB-Stick' : v.mode)}</span>${v.version ? `<span class="badge dim">${esc(String(v.version).split(' (')[0])}</span>` : ''}</div></div></div>`);
+  }
+  $('#netGrid').innerHTML = cards.join('');
 }
 
 function renderRoom() {
@@ -255,6 +372,7 @@ setInterval(() => { if (S.lh.length) renderLH(); }, 30000);
 async function loadToday() {
   try {
     const s = await api('/api/stats?range=today');
+    S.today = s; renderToday();
     $('#stTalks').textContent = s.talks; $('#stAir').textContent = fmtDur(s.airtime);
     $('#stStations').textContent = s.stations; $('#stBlocked').textContent = s.blocked;
   } catch { /* egal */ }

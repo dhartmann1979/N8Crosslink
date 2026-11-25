@@ -75,3 +75,15 @@ def test_check_perms_json_runs():
     assert set(d) >= {"ok", "bad", "warn", "checks"} and d["checks"]
     assert all(c["status"] in ("ok", "warn", "bad") and c["area"] and c["text"] for c in d["checks"])
     assert (p.returncode == 0) == d["ok"]
+
+
+def test_root_helpers_leave_service_sandbox():
+    """ProtectSystem=full macht /etc und /usr im Dienst schreibgeschützt – das erbt sudo. Beide root-Helfer müssen
+    sich dann per systemd-run außerhalb der Sandbox neu starten (sonst „Read-only file system“ in /etc/nginx)."""
+    unit = (ROOT / "systemd" / "n8crosslink.service").read_text()
+    for name, flag in (("install.sh", "--fix-perms|"), ("n8x-certs.sh", "")):
+        src = (ROOT / name).read_text()
+        assert '! -w /etc' in src and "exec systemd-run --quiet --wait --pipe --collect" in src and "N8X_UNSANDBOXED=1" in src, name
+        assert flag in src
+    if "ProtectSystem=" in unit:
+        assert "ReadWritePaths=/etc" not in unit       # Schutz bleibt, die Helfer verlassen die Sandbox selbst

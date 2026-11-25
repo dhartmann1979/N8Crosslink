@@ -351,6 +351,9 @@ check_sudo() {
   ck ok sudo "sudo installiert"
   if grep -Eq '^[[:space:]]*[@#]includedir[[:space:]]+/etc/sudoers\.d[[:space:]]*$' /etc/sudoers 2>/dev/null; then ck ok sudo "/etc/sudoers bindet /etc/sudoers.d ein"
   else ck bad sudo "/etc/sudoers bindet /etc/sudoers.d nicht ein – die Freigaben wirken nicht"; fi
+  if command -v systemd-run >/dev/null; then ck ok sudo "systemd-run vorhanden (Root-Aufgaben aus dem Webinterface laufen außerhalb der Dienst-Sandbox)"
+  else ck bad sudo "systemd-run fehlt – Root-Aufgaben aus dem Webinterface scheitern an der Dienst-Sandbox (/etc schreibgeschützt)"; fi
+  [[ -w /etc ]] && ck ok sudo "/etc beschreibbar (Prüfung läuft außerhalb der Sandbox)" || ck bad sudo "/etc ist hier schreibgeschützt – Prüfung läuft noch in der Dienst-Sandbox"
   if [[ ! -f "$SUDOERS" ]]; then ck bad sudo "Freigaben $SUDOERS fehlen"; return 0; fi
   ck_mode sudo "$SUDOERS" root:root 440 "Freigaben $SUDOERS"
   if visudo -cf "$SUDOERS" >/dev/null 2>&1; then ck ok sudo "Freigaben gültig (visudo)"; else ck bad sudo "Freigaben ungültig (visudo meldet Fehler)"; fi
@@ -412,6 +415,17 @@ repair_perms() {   # prüfen → gezielt korrigieren → erneut prüfen; Rückga
 cli() { (cd "$APP_DIR" && runuser -u "$SVC_USER" -- env N8X_DB="$DB" "$APP_DIR/venv/bin/python" -m n8crosslink.cli "$@"); }
 setcfg() { cli set "$1" "$2" "$3" >/dev/null; }
 
+# Aus dem Webinterface (sudo) läuft das in der Sandbox des Dienstes: ProtectSystem=full macht /etc und /usr schreibgeschützt,
+# das erbt auch sudo. Root-Aufgaben deshalb als eigener kurzlebiger systemd-Dienst außerhalb der Sandbox neu starten
+# (Ausgabe und Rückgabewert kommen über --pipe/--wait zurück).
+case "${1:-}" in
+  --check-perms|--fix-perms|--build-vocoder|--install-md380)
+    if [[ $EUID -eq 0 && -z "${N8X_UNSANDBOXED:-}" && ! -w /etc ]]; then
+      command -v systemd-run >/dev/null 2>&1 || fail "/etc ist schreibgeschützt (Dienst-Sandbox) und systemd-run fehlt – bitte auf der Konsole ausführen"
+      exec systemd-run --quiet --wait --pipe --collect --service-type=exec -p "Description=N8 Crosslink – install.sh $1" \
+        --setenv=N8X_UNSANDBOXED=1 -- "$(readlink -f "${BASH_SOURCE[0]}")" "$@"
+    fi ;;
+esac
 if [[ "${1:-}" == "--check-perms" ]]; then   # nur prüfen, nichts ändern (Rückgabe 1 = Fehler gefunden)
   [[ $EUID -eq 0 ]] || fail "Bitte als root starten"
   check_perms

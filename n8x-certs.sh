@@ -30,6 +30,14 @@ HOOK="systemctl reload nginx || nginx -s reload"
 
 die() { python3 -c 'import json,sys; print(json.dumps({"ok": False, "message": sys.argv[1]}, ensure_ascii=False))' "$1"; exit 1; }
 [[ $EUID -eq 0 ]] || die "nur als root (über sudo)"
+# Aus dem Webinterface kommt der Aufruf aus der Sandbox des Dienstes (ProtectSystem=full: /etc und /usr schreibgeschützt –
+# das erbt auch sudo). Dann als eigener kurzlebiger systemd-Dienst außerhalb der Sandbox neu starten; Ausgabe und
+# Rückgabewert kommen über --pipe/--wait zurück.
+if [[ -z "${N8X_UNSANDBOXED:-}" && ! -w /etc ]]; then
+    command -v systemd-run >/dev/null 2>&1 || die "/etc ist schreibgeschützt (Dienst-Sandbox) und systemd-run fehlt"
+    exec systemd-run --quiet --wait --pipe --collect --service-type=exec -p "Description=N8 Crosslink – Domains & HTTPS ($1)" \
+        --setenv=N8X_UNSANDBOXED=1 -- "$(readlink -f "${BASH_SOURCE[0]}")" "$@"
+fi
 dom_ok() { [[ ${#1} -le 253 && "$1" =~ $DOM_RE ]] || die "Ungültige Domain: $1"; }
 port_ok() { [[ "$1" =~ ^[0-9]{1,5}$ && "$1" -ge 1 && "$1" -le 65535 ]] || die "Ungültiger Port: $1"; }
 have() { command -v "$1" >/dev/null 2>&1; }

@@ -39,6 +39,11 @@ n8crosslink ALL=(root) NOPASSWD: /opt/n8crosslink/install.sh --check-perms --jso
 
 Freigegeben werden: Neustart der Bridge, Bauen des N8schicht-Vocoders (`install.sh --build-vocoder`), Update-Dienst und die bei der Installation erkannten alten Dienste (Start/Stopp/Neustart/Autostart), Berechtigungsprüfung (`--check-perms --json`) und -korrektur (`--fix-perms`), Domains & HTTPS (`n8x-certs.sh`) und – nur wenn bei der Installation bestätigt – `systemctl reboot`. Die Datei wird vor dem Einspielen mit `visudo` geprüft und bei jedem Update neu erzeugt. Alles andere (Shell, andere Dienste) ist verboten.
 
+**Sandbox des Dienstes:** `n8crosslink.service` läuft mit `ProtectSystem=full` – `/etc` und `/usr` sind für den Dienst schreibgeschützt, und das
+erbt auch alles, was er per sudo startet. Die root-Helfer (`install.sh --fix-perms/--check-perms/--build-vocoder`, `n8x-certs.sh`) erkennen das
+(`/etc` nicht beschreibbar) und starten sich ab 1.14.1 als eigener kurzlebiger systemd-Dienst **außerhalb der Sandbox** neu
+(`systemd-run --wait --pipe --collect`); Ausgabe und Rückgabewert kommen ans Webinterface zurück. Der Schutz des Dienstes bleibt so an.
+
 ## Berechtigungen & sudo prüfen und korrigieren
 
 Programm, venv und Skripte gehören root und sind für den Dienst nur lesbar – wichtig, weil `update.sh` als root läuft. Nur `data/` gehört dem Dienst.

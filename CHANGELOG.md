@@ -2,6 +2,27 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.14.1] – 2026-11-25
+
+**🐛 Domains & HTTPS und Berechtigungskorrektur scheiterten aus dem Webinterface mit „Read-only file system“.**
+
+### 🐛 Behoben
+- Der Dienst läuft mit `ProtectSystem=full`: `/etc` und `/usr` sind für ihn schreibgeschützt – und das erbt auch alles, was er per sudo
+  startet, selbst als root. Dadurch konnte
+  - **Domains & HTTPS** die nginx-Seite nicht schreiben (`n8x-certs.sh: line 100/121: /etc/nginx/sites-available/…: Read-only file system`)
+    und **„Benötigte Pakete installieren“** nichts nach `/usr` installieren,
+  - **Berechtigungen prüfen & korrigieren** die systemd-Units in `/etc/systemd/system` nicht korrigieren (`chown: … Read-only file system`) –
+    und meldete trotzdem „alles in Ordnung“.
+- Lösung: `n8x-certs.sh` und `install.sh --fix-perms/--check-perms/--build-vocoder` erkennen die Sandbox (`/etc` nicht beschreibbar) und starten
+  sich als eigener kurzlebiger systemd-Dienst außerhalb der Sandbox neu (`systemd-run --quiet --wait --pipe --collect`). Ausgabe und
+  Rückgabewert kommen wie bisher ans Webinterface. Die sudo-Freigaben bleiben unverändert eng, der Schutz des Dienstes bleibt an.
+- Der Berechtigungsprüfer meldet zusätzlich, ob `systemd-run` vorhanden ist und ob die Prüfung wirklich außerhalb der Sandbox lief
+  (`/etc` beschreibbar) – ein falsches „alles in Ordnung“ gibt es so nicht mehr.
+
+### ⬆️ Aktualisieren
+- Einfach **Admin → ⬆️ Updates → Jetzt aktualisieren**: Das Update läuft über `n8crosslink-update.service` (ohne Sandbox). Danach
+  **🔒 Domains & HTTPS → Domain anlegen** erneut ausführen und unter **🛠️ System → 🔐 Berechtigungen & sudo** einmal **🛠️ Korrigieren**.
+
 ## [1.14.0] – 2026-11-25
 
 **🔐 Berechtigungsprüfer mit Korrektur – und sudo wird mitgeprüft und eingerichtet.**

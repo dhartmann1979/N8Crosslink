@@ -434,6 +434,8 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
     @app.post("/api/admin/system/unit")
     async def system_unit(data: dict = Body(...), user: str = Depends(require_admin)) -> dict:
         unit, action = str(data.get("unit", "")), str(data.get("action", ""))
+        if unit and action in ("start", "stop", "restart"):
+            _ka()._hold(unit, action)          # Keep-Alive: von Hand gestoppt bleibt gestoppt
         ok, out = await bridge.system.unit_action(unit, action)
         bridge.router.event("info" if ok else "warn", f"System: {action} {unit} durch {user} – {'ok' if ok else out[:120]}")
         return {"ok": ok, "message": out[:500]}
@@ -443,6 +445,42 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         bridge.router.event("warn", f"System-Neustart angefordert von {user}")
         ok, out = await bridge.system.reboot()
         return {"ok": ok, "message": out[:300]}
+
+    # ---- Keep-Alive (N8 Admin-Kit, scripts/n8-admin.sh keepalive – jede Minute als root)
+    def _ka():
+        from ..n8_admin import N8Admin
+        return N8Admin(os.path.dirname(os.path.abspath(db.path)))
+
+    @app.get("/api/admin/keepalive")
+    async def keepalive_get(_: str = Depends(require_admin)) -> dict:
+        return _ka().keepalive()
+
+    @app.post("/api/admin/keepalive")
+    async def keepalive_set(data: dict = Body(...), user: str = Depends(require_admin)) -> dict:
+        try:
+            c = _ka().keepalive_set(data)
+        except (ValueError, TypeError) as e:
+            raise HTTPException(400, str(e)) from None
+        bridge.router.event("info", f"Keep-Alive geändert von {user}: " + ", ".join(f"{k}={'…' if 'url' in k and v else v}" for k, v in c.items()))
+        return _ka().keepalive()
+
+    @app.get("/api/n8/health")
+    async def n8_health(request: Request) -> dict:
+        """Für den Keep-Alive: Zustand jedes Netzes – nur direkt von diesem Rechner, nie über einen Proxy."""
+        host = request.client.host if request.client else ""
+        if host not in ("127.0.0.1", "::1") or any(h in request.headers for h in ("x-forwarded-for", "x-real-ip", "forwarded", "via")):
+            raise HTTPException(403, "local only")
+        items = {"web": {"ok": True}}
+        for key in ("frn", "dmr", "zello"):
+            p = bridge.router.ports.get(key)
+            if p is None or not p.enabled:
+                items[key] = {"ok": True, "off": True}
+            else:
+                items[key] = {"ok": bool(p.online), "why": "" if p.online else f"{p.label}: {p.state}{' – ' + p.detail if p.detail else ''}"}
+        v = bridge.router.vocoder.status() if bridge.router.vocoder else None
+        items["vocoder"] = {"ok": not v or v.get("mode") == "none" or bool(v.get("online")),
+                            "why": f"Vocoder {v.get('name') if v else ''} nicht bereit"}
+        return {"ok": True, "items": items}
 
     @app.get("/api/admin/system/perms")
     async def system_perms(_: str = Depends(require_admin)) -> dict:

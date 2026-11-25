@@ -735,6 +735,8 @@ async function renderSystem() {
       <button class="btn secondary" id="permCheck" ${sy.sudo && sy.check_perms ? '' : 'disabled'}>🔍 Erneut prüfen</button>
       <button class="btn" id="sysPerm" ${sy.sudo && sy.fix_perms ? '' : 'disabled'}>🛠️ Korrigieren</button></div>
     <pre id="sysOut" style="font-size:11.5px;white-space:pre-wrap;color:var(--text-dim);padding:0 4px"></pre>
+    <h2 class="section-header">💓 Keep-Alive <span id="kaBadge"></span></h2>
+    <div class="card" id="kaBox"><div class="empty">lade …</div></div>
     <h2 class="section-header">Bridge</h2>
     <div class="form-actions" style="justify-content:flex-start">
       <button class="btn" id="sysRestart">🔄 Bridge neu starten</button>
@@ -768,7 +770,7 @@ async function renderSystem() {
   };
   const loadPerms = async () => { if (!(sy.sudo && sy.check_perms)) { showPerms({ checks: [], message: sy.sudo ? 'Prüfung im Webinterface noch nicht freigegeben – einmal auf der Konsole: sudo /opt/n8crosslink/install.sh --fix-perms' : 'sudo ist nicht eingerichtet – auf der Konsole: sudo /opt/n8crosslink/install.sh --fix-perms (richtet sudo ein und korrigiert alle Rechte)' }); return; }
     $('#permList').innerHTML = '<div class="empty">prüfe …</div>'; try { showPerms(await api('/api/admin/system/perms')); } catch (e) { showPerms({ checks: [], message: e.message }); } };
-  loadPerms();
+  loadPerms(); renderKeepalive();
   if ($('#permCheck')) $('#permCheck').onclick = loadPerms;
   if ($('#sysPerm')) $('#sysPerm').onclick = async (e) => {
     e.target.disabled = true; $('#sysOut').textContent = 'prüfe und korrigiere …';
@@ -785,6 +787,38 @@ async function renderSystem() {
     try { await api('/api/admin/import', { method: 'POST', body: JSON.parse(await f.text()) }); toast('✅ Importiert'); $('#restartBanner').hidden = false; }
     catch (err) { toast('⚠️ ' + err.message); }
   };
+}
+
+// Keep-Alive (N8 Admin-Kit): jede Minute als root – Weboberfläche und jedes eingeschaltete Netz wirklich verbunden,
+// sonst nach 5 Minuten Neustart (höchstens 4× je Stunde), Internet-Ausfall erkennen, Heartbeat (Uptime Kuma, Healthchecks.io …)
+async function renderKeepalive() {
+  const box = $('#kaBox'); if (!box) return;
+  let d; try { d = await api('/api/admin/keepalive'); } catch (e) { box.innerHTML = `<div class="empty">⚠️ ${esc(e.message)}</div>`; return; }
+  const c = d.conf || {}, paused = c.paused_until && c.paused_until * 1000 > Date.now();
+  $('#kaBadge').innerHTML = !d.ready ? '<span class="badge warn">nicht eingerichtet</span>' : !c.enabled ? '<span class="badge">aus</span>' : paused ? '<span class="badge warn">pausiert</span>'
+    : d.stale ? '<span class="badge off">läuft nicht</span>' : '<span class="badge ok">aktiv</span>';
+  const ic = st => ({ ok: '✅', hold: '⏸️', restarted: '🔄', giveup: '❌' }[st] || '⚠️');
+  const t = ts => ts ? new Date(ts * 1000).toLocaleString('de-DE') : '–';
+  box.innerHTML = `<p style="color:var(--text-dim);font-size:13px;margin:0 0 10px">Jede Minute als root: prüft die Weboberfläche und jedes eingeschaltete Netz (FRN angemeldet, DMR am Master, Zello im Kanal, Vocoder bereit).
+      Die Brücke verbindet sich selbst neu – bleibt ein Netz <b>5 Minuten</b> weg, startet der Keep-Alive den Dienst neu (höchstens 4× je Stunde). Nach einem Internet-Ausfall startet er sie einmal neu,
+      und er meldet sich bei einer Heartbeat-Adresse. Ein hier gestoppter Dienst bleibt gestoppt.</p>
+    ${d.ready ? `<p style="margin:0 0 8px">🌐 Internet: ${d.net ? '<span class="badge ok">erreichbar</span>' : `<span class="badge off">weg seit ${t(d.net_down_since)}</span>`}
+        · letzte Prüfung ${d.age != null && d.age < 120 ? 'gerade eben' : t(d.time)}${c.heartbeat_url ? ` · Heartbeat: ${esc(d.heartbeat || '–')}` : ''}</p>
+      <table class="tbl"><tbody>${(d.checks || []).map(x => `<tr><td style="width:28px">${ic(x.state)}</td><td><b>${esc(x.label)}</b></td>
+        <td style="color:var(--text-dim)">${x.state === 'ok' ? 'gesund' : x.state === 'hold' ? 'von Hand gestoppt – Keep-Alive wartet' : esc(x.why || '')}${x.fails ? ` · ${x.fails} min` : ''}${x.restarts ? ` · ${x.restarts}× neu gestartet, zuletzt ${t(x.last_restart)}` : ''}</td></tr>`).join('')}</tbody></table>`
+      : '<div class="empty">Einmal auf der Konsole einrichten: sudo /opt/n8crosslink/install.sh --fix-perms</div>'}
+    <div class="form-grid" style="margin-top:12px">
+      <label class="switch"><input type="checkbox" id="kaOn" ${c.enabled ? 'checked' : ''}><span></span> Keep-Alive an</label>
+      <label class="switch"><input type="checkbox" id="kaNet" ${c.net_restart ? 'checked' : ''}><span></span> Nach Internet-Ausfall neu starten</label>
+      <label>Heartbeat-Adresse<input type="text" id="kaHb" value="${esc(c.heartbeat_url || '')}" placeholder="https://hc-ping.com/… oder https://kuma…/api/push/…"></label>
+      <label>Heartbeat bei Fehlern (optional)<input type="text" id="kaHbF" value="${esc(c.heartbeat_fail_url || '')}" placeholder="https://hc-ping.com/…/fail"></label></div>
+    <div class="form-actions" style="justify-content:flex-start"><button class="btn" id="kaSave">💾 Speichern</button>
+      <button class="btn secondary" id="kaPause">${paused ? '▶️ Fortsetzen' : '⏸️ 1 h pausieren (Wartung)'}</button></div>
+    ${d.log ? `<details><summary style="cursor:pointer;color:var(--text-dim)">Keep-Alive-Protokoll</summary><pre style="font-size:11.5px;white-space:pre-wrap;color:var(--text-dim)">${esc(d.log)}</pre></details>` : ''}`;
+  $('#kaSave').onclick = async () => {
+    try { await api('/api/admin/keepalive', { method: 'POST', body: { enabled: $('#kaOn').checked, net_restart: $('#kaNet').checked, heartbeat_url: $('#kaHb').value.trim(), heartbeat_fail_url: $('#kaHbF').value.trim() } });
+          toast('✅ Keep-Alive gespeichert'); renderKeepalive(); } catch (e) { toast('⚠️ ' + e.message); } };
+  $('#kaPause').onclick = async () => { try { await api('/api/admin/keepalive', { method: 'POST', body: { pause_minutes: paused ? 0 : 60 } }); renderKeepalive(); } catch (e) { toast('⚠️ ' + e.message); } };
 }
 
 const IDS_FIELDS = [

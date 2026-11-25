@@ -68,6 +68,7 @@ fix_perms() {
        ! -name '*.key' ! -name '*.pem' ! -name '*.p12' -exec chmod 644 {} +
   [[ -d "$APP_DIR/venv/bin" ]] && chmod -R go-w "$APP_DIR/venv/bin" && find "$APP_DIR/venv/bin" -type f -exec chmod 755 {} + 2>/dev/null || true
   for f in install.sh update.sh uninstall.sh n8x-certs.sh; do [[ -f "$APP_DIR/$f" ]] && chmod 755 "$APP_DIR/$f"; done
+  [[ -f "$APP_DIR/scripts/n8-admin.sh" ]] && chmod 755 "$APP_DIR/scripts/n8-admin.sh"
   # private Schlüssel/Zertifikate (z. B. zello.key) nur für root lesbar
   local k; while IFS= read -r k; do chmod 600 "$k"; n=$((n + 1)); warn "Schlüsseldatei $k war lesbar – auf 600 gesetzt (wird nicht mehr gebraucht, liegt in der Datenbank)"; done \
     < <(find "$APP_DIR" -path "$DATA_DIR" -prune -o -path "$APP_DIR/venv" -prune -o -type f \( -name '*.key' -o -name '*.pem' -o -name '*.p12' \) -perm /044 -print 2>/dev/null)
@@ -309,6 +310,10 @@ check_perms() {
   x=$(sed -n 's/^User=//p' /etc/systemd/system/n8crosslink.service 2>/dev/null | head -1)
   [[ -f /etc/systemd/system/n8crosslink.service ]] && { [[ "$x" == "$SVC_USER" ]] && ck ok systemd "Dienst läuft als $SVC_USER (ohne root)" || ck bad systemd "Dienst läuft als ${x:-root} statt $SVC_USER"; }
   systemctl is-enabled n8crosslink-update.path >/dev/null 2>&1 && ck ok systemd "„Update jetzt“ (n8crosslink-update.path) aktiv" || ck bad systemd "n8crosslink-update.path ist nicht aktiv – „Update jetzt“ im Adminportal geht nicht"
+  if [[ -x "$APP_DIR/scripts/n8-admin.sh" ]]; then
+    systemctl is-enabled n8crosslink-keepalive.timer >/dev/null 2>&1 && grep -qF "ExecStart=$APP_DIR/scripts/n8-admin.sh keepalive" /etc/systemd/system/n8crosslink-keepalive.service 2>/dev/null \
+      && ck ok systemd "Keep-Alive (n8crosslink-keepalive.timer) aktiv" || ck bad systemd "Keep-Alive (n8crosslink-keepalive.timer) fehlt oder ist nicht aktiv"
+  fi
   # Quelle (daraus installiert update.sh als root)
   if [[ -f "$APP_DIR/.source" ]]; then
     x=$(cat "$APP_DIR/.source")
@@ -395,6 +400,7 @@ repair_perms() {   # prüfen → gezielt korrigieren → erneut prüfen; Rückga
       [[ -f "/etc/systemd/system/$f" || ! -f "$src" ]] || install -o root -g root -m 644 "$src" "/etc/systemd/system/$f"
     done
     systemctl daemon-reload >/dev/null 2>&1 || true; systemctl enable --now n8crosslink-update.path >/dev/null 2>&1 || true
+    [[ -x "$APP_DIR/scripts/n8-admin.sh" ]] && "$APP_DIR/scripts/n8-admin.sh" setup-keepalive >/dev/null 2>&1 || true
   fi
   perm_bad_in https && { [[ -d /var/www/n8crosslink-acme ]] && chown root:root /var/www/n8crosslink-acme && chmod 755 /var/www/n8crosslink-acme
     for f in /etc/nginx/sites-available/n8crosslink /etc/nginx/sites-available/n8crosslink-*; do [[ -f "$f" ]] && chown root:root "$f" && chmod 644 "$f"; done; }
@@ -529,6 +535,7 @@ rm -rf "$APP_DIR/third_party"; mkdir -p "$APP_DIR/third_party"
 cp -r "$SRC_DIR/third_party/n8schicht-vocoder" "$APP_DIR/third_party/"
 chmod 755 "$APP_DIR/third_party/n8schicht-vocoder/build.sh"
 cp "$SRC_DIR/install.sh" "$SRC_DIR/update.sh" "$SRC_DIR/uninstall.sh" "$SRC_DIR/n8x-certs.sh" "$APP_DIR/" 2>/dev/null || true
+mkdir -p "$APP_DIR/scripts"; cp "$SRC_DIR/scripts/n8-admin.sh" "$SRC_DIR/scripts/n8-admin.conf" "$APP_DIR/scripts/" 2>/dev/null || true   # Keep-Alive (N8 Admin-Kit)
 mkdir -p "$APP_DIR/systemd"; cp "$SRC_DIR"/systemd/*.service "$SRC_DIR"/systemd/*.path "$APP_DIR/systemd/" 2>/dev/null || true   # für die Reparatur
 [[ -d "$SRC_DIR/.git" ]] && echo "$SRC_DIR" > "$APP_DIR/.source"
 rm -rf "$APP_DIR/n8crosslink/__pycache__"
@@ -720,6 +727,7 @@ setup_sudo "$REBOOT"
 fix_perms
 systemctl enable n8crosslink >/dev/null 2>&1
 systemctl enable --now n8crosslink-update.path >/dev/null 2>&1 && ok "„Update jetzt“ aus dem Adminportal eingerichtet"
+[[ -x "$APP_DIR/scripts/n8-admin.sh" ]] && "$APP_DIR/scripts/n8-admin.sh" setup-keepalive || warn "Keep-Alive nicht eingerichtet"
 info "Berechtigungen und sudo prüfen …"; repair_perms || warn "Berechtigungen: siehe oben – Prüfung später: sudo $APP_DIR/install.sh --check-perms"
 systemctl restart n8crosslink
 PORT=$(cli show general | grep -oP '"web_port": \K[0-9]+' || echo 8080)

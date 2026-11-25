@@ -365,3 +365,7 @@ tr.perm-ok td:last-child { color: var(--text-dim); }
 .svc-dot.off { background: #ff453a; }
 .svc-dot.warn { background: #ffd60a; }
 .svc-b { padding: 4px 10px; margin: 2px; min-width: 38px; }
+/* Keep-Alive (N8 Admin-Kit) */
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px 16px; align-items: end; }
+.form-grid > label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--text-dim); }
+.form-grid > label.switch { flex-direction: row; align-items: center; color: var(--text); }

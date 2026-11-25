@@ -440,6 +440,44 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         bridge.router.event("info" if ok else "warn", f"System: {action} {unit} durch {user} – {'ok' if ok else out[:120]}")
         return {"ok": ok, "message": out[:500]}
 
+    # ---- dieselben Adressen wie in allen N8-Systemen (N8 Kit: Admin → System → Dienste, Berechtigungen & sudo, Update-Protokoll)
+    @app.get("/api/admin/services")
+    async def services_get(_: str = Depends(require_admin)) -> dict:
+        st = await bridge.system.status()
+        units = [{**u, "actions": [a for a in u.get("actions", []) if st["sudo"]]} for u in st["units"] if not u.get("hidden")]
+        return {"ready": st["sudo"], "units": units}
+
+    @app.post("/api/admin/services/{unit}/{action}")
+    async def services_action(unit: str, action: str, user: str = Depends(require_admin)) -> dict:
+        if action in ("start", "stop", "restart"):
+            _ka()._hold(unit, action)
+        ok, out = await bridge.system.unit_action(unit, action)
+        bridge.router.event("info" if ok else "warn", f"System: {action} {unit} durch {user} – {'ok' if ok else out[:120]}")
+        if not ok:
+            raise HTTPException(400, out[:300] or "fehlgeschlagen")
+        return {"ok": True, "message": out[:500]}
+
+    @app.get("/api/admin/perms")
+    async def perms_get(_: str = Depends(require_admin)) -> dict:
+        st = await bridge.system.status()
+        if not (st["sudo"] and st["check_perms"]):
+            return {"ok": False, "checks": [], "message": "sudo ist noch nicht eingerichtet – einmal auf der Konsole: sudo /opt/n8crosslink/install.sh --fix-perms"}
+        return await bridge.system.check_perms()
+
+    @app.post("/api/admin/perms/fix")
+    async def perms_fix(user: str = Depends(require_admin)) -> dict:
+        return await system_fix_perms(user)
+
+    @app.get("/api/admin/update-log")
+    async def update_log(_: str = Depends(require_admin)) -> dict:
+        res = None
+        try:
+            with open(os.path.join(bridge.updater.data_dir, "update.result"), encoding="utf-8") as f:
+                res = json.load(f)
+        except (OSError, ValueError):
+            pass
+        return {"log": bridge.updater.log_tail(200), "result": res, "running": bool(bridge.updater.state.get("running"))}
+
     @app.post("/api/admin/system/reboot")
     async def system_reboot(user: str = Depends(require_admin)) -> dict:
         bridge.router.event("warn", f"System-Neustart angefordert von {user}")

@@ -123,7 +123,7 @@ function renderState() {
   else if (JSON.stringify(up || {}) !== S.updSig) {
     S.updSig = JSON.stringify(up || {});
     N8Kit.update.banner($('#updateBanner'), kitUpdate(up), { app: 'n8x', onInstall: () => startUpdate(),
-      onDetails: () => { S.adminSec = 'update'; showTab('admin'); } });
+      onDetails: () => { S.adminSec = 'sys-update'; showTab('admin'); } });
   }
   if ($('#tab-nets') && !$('#tab-nets').classList.contains('hidden')) renderNetDetails();
 }
@@ -450,19 +450,38 @@ const SCHEMA = {
   vocoder: { title: '🎛️ Vocoder', custom: renderVocoder },
   ids: { title: '🗂️ ID-Listen & Avatare', custom: renderIds },
   appearance: { title: '🎨 Aussehen', custom: renderAppearance },
-  update: { title: '⬆️ Updates', custom: renderUpdate },
   backup: { title: '💾 Backup & Neuanfang', custom: renderBackup },
   users: { title: '👥 Benutzer', custom: renderUsers },
   ports: { title: '🔌 Ports', custom: renderPorts },
   domains: { title: '🔒 Domains & HTTPS', custom: renderDomains },
-  system: { title: '🛠️ System', custom: renderSystem },
+  system: { title: '🛠️ Bridge & Ereignisse', custom: renderSystem },
+  'sys-update': { title: '⬆️ Update', custom: () => sysView('update') },
+  'sys-services': { title: '🧩 Dienste', custom: () => sysView('services') },
+  'sys-perms': { title: '🔐 Berechtigungen & sudo', custom: () => sysView('perms') },
+  'sys-keepalive': { title: '💓 Keep-Alive', custom: () => sysView('keepalive') },
 };
+// Admin-Menü: derselbe Baum wie in allen N8-Systemen (N8 Kit) – Betrieb · Benutzer & Zugang · Darstellung · Netz & Domains · System
+const ADMIN_GROUPS = [['betrieb', ['general', 'routes', 'frn', 'dmr', 'zello', 'vocoder', 'ids']], ['zugang', ['users']], ['darstellung', ['appearance']],
+  ['netz', ['ports', 'domains']], ['system', ['system', 'sys-update', 'sys-services', 'sys-perms', 'sys-keepalive', 'backup']]];
+const ADMIN_OLD = { update: 'sys-update' };
+// System → Update, Dienste, Berechtigungen & sudo, Keep-Alive: die N8-Kit-Ansichten, in allen N8-Systemen gleich
+function sysView(name) {
+  const el = $('#adminBody'); el.classList.remove('card');
+  return N8Kit.sys.view(el, name, {
+    req: (m, u, b) => api(u, m === 'GET' ? {} : { method: m, body: b || {} }), console: 'sudo /opt/n8crosslink/scripts/n8-admin.sh',
+    update: { load: async (force) => { if (force) await api('/api/admin/update/check', { method: 'POST' }); return kitUpdate(await api('/api/admin/update')); },
+              onInstall: () => startUpdate() },
+  });
+}
 
 async function loadAdmin() {
   if (!S.me?.user) return;
   try { S.cfg = (await api('/api/admin/config')).config; } catch (e) { toast(e.message); return; }
-  $('#adminNav').innerHTML = Object.entries(SCHEMA).map(([k, v]) => `<button data-s="${k}" class="${k === S.adminSec ? 'active' : ''}">${v.title}</button>`).join('');
-  $$('#adminNav button').forEach(b => b.onclick = () => { S.adminSec = b.dataset.s; loadAdmin(); });
+  S.adminSec = ADMIN_OLD[S.adminSec] || S.adminSec;
+  if (!SCHEMA[S.adminSec]) S.adminSec = 'general';
+  N8Kit.nav.tree($('#adminNav'), ADMIN_GROUPS.map(([g, ids]) => ({ id: g, label: N8Kit.nav.GROUPS[g], items: ids.map(id => ({ id, label: SCHEMA[id].title })) })),
+    { active: S.adminSec, key: 'n8x-admin', onSelect: id => { S.adminSec = id; loadAdmin(); } });
+  $('#adminBody').classList.add('card'); $('#adminBody').classList.remove('n8-sys');
   const sec = SCHEMA[S.adminSec];
   if (sec.custom) return sec.custom();
   renderForm(S.adminSec, sec.fields, sec.extra || '');
@@ -711,73 +730,16 @@ async function renderDomains() {
 
 async function renderSystem() {
   const [ev, sy] = await Promise.all([api('/api/admin/events?limit=150'), api('/api/admin/system')]);
-  const stCls = (a) => a === 'active' ? 'ok' : a === 'failed' ? 'off' : 'warn';
-  const ST = { active: 'läuft', inactive: 'gestoppt', failed: 'Fehler', activating: 'startet', deactivating: 'stoppt', reloading: 'lädt neu' };
-  const units = sy.units.filter(u => !u.hidden);
-  const can = (u, a) => sy.sudo && u.actions.includes(a);
-  const btn = (u, a, icon, title) => u.actions.includes(a) ? `<button class="btn secondary svc-b" title="${title}" data-unit="${esc(u.unit)}" data-act="${a}" ${can(u, a) ? '' : 'disabled'}>${icon}</button>` : '';
-  const unitsHtml = units.length ? `<table class="tbl svc-tbl"><tbody>${
-    units.map(u => { const on = u.enabled === 'enabled', run = u.active === 'active';
-      return `<tr><td><span class="svc-dot ${stCls(u.active)}"></span><b>${esc(u.label)}</b><div class="lh-name">${esc(u.unit)}</div></td>
-      <td><span class="badge ${stCls(u.active)}">${esc(ST[u.active] || u.active)}</span></td>
-      <td>${u.actions.includes('enable') ? `<label class="switch" title="Autostart beim Booten"><input type="checkbox" data-auto="${esc(u.unit)}" ${on ? 'checked' : ''} ${can(u, on ? 'disable' : 'enable') ? '' : 'disabled'}><span></span> Autostart</label>`
-        : `<span class="badge">${esc(u.enabled)}</span>`}</td>
-      <td class="num" style="white-space:nowrap">${run ? btn(u, 'restart', '🔄', 'Neu starten') + btn(u, 'stop', '⏹', 'Stoppen') : btn(u, 'start', '▶', 'Starten')}</td></tr>`; }).join('')}</tbody></table>`
-    : '<div class="empty">Keine Dienste freigegeben.</div>';
-  $('#adminBody').innerHTML = `<h2 class="section-header">Dienste ${sy.sudo ? '<span class="badge ok">sudo bereit</span>' : '<span class="badge warn">sudo nicht eingerichtet – einmal sudo /opt/n8crosslink/update.sh ausführen</span>'}</h2>
-    <div class="card">${unitsHtml}</div>
-    <div class="form-actions" style="justify-content:flex-start">
-      ${sy.reboot ? `<button class="btn danger" id="sysReboot" ${sy.sudo ? '' : 'disabled'}>⏻ Server neu starten</button>` : ''}</div>
-    <h2 class="section-header">🔐 Berechtigungen &amp; sudo <span id="permBadge"></span></h2>
-    <p style="padding:0 4px;color:var(--text-dim);font-size:13px">Prüft Dienstbenutzer, Programm- und Datenrechte, systemd, Quellordner, USB-Vocoder, Domains und die sudo-Freigaben. Fehler korrigiert <b>🛠️ Korrigieren</b> – danach wird erneut geprüft. Auf der Konsole: <code>sudo /opt/n8crosslink/install.sh --check-perms</code> bzw. <code>--fix-perms</code>.</p>
-    <div class="card" id="permList"><div class="empty">prüfe …</div></div>
-    <div class="form-actions" style="justify-content:flex-start">
-      <button class="btn secondary" id="permCheck" ${sy.sudo && sy.check_perms ? '' : 'disabled'}>🔍 Erneut prüfen</button>
-      <button class="btn" id="sysPerm" ${sy.sudo && sy.fix_perms ? '' : 'disabled'}>🛠️ Korrigieren</button></div>
-    <pre id="sysOut" style="font-size:11.5px;white-space:pre-wrap;color:var(--text-dim);padding:0 4px"></pre>
-    <h2 class="section-header">💓 Keep-Alive <span id="kaBadge"></span></h2>
-    <div class="card" id="kaBox"><div class="empty">lade …</div></div>
-    <h2 class="section-header">Bridge</h2>
+  $('#adminBody').innerHTML = `<h2 class="section-header">Bridge</h2>
     <div class="form-actions" style="justify-content:flex-start">
       <button class="btn" id="sysRestart">🔄 Bridge neu starten</button>
       <button class="btn secondary" id="sysSvc">♻️ Dienst neu starten</button>
       <button class="btn secondary" id="sysUdb">🗂️ ID-Listen aktualisieren</button>
       <a class="btn secondary" href="/api/admin/export">⬇️ Konfiguration exportieren</a>
-      <label class="btn secondary" style="cursor:pointer">⬆️ Importieren<input type="file" id="sysImp" accept=".json" hidden></label></div>
+      <label class="btn secondary" style="cursor:pointer">⬆️ Importieren<input type="file" id="sysImp" accept=".json" hidden></label>
+      ${sy.reboot ? `<button class="btn danger" id="sysReboot" ${sy.sudo ? '' : 'disabled'}>⏻ Server neu starten</button>` : ''}</div>
     <h2 class="section-header">Ereignisprotokoll</h2>
     <div class="ev-list">${ev.map(e => `<div class="ev-row ${e.level === 'warn' ? 'warn' : ''}"><time>${new Date(e.ts * 1000).toLocaleString('de-DE')}</time><div>${esc(e.text)}</div></div>`).join('') || '<div class="empty">Leer.</div>'}</div>`;
-  $$('[data-auto]').forEach(c => c.onchange = async () => {
-    const act = c.checked ? 'enable' : 'disable';
-    if (act === 'disable' && !confirm(`Autostart für ${c.dataset.auto} ausschalten? Nach einem Neustart des Servers startet der Dienst dann nicht mehr von selbst.`)) { c.checked = true; return; }
-    const r = await api('/api/admin/system/unit', { method: 'POST', body: { unit: c.dataset.auto, action: act } });
-    toast((r.ok ? '✅ ' : '⚠️ ') + (r.message || '')); setTimeout(renderSystem, 800);
-  });
-  $$('[data-unit]').forEach(b => b.onclick = async () => {
-    const self = b.dataset.unit === 'n8crosslink.service';
-    if (['stop', 'disable'].includes(b.dataset.act) || self) { if (!confirm(`${b.title || b.textContent.trim()} – ${b.dataset.unit}?${self && b.dataset.act === 'stop' ? '\n\nDanach ist dieses Webinterface weg – wieder starten nur auf der Konsole: sudo systemctl start n8crosslink' : ''}`)) return; }
-    const r = await api('/api/admin/system/unit', { method: 'POST', body: { unit: b.dataset.unit, action: b.dataset.act } });
-    toast((r.ok ? '✅ ' : '⚠️ ') + (r.message || '')); if (!self) setTimeout(renderSystem, 1500);
-  });
-  const AREA = { user: '👤 Dienstbenutzer', prog: '📦 Programm', data: '💾 Daten', systemd: '⚙️ systemd', source: '🧬 Quellordner', usb: '🔌 USB-Vocoder', https: '🔒 Domains & HTTPS', sudo: '🛡️ sudo' };
-  const showPerms = (r) => {
-    const rows = r.checks || [];
-    $('#permBadge').innerHTML = !rows.length ? '<span class="badge warn">nicht geprüft</span>' : r.bad ? `<span class="badge off">${r.bad} Fehler</span>` : `<span class="badge ok">alles in Ordnung${r.warn ? ' · ' + r.warn + ' Hinweis(e)' : ''}</span>`;
-    if (!rows.length) { $('#permList').innerHTML = `<div class="empty">${esc(r.message || 'keine Daten')}</div>`; return; }
-    const order = [...new Set(rows.map(c => c.area))];
-    $('#permList').innerHTML = `<table class="tbl"><tbody>${order.map(a => rows.filter(c => c.area === a).map((c, i) => `<tr class="perm-${c.status}">
-      <td style="width:170px">${i ? '' : `<b>${esc(AREA[a] || a)}</b>`}</td>
-      <td style="width:28px">${c.status === 'ok' ? '✅' : c.status === 'warn' ? '⚠️' : '❌'}</td><td>${esc(c.text)}</td></tr>`).join('')).join('')}</tbody></table>`;
-  };
-  const loadPerms = async () => { if (!(sy.sudo && sy.check_perms)) { showPerms({ checks: [], message: sy.sudo ? 'Prüfung im Webinterface noch nicht freigegeben – einmal auf der Konsole: sudo /opt/n8crosslink/install.sh --fix-perms' : 'sudo ist nicht eingerichtet – auf der Konsole: sudo /opt/n8crosslink/install.sh --fix-perms (richtet sudo ein und korrigiert alle Rechte)' }); return; }
-    $('#permList').innerHTML = '<div class="empty">prüfe …</div>'; try { showPerms(await api('/api/admin/system/perms')); } catch (e) { showPerms({ checks: [], message: e.message }); } };
-  loadPerms(); renderKeepalive();
-  if ($('#permCheck')) $('#permCheck').onclick = loadPerms;
-  if ($('#sysPerm')) $('#sysPerm').onclick = async (e) => {
-    e.target.disabled = true; $('#sysOut').textContent = 'prüfe und korrigiere …';
-    try { const r = await api('/api/admin/system/fix-perms', { method: 'POST' }); $('#sysOut').textContent = (r.message || '').replace(/\x1b\[[0-9;]*m/g, ''); if (r.check) showPerms(r.check); toast(r.ok ? '✅ Berechtigungen in Ordnung' : '⚠️ Nicht alles ließ sich korrigieren'); }
-    catch (err) { toast('⚠️ ' + err.message); }
-    e.target.disabled = false;
-  };
   if ($('#sysReboot')) $('#sysReboot').onclick = async () => { if (!confirm('Den ganzen Server jetzt neu starten?')) return; const r = await api('/api/admin/system/reboot', { method: 'POST' }); toast(r.message); };
   $('#sysRestart').onclick = async () => { await api('/api/admin/restart', { method: 'POST' }); toast('🔄 Bridge startet neu …'); };
   $('#sysSvc').onclick = async () => { if (!confirm('Dienst komplett neu starten? Das Dashboard ist ein paar Sekunden weg.')) return; await api('/api/admin/service-restart', { method: 'POST' }); toast('♻️ Dienst startet neu …'); };
@@ -787,38 +749,6 @@ async function renderSystem() {
     try { await api('/api/admin/import', { method: 'POST', body: JSON.parse(await f.text()) }); toast('✅ Importiert'); $('#restartBanner').hidden = false; }
     catch (err) { toast('⚠️ ' + err.message); }
   };
-}
-
-// Keep-Alive (N8 Admin-Kit): jede Minute als root – Weboberfläche und jedes eingeschaltete Netz wirklich verbunden,
-// sonst nach 5 Minuten Neustart (höchstens 4× je Stunde), Internet-Ausfall erkennen, Heartbeat (Uptime Kuma, Healthchecks.io …)
-async function renderKeepalive() {
-  const box = $('#kaBox'); if (!box) return;
-  let d; try { d = await api('/api/admin/keepalive'); } catch (e) { box.innerHTML = `<div class="empty">⚠️ ${esc(e.message)}</div>`; return; }
-  const c = d.conf || {}, paused = c.paused_until && c.paused_until * 1000 > Date.now();
-  $('#kaBadge').innerHTML = !d.ready ? '<span class="badge warn">nicht eingerichtet</span>' : !c.enabled ? '<span class="badge">aus</span>' : paused ? '<span class="badge warn">pausiert</span>'
-    : d.stale ? '<span class="badge off">läuft nicht</span>' : '<span class="badge ok">aktiv</span>';
-  const ic = st => ({ ok: '✅', hold: '⏸️', restarted: '🔄', giveup: '❌' }[st] || '⚠️');
-  const t = ts => ts ? new Date(ts * 1000).toLocaleString('de-DE') : '–';
-  box.innerHTML = `<p style="color:var(--text-dim);font-size:13px;margin:0 0 10px">Jede Minute als root: prüft die Weboberfläche und jedes eingeschaltete Netz (FRN angemeldet, DMR am Master, Zello im Kanal, Vocoder bereit).
-      Die Brücke verbindet sich selbst neu – bleibt ein Netz <b>5 Minuten</b> weg, startet der Keep-Alive den Dienst neu (höchstens 4× je Stunde). Nach einem Internet-Ausfall startet er sie einmal neu,
-      und er meldet sich bei einer Heartbeat-Adresse. Ein hier gestoppter Dienst bleibt gestoppt.</p>
-    ${d.ready ? `<p style="margin:0 0 8px">🌐 Internet: ${d.net ? '<span class="badge ok">erreichbar</span>' : `<span class="badge off">weg seit ${t(d.net_down_since)}</span>`}
-        · letzte Prüfung ${d.age != null && d.age < 120 ? 'gerade eben' : t(d.time)}${c.heartbeat_url ? ` · Heartbeat: ${esc(d.heartbeat || '–')}` : ''}</p>
-      <table class="tbl"><tbody>${(d.checks || []).map(x => `<tr><td style="width:28px">${ic(x.state)}</td><td><b>${esc(x.label)}</b></td>
-        <td style="color:var(--text-dim)">${x.state === 'ok' ? 'gesund' : x.state === 'hold' ? 'von Hand gestoppt – Keep-Alive wartet' : esc(x.why || '')}${x.fails ? ` · ${x.fails} min` : ''}${x.restarts ? ` · ${x.restarts}× neu gestartet, zuletzt ${t(x.last_restart)}` : ''}</td></tr>`).join('')}</tbody></table>`
-      : '<div class="empty">Einmal auf der Konsole einrichten: sudo /opt/n8crosslink/install.sh --fix-perms</div>'}
-    <div class="form-grid" style="margin-top:12px">
-      <label class="switch"><input type="checkbox" id="kaOn" ${c.enabled ? 'checked' : ''}><span></span> Keep-Alive an</label>
-      <label class="switch"><input type="checkbox" id="kaNet" ${c.net_restart ? 'checked' : ''}><span></span> Nach Internet-Ausfall neu starten</label>
-      <label>Heartbeat-Adresse<input type="text" id="kaHb" value="${esc(c.heartbeat_url || '')}" placeholder="https://hc-ping.com/… oder https://kuma…/api/push/…"></label>
-      <label>Heartbeat bei Fehlern (optional)<input type="text" id="kaHbF" value="${esc(c.heartbeat_fail_url || '')}" placeholder="https://hc-ping.com/…/fail"></label></div>
-    <div class="form-actions" style="justify-content:flex-start"><button class="btn" id="kaSave">💾 Speichern</button>
-      <button class="btn secondary" id="kaPause">${paused ? '▶️ Fortsetzen' : '⏸️ 1 h pausieren (Wartung)'}</button></div>
-    ${d.log ? `<details><summary style="cursor:pointer;color:var(--text-dim)">Keep-Alive-Protokoll</summary><pre style="font-size:11.5px;white-space:pre-wrap;color:var(--text-dim)">${esc(d.log)}</pre></details>` : ''}`;
-  $('#kaSave').onclick = async () => {
-    try { await api('/api/admin/keepalive', { method: 'POST', body: { enabled: $('#kaOn').checked, net_restart: $('#kaNet').checked, heartbeat_url: $('#kaHb').value.trim(), heartbeat_fail_url: $('#kaHbF').value.trim() } });
-          toast('✅ Keep-Alive gespeichert'); renderKeepalive(); } catch (e) { toast('⚠️ ' + e.message); } };
-  $('#kaPause').onclick = async () => { try { await api('/api/admin/keepalive', { method: 'POST', body: { pause_minutes: paused ? 0 : 60 } }); renderKeepalive(); } catch (e) { toast('⚠️ ' + e.message); } };
 }
 
 const IDS_FIELDS = [
@@ -879,13 +809,6 @@ function kitUpdate(u) {
            schedule: S.cfg?.general && !S.cfg.general.update_check ? 'aus' : 'stündlich zur vollen Stunde',
            reason: u.systemd === false ? 'Update-Dienst fehlt – einmal <code>sudo /opt/n8crosslink/update.sh</code> ausführen.' : '',
            extra: [['Update-Dienst', u.systemd ? '<span class="n8-badge ok">eingerichtet</span>' : '<span class="n8-badge warn">fehlt</span>']] };
-}
-async function renderUpdate() {
-  const u = await api('/api/admin/update');
-  $('#adminBody').innerHTML = '<div class="card" style="padding:16px"><h3 style="margin:0 0 12px;font-size:13px;letter-spacing:.06em;text-transform:uppercase">⬆️ Updates</h3><div id="updPanel"></div></div>';
-  N8Kit.update.panel($('#updPanel'), kitUpdate(u), {
-    onCheck: async () => { await api('/api/admin/update/check', { method: 'POST' }); renderUpdate(); },
-    onInstall: () => startUpdate(u) });
 }
 async function startUpdate(u) {
   if (!u) { try { u = await api('/api/admin/update'); } catch (e) { toast(e.message); return; } }

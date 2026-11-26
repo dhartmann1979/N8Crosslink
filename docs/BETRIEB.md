@@ -18,7 +18,7 @@ Jeder Verbindungsverlust und jede Wiederherstellung steht in den Ereignissen; Z�
 
 ![Keep-Alive](screenshots/admin-keepalive.png)
 
-Seit **1.18.0** wacht zusätzlich ein Keep-Alive **von außerhalb** der Bridge – derselbe wie in HobbyRadioPortal, ADN-FRN-Server,
+Seit **1.18.0** wacht zusätzlich ein Keep-Alive **von außerhalb** der Bridge – derselbe wie in ADN-FRN-Server,
 HBlink4-FreeRadioID und N8 Hotspot (N8 Admin-Kit, `scripts/n8-admin.sh`). `n8crosslink-keepalive.timer` startet **jede Minute als root**
 `scripts/n8-admin.sh keepalive` und fragt `/api/n8/health` (nur lokal erreichbar):
 

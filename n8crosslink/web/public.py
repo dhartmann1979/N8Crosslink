@@ -2,7 +2,7 @@
 
 Wer nicht angemeldet ist, sieht Live-Daten, Last Heard und Ereignisse – aber Serveradressen, IPs und Ports werden
 entfernt bzw. maskiert. Hostnamen (z. B. dmr.die-n8schicht.de) bleiben lesbar, nur der Port fällt weg; IPv4/IPv6
-werden durch MASK ersetzt. Angemeldete Admins (und das HobbyRadioPortal auf demselben Rechner) sehen alles.
+werden durch MASK ersetzt. Angemeldete Admins sehen alles.
 """
 from __future__ import annotations
 

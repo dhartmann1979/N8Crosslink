@@ -27,7 +27,7 @@ def test_kit_and_installer():
     kit = ROOT / "scripts" / "n8-admin.sh"
     assert subprocess.run(["bash", "-n", str(kit)]).returncode == 0
     assert subprocess.run(["bash", "-n", str(ROOT / "scripts" / "n8-admin.conf")]).returncode == 0
-    for repo in ("hobbyradioportal", "adn-frn-server", "hblink4-freeradioid", "n8-hotspot"):
+    for repo in ("adn-frn-server", "hblink4-freeradioid", "n8-hotspot"):
         o = ROOT.parent / repo / "scripts" / "n8-admin.sh"
         if o.exists():
             assert o.read_bytes() == kit.read_bytes(), repo

@@ -2,6 +2,30 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.26.0] – 2026-11-26
+
+### 🔐 Sicherheits-Update
+Prüfung aller N8-Portale auf Sicherheitslücken, Fehler, Flooding, Brute-Force und Hintertüren. Hintertüren wurden keine gefunden. Behoben bzw. verbessert:
+
+- **N8 Guard gegen Flooding** – neuer, in allen N8-Systemen gleicher Wächter vor dem Dashboard (`n8_guard.py`, Version 1.0.0):
+  Anfragen-Budget je IP-Adresse (API 1200/min, Seiten 600/min, Anmeldung 30/min, WebSocket 60 neue/min und höchstens 24 gleichzeitig),
+  darüber `429 Too Many Requests` mit `Retry-After`; zu große Anfragen werden mit `413` abgewiesen, bevor sie gelesen werden (Grenze 64 MB).
+  Statische Dateien und die Let's-Encrypt-Prüfung zählen nicht mit. Der Speicher für die Zähler ist begrenzt (höchstens 20 000 IPs),
+  damit ein Angriff mit vielen Adressen den Server nicht vollschreibt.
+- **Login-Sperre:** Bisher konnte man beliebig oft Passwörter probieren. Jetzt sperren 5 Fehlversuche für denselben Benutzernamen oder
+  10 von derselben IP in 15 Minuten für 15 Minuten (Meldung in der Anmeldemaske).
+- **Gefälschte IP-Adresse:** Das Dashboard glaubte dem Header `X-Forwarded-For` von jedem Absender – ein Angreifer hätte damit Sperren und
+  Protokolle umgehen können. Jetzt zählt nur die echte Verbindung; den Header nimmt uvicorn nur vom eigenen Rechner (Reverse-Proxy) an.
+- **CSRF-Schutz:** Jede schreibende Anfrage an `/api/` braucht jetzt den Header `X-N8`, den nur die eigene Oberfläche mitschickt;
+  Sitzungs-Cookie mit `SameSite=Strict` und über HTTPS `Secure`.
+- **Werks-Login:** Solange `n8schicht / n8schicht` gilt, sind alle Admin-Änderungen gesperrt – außer dem Ändern des Passworts. Ein frisch
+  installierter Crosslink kann so nicht von jemandem umgestellt werden, der das Werks-Passwort kennt.
+- **Sitzungen nur als Prüfsumme:** In der Datenbank steht statt des Sitzungsschlüssels nur noch dessen SHA-256-Wert; eine Kopie der
+  Datenbank (z. B. aus einem Backup) enthält keine gültigen Anmeldungen mehr. Bestehende Sitzungen werden beim Start umgestellt und bleiben
+  gültig; Sitzungsliste und „Sitzung beenden“ funktionieren wie bisher.
+- Tests: neue Prüfungen für CSRF, Sperre, Werks-Login, Flooding und gespeicherte Sitzungen.
+- Doku: [Sicherheit](docs/SICHERHEIT.md) ergänzt.
+
 ## [1.25.0] – 2026-11-26
 
 ### 🏠 FRN: Raum aus dem Auswahlmenü

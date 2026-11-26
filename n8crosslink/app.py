@@ -246,7 +246,7 @@ def main() -> None:
     app = create_app(bridge)
     from .web.n8_security import UVICORN_KWARGS
     config = uvicorn.Config(app, host=host, port=port, log_level="warning", proxy_headers=True,
-                            forwarded_allow_ips="*", **UVICORN_KWARGS)   # kein "server: uvicorn"
+                            forwarded_allow_ips="127.0.0.1", **UVICORN_KWARGS)   # kein "server: uvicorn"
     server = uvicorn.Server(config)
 
     async def runner() -> None:

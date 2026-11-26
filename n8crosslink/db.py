@@ -187,6 +187,7 @@ class Database:
         """)
         self.conn.commit()
         self._migrate_access()
+        self._hash_old_sessions()
         if not self.has_users():
             # Standard-Login beim ersten Start – im Adminportal ändern!
             self.set_user(DEFAULT_USER, DEFAULT_PASSWORD, "superadmin")
@@ -333,19 +334,32 @@ class Database:
                 self.conn.commit()
         return ok
 
+    @staticmethod
+    def _skey(token: str) -> str:
+        """Sessions are stored as SHA-256 of the cookie – a copy of the database contains no usable logins."""
+        return token if token.startswith("h:") else "h:" + hashlib.sha256(token.encode()).hexdigest()
+
+    def _hash_old_sessions(self) -> None:
+        with self.lock:
+            rows = self.conn.execute("SELECT token FROM sessions WHERE token NOT LIKE 'h:%'").fetchall()
+            for r in rows:
+                self.conn.execute("UPDATE sessions SET token=? WHERE token=?", (self._skey(r["token"]), r["token"]))
+            if rows:
+                self.conn.commit()
+
     def new_session(self, username: str, hours: int = 12, ip: str = "", user_agent: str = "") -> str:
         token = secrets.token_urlsafe(32)
         now = time.time()
         with self.lock:
             self.conn.execute("DELETE FROM sessions WHERE expires < ?", (now,))
             self.conn.execute("INSERT INTO sessions (token, username, expires, ip, user_agent, created, last_seen) VALUES (?,?,?,?,?,?,?)",
-                              (token, username, now + hours * 3600, ip[:64], user_agent[:300], now, now))
+                              (self._skey(token), username, now + hours * 3600, ip[:64], user_agent[:300], now, now))
             self.conn.commit()
         return token
 
-    @staticmethod
-    def session_id(token: str) -> str:
-        return hashlib.sha256(token.encode()).hexdigest()[:16]
+    @classmethod
+    def session_id(cls, token: str) -> str:
+        return cls._skey(token)[2:18]
 
     def list_sessions(self) -> list[dict]:
         with self.lock:
@@ -367,17 +381,18 @@ class Database:
         if not token:
             return None
         with self.lock:
-            row = self.conn.execute("SELECT username, expires, last_seen FROM sessions WHERE token=?", (token,)).fetchone()
+            key = self._skey(token) if not token.startswith("h:") else ""        # a stored hash is no cookie
+            row = self.conn.execute("SELECT username, expires, last_seen FROM sessions WHERE token=?", (key,)).fetchone()
             if row and row["expires"] > time.time():
                 if time.time() - (row["last_seen"] or 0) > 60:          # „zuletzt aktiv“ höchstens einmal je Minute schreiben
-                    self.conn.execute("UPDATE sessions SET last_seen=? WHERE token=?", (time.time(), token))
+                    self.conn.execute("UPDATE sessions SET last_seen=? WHERE token=?", (time.time(), key))
                     self.conn.commit()
                 return row["username"]
         return None
 
     def end_session(self, token: str) -> None:
         with self.lock:
-            self.conn.execute("DELETE FROM sessions WHERE token=?", (token,))
+            self.conn.execute("DELETE FROM sessions WHERE token=?", (self._skey(token),))
             self.conn.commit()
 
     # ------------------------------------------------------------ Last Heard

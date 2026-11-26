@@ -18,7 +18,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .. import __version__
 from .. import backup as bk
-from ..db import DEFAULTS, Database
+from ..db import DEFAULT_USER, DEFAULTS, Database
 
 HERE = Path(__file__).parent
 COOKIE = "n8x_session"
@@ -46,11 +46,32 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
     app = FastAPI(title="N8 Crosslink", version=__version__,
                   **{"docs_url": None, "redoc_url": None, "openapi_url": None, **_sec.FASTAPI_KWARGS})
 
+    _dflt = {"t": 0.0, "v": False}
+
+    def default_pw_active() -> bool:
+        """Factory login n8schicht/n8schicht still active? (cached – the check is a slow password hash)"""
+        if time.time() - _dflt["t"] > 20:
+            _dflt.update(t=time.time(), v=db.default_password_active())
+        return _dflt["v"]
+
     @app.middleware("http")
     async def _security_headers(request: Request, call_next):  # noqa: ANN001, ANN202
+        path = request.url.path
+        if path.startswith("/api/") and request.method in ("POST", "PUT", "PATCH", "DELETE"):
+            # CSRF: changes only from our own page (custom header + SameSite cookie) – like every N8 system
+            if request.headers.get("x-n8") != "1":
+                return JSONResponse({"detail": "Missing X-N8 header."}, status_code=403)
+            # factory login still active: nothing but setting an own password
+            if (path.startswith("/api/admin/") and not path.startswith("/api/admin/users/") and default_pw_active()
+                    and db.session_user(request.cookies.get(COOKIE)) == DEFAULT_USER):
+                return JSONResponse({"detail": "Bitte zuerst das Standard-Passwort ändern (Admin → Benutzer)."}, status_code=403)
         resp = await call_next(request)
         _sec.headers(resp, https=_sec.is_https(request))
         return resp
+
+    from ..n8_guard import Guard, LoginGuard
+    app.add_middleware(Guard, api_per_min=1200, page_per_min=600, auth_per_min=30, max_body=64 * 1024 * 1024)
+    login_guard = LoginGuard()
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     env = Environment(loader=FileSystemLoader(HERE / "templates"), autoescape=select_autoescape(["html"]))
 
@@ -168,8 +189,8 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
                 "default_password": bool(u) and db.default_password_active()}
 
     def _client_ip(request: Request) -> str:
-        fwd = request.headers.get("x-forwarded-for", "")
-        return (fwd.split(",")[0].strip() if fwd else "") or (request.client.host if request.client else "")
+        # X-Forwarded-For is only believed from a proxy on this machine (uvicorn forwarded_allow_ips=127.0.0.1)
+        return request.client.host if request.client else ""
 
     @app.post("/api/setup")
     async def setup(request: Request, data: dict = Body(...)) -> JSONResponse:
@@ -181,20 +202,25 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         db.set_user(user, pw, "superadmin")
         resp = JSONResponse({"ok": True, "user": user})
         resp.set_cookie(COOKIE, db.new_session(user, ip=_client_ip(request), user_agent=request.headers.get("user-agent", "")),
-                        httponly=True, samesite="lax", max_age=12 * 3600)
+                        httponly=True, samesite="strict", secure=_sec.is_https(request), max_age=12 * 3600)
         return resp
 
     @app.post("/api/login")
     async def login(request: Request, data: dict = Body(...)) -> JSONResponse:
-        user, pw = str(data.get("username", "")), str(data.get("password", ""))
+        user, pw = str(data.get("username", ""))[:64], str(data.get("password", ""))
+        ip = _client_ip(request)
+        if not login_guard.allowed(ip, user):           # 10 failures per IP / 5 per IP and name in 15 minutes → locked
+            raise HTTPException(429, "Zu viele Fehlversuche – bitte 15 Minuten warten")
         await asyncio.sleep(0.3)  # Bremse gegen Durchprobieren
         if not db.check_login(user, pw):
-            db.event("warn", f"Anmeldung fehlgeschlagen: {user[:40]} ({_client_ip(request)})")
+            login_guard.failed(ip, user)
+            db.event("warn", f"Anmeldung fehlgeschlagen: {user[:40]} ({ip})")
             raise HTTPException(401, "Benutzername oder Passwort falsch")
+        login_guard.ok(ip, user)
         db.event("info", f"Anmeldung: {user} ({_client_ip(request)})")
         resp = JSONResponse({"ok": True, "user": user})
         resp.set_cookie(COOKIE, db.new_session(user, ip=_client_ip(request), user_agent=request.headers.get("user-agent", "")),
-                        httponly=True, samesite="lax", max_age=12 * 3600)
+                        httponly=True, samesite="strict", secure=_sec.is_https(request), max_age=12 * 3600)
         return resp
 
     @app.post("/api/logout")
@@ -899,6 +925,7 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
             raise HTTPException(400, "Passwort min. 8 Zeichen")
         db.update_user(name, display_name=data.get("display_name"), role=role,
                        disabled=None if "disabled" not in data else bool(data.get("disabled")), password=pw or None)
+        _dflt["t"] = 0.0
         bridge.router.event("info", f"Benutzer {name} geändert durch {me_}")
         return {"ok": True}
 

@@ -51,7 +51,7 @@ function statusPopup(state, title, text = '') {
 }
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2800); }
 async function api(path, opts = {}) {
-  const o = { headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', ...opts };
+  const o = { headers: { 'Content-Type': 'application/json', 'X-N8': '1' }, credentials: 'same-origin', ...opts };
   if (o.body && typeof o.body !== 'string') o.body = JSON.stringify(o.body);
   const r = await fetch(path, o);
   let data = null; try { data = await r.json(); } catch { /* leer */ }
@@ -1061,7 +1061,7 @@ async function previewAnnounce() {
     const el = $(`#f_general_${k}`); if (el) v[k] = el.value;
   }
   try {
-    const r = await fetch('/api/admin/announce/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(v) });
+    const r = await fetch('/api/admin/announce/preview', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-N8': '1' }, body: JSON.stringify(v) });
     if (!r.ok) { const j = await r.json().catch(() => ({})); return toast('⚠️ ' + (j.detail || 'Ansage nicht möglich')); }
     const a = new Audio(URL.createObjectURL(await r.blob())); a.play();
   } catch (e) { toast('⚠️ ' + e.message); }
@@ -1172,7 +1172,7 @@ function renderBackup() {
   const b64 = (f) => new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
   $('#bkBtn').onclick = async () => {
     $('#bkMsg').textContent = 'verschlüssele …';
-    const r = await fetch('/api/admin/backup', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: $('#bkPw').value }) });
+    const r = await fetch('/api/admin/backup', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-N8': '1' }, body: JSON.stringify({ password: $('#bkPw').value }) });
     if (!r.ok) { let d = {}; try { d = await r.json(); } catch { /* leer */ } $('#bkMsg').textContent = '⚠️ ' + (d.detail || r.statusText); return; }
     const name = (r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || 'n8crosslink-backup.n8xbak';
     const url = URL.createObjectURL(await r.blob()); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url);

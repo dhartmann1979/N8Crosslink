@@ -1,6 +1,6 @@
 # Konfiguration / Adminportal
 
-Anmelden über **🔐 Login** oben rechts – Standard **n8schicht / n8schicht** (bitte ändern, das Dashboard erinnert daran).
+Anmelden über **🔐 Anmelden** oben rechts – Standard **n8schicht / n8schicht**. Solange er gilt, sind Änderungen gesperrt, bis das Passwort unter *👥 Benutzer & Zugang* geändert ist. Angemeldet zeigt die Kopfleiste **Avatar + Name ▾** mit ⚙️ Adminbereich und ⏻ Abmelden.
 
 Seit **1.18.0** steht links ein **Baum-Menü** – dasselbe wie in ADN-FRN-Server, HBlink4-FreeRadioID und N8 Hotspot:
 **📡 Betrieb** (Allgemein, Routing, FRN, DMR, Zello, Vocoder, ID-Listen & Avatare) · **👥 Benutzer & Zugang** (Benutzer) ·

@@ -59,7 +59,7 @@ sudo ./install.sh
 
 Der Installer führt durch 9 Schritte (Pakete → venv → Login → FRN → DMR → Zello → Vocoder → Berechtigungen/sudo/Dienst). **Standard-Login: `n8schicht` / `n8schicht`** – das Dashboard erinnert daran, es zu ändern. Danach ist das Dashboard unter `http://<server>:8080` erreichbar (ist 8080 schon belegt, z. B. vom HBlink4-Dashboard, schlägt der Installer den nächsten freien Port vor).
 
-➡️ Ausführlich: **[docs/INSTALLATION.md](docs/INSTALLATION.md)** · Umstieg von SvxLink/Zello-Bridge: **[docs/MIGRATION.md](docs/MIGRATION.md)**
+➡️ Ausführlich: **[docs/INSTALLATION.md](docs/INSTALLATION.md)** · 🌍 **[Schritt für Schritt (9 Sprachen)](docs/anleitung/README.md)** · Umstieg von SvxLink/Zello-Bridge: **[docs/MIGRATION.md](docs/MIGRATION.md)**
 
 ## Wie die Sendeerkennung funktioniert (kein VOX)
 
@@ -117,6 +117,7 @@ Senden in die Netze:
 
 ## Dokumentation
 
+* 🌍 **[Schritt für Schritt mit Bildern – in 9 Sprachen](docs/anleitung/README.md)** (Deutsch, English, Français, Français (Belgique), Magyar, Svenska, Nederlands, Italiano, Español)
 * [Installation & Update](docs/INSTALLATION.md)
 * [Konfiguration / Adminportal](docs/KONFIGURATION.md)
 * [Vocoder: N8schicht-Vocoder (Klang, Messwerte, Test mit WAV) oder USB-Stick](docs/VOCODER.md)

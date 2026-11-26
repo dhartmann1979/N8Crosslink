@@ -40,6 +40,14 @@ Rufzeichen, Namen und Orte kommen von FRN-Clients, aus DMR (ID-Liste, Talker Ali
 
 Sitzungs-Cookie `HttpOnly`, `SameSite=Strict`, über HTTPS `Secure`. Jede schreibende Anfrage an `/api/` braucht den Header `X-N8` – eine fremde Webseite kann so nichts im Namen eines angemeldeten Admins auslösen (CSRF-Schutz). Sitzungen liegen in der Datenbank nur als SHA-256-Prüfsumme: wer eine Kopie der Datenbank hat, kann sich damit nicht anmelden (alte Sitzungen werden beim Start umgestellt).
 
+<p align="center"><img src="screenshots/anmeldung.png" alt="Anmeldefenster" width="45%"> <img src="screenshots/benutzermenue.png" alt="Benutzermenü" width="45%"></p>
+
+Das **Anmeldefenster** ist in allen N8-Systemen gleich: Logo und Titel des Systems, Benutzername und Passwort mit 👁 zum Anzeigen, Hinweis bei
+eingeschalteter Feststelltaste, Schalter „Angemeldet bleiben“, Sprachmenü und ein Hinweis, ob die Verbindung verschlüsselt ist. Ein falsches
+Passwort oder eine Sperre wird direkt im Fenster gemeldet. Angemeldet zeigt die Kopfleiste **Avatar + Name ▾** – das Menü darunter enthält
+Rolle, Konto bzw. Passwort, den Adminbereich und **Abmelden**.
+
+
 Solange der Standard-Login `n8schicht / n8schicht` gilt, sind alle Admin-Änderungen gesperrt – außer dem Ändern des Passworts unter *Admin → Benutzer & Zugang*. Mithören läuft über einen eigenen WebSocket, der nur angemeldete Admins annimmt.
 
 
@@ -141,15 +149,28 @@ Gemeinsame Bausteine für **HBlink4-FreeRadioID, adn-frn-server, N8-HotSpot und 
 | `update.sh` | Prüfung nach dem Update und Rollback (bei N8 Crosslink schon seit 1.5.1; schreibt jetzt `data/update.result` im gemeinsamen Format) |
 | `n8crosslink/web/static/i18n-crosslink.js` | die englischen Texte dieser Oberfläche (eigene Datei je Projekt; hier ist Deutsch die Grundsprache) |
 
-### Sprache DE | EN
+### Sprache – neun Sprachen
 
-<p align="center"><img src="screenshots/dashboard-englisch.png" alt="Dashboard auf Englisch" width="95%"></p>
+<p align="center"><img src="screenshots/sprachmenue.png" alt="Sprachmenü in der Kopfleiste" width="55%"></p>
+<p align="center"><img src="screenshots/kopfleiste-franzoesisch.png" alt="Kopfleiste auf Französisch" width="95%"></p>
 
-- Der Umschalter steht in der Kopfzeile neben 🔗 Links und dem Login, auch ohne Anmeldung.
-- **Standard ist Deutsch.** Die Wahl gilt **sofort**, ohne Neuladen, und wird im Cookie `n8_lang` gespeichert. Cookies gelten für alle Ports eines Servers – wer also hier Englisch wählt, sieht auch die anderen N8schicht-Oberflächen auf diesem Server auf Englisch.
-- Für einen Link in einer bestimmten Sprache: `?lang=en` oder `?lang=de` an die Adresse hängen.
-- Übersetzt wird die fertige Seite: Texte und die Attribute `title`, `placeholder`, `aria-label`, `alt`. Neue Inhalte (Live-Daten, Fenster) werden übersetzt, sobald sie erscheinen; auch Rückfragen (`confirm`) folgen der Sprache. Rufzeichen, Namen, Raum-/Kanal-/TG-Namen und Code bleiben, wie sie sind.
-- Fehlt ein Wort, erscheint das Original. Ergänzen: in `i18n-crosslink.js` eine Zeile `'Deutscher Text': 'English text',` – ohne führende Emojis und ohne Satzzeichen am Ende, Zahlen über die `rules` am Ende der Datei.
+- Das Sprachmenü **🌐 DE ▾** steht in der Kopfleiste neben 🔗 Links und der Anmeldung, auch ohne Anmeldung – und unten im Anmeldefenster.
+- **Neun Sprachen:** Deutsch, English, Français, Français (Belgique), Magyar, Svenska, Nederlands, Italiano, Español. Übersetzt mit den
+  Fachbegriffen des Funkbetriebs (Rufzeichen → *indicatif / hívójel / anropssignal / roepnaam / nominativo / indicativo*, Talkgroup, Time Slot,
+  Color Code bleiben wie im DMR-Alltag).
+- **Beim ersten Besuch gilt die Sprache des Browsers**, wenn es eine der neun ist, sonst Deutsch. Die Wahl gilt **sofort**, ohne Neuladen, und
+  wird im Cookie `n8_lang` gespeichert. Cookies gelten für alle Ports eines Servers – wer auf diesem Server Französisch wählt, sieht auch die anderen
+  N8schicht-Oberflächen auf diesem Server auf Französisch.
+- Datum, Uhrzeit und Zahlen folgen der Sprache (z. B. `26/11/2026` auf Französisch, `2026. 11. 26.` auf Ungarisch).
+- Für einen Link in einer bestimmten Sprache: `?lang=fr` (bzw. `de`, `en`, `fr-BE`, `hu`, `sv`, `nl`, `it`, `es`) an die Adresse hängen.
+- Übersetzt wird die fertige Seite: Texte und die Attribute `title`, `placeholder`, `aria-label`, `alt`. Neue Inhalte (Live-Daten, Fenster)
+  werden übersetzt, sobald sie erscheinen; auch Rückfragen (`confirm`) folgen der Sprache. Rufzeichen, Namen, Raum-/Kanal-/TG-Namen und Code bleiben, wie sie sind.
+- **Technik:** Deutsch und Englisch sind immer geladen. Jede weitere Sprache liegt in einer eigenen Datei `n8-i18n-<sprache>.js` (rund 80 KB)
+  und wird nur geladen, wenn sie gewählt ist – beim ersten Aufruf noch vor dem Anzeigen der Seite, damit nichts auf Deutsch aufblitzt.
+  Die weiteren Sprachen sind nach dem englischen Text geordnet; ein deutscher Text wird erst ins Englische und dann in die Zielsprache übersetzt.
+  Fehlt eine Übersetzung, erscheint der englische Text (Français (Belgique) nutzt zuerst die belgischen Abweichungen, dann Französisch).
+- Fehlt ein deutsches oder englisches Wort: in `n8crosslink/web/static/i18n-crosslink.js` eine Zeile 'Deutscher Text': 'English text', – ohne führende Emojis und ohne Satzzeichen am Ende,
+  Zahlen über die `rules` am Ende der Datei.
 
 ### Updates – überall gleich
 

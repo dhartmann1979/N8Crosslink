@@ -209,7 +209,7 @@ Zahlen, Anzeigen und Code stehen immer in **JetBrains Mono** (CSS-Variable `--n8
 Gleich in allen N8-Systemen.
 
 ## 🌐 Sprache
-Oben rechts neben *Links* schaltet **DE | EN** die Oberfläche um – Standard ist Deutsch. Die Wahl gilt sofort und per Cookie für alle N8schicht-Seiten auf demselben Server. Mehr in [SICHERHEIT.md](SICHERHEIT.md#sprache-de--en).
+Oben rechts neben *Links* stellt das Sprachmenü **🌐 DE ▾** die Oberfläche auf eine von neun Sprachen um (Deutsch, English, Français, Français (Belgique), Magyar, Svenska, Nederlands, Italiano, Español) – beim ersten Besuch die Sprache des Browsers, sonst Deutsch. Die Wahl gilt sofort und per Cookie für alle N8schicht-Seiten auf demselben Server. Mehr in [SICHERHEIT.md](SICHERHEIT.md#sprache--neun-sprachen).
 
 ![Englisch](screenshots/dashboard-englisch.png)
 

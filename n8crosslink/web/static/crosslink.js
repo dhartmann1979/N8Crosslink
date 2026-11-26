@@ -16,8 +16,8 @@ function fmtDur(s) {
 }
 function fmtTime(ts) {
   const d = new Date(ts * 1000), now = new Date();
-  const t = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-  return d.toDateString() === now.toDateString() ? t : d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' ' + t;
+  const t = d.toLocaleTimeString(N8Kit.locale(), { hour: '2-digit', minute: '2-digit' });
+  return d.toDateString() === now.toDateString() ? t : d.toLocaleDateString(N8Kit.locale(), { day: '2-digit', month: '2-digit' }) + ' ' + t;
 }
 function ago(ts) {
   const s = Date.now() / 1000 - ts;
@@ -279,7 +279,7 @@ function setSegMeter(lvl) {
 }
 setInterval(() => {
   const a = S.state?.active;
-  const ck = $('#lcdClock'); if (ck) ck.textContent = new Date().toLocaleTimeString('de-DE');
+  const ck = $('#lcdClock'); if (ck) ck.textContent = new Date().toLocaleTimeString(N8Kit.locale());
   if (a) { const d = Math.max(0, Date.now() / 1000 - a.since); $('#oaTimer').textContent = `${String(Math.floor(d / 60)).padStart(2, '0')}:${String(Math.floor(d % 60)).padStart(2, '0')}`; }
 }, 250);
 
@@ -363,7 +363,7 @@ function renderLH() {
     const status = blocked ? '<span class="badge warn">blockiert</span>' : e.status === 'timeout' ? '<span class="badge off">Time-Out</span>' : live ? '<span class="badge ok">on air</span>' : '<span class="badge">ok</span>';
     const targets = blocked ? '<span style="color:var(--text-dim)">–</span>' : (e.targets || []).length ? e.targets.map(t => badge(t)).join('') : '<span style="color:var(--text-dim)">kein Ziel</span>';
     return `<div class="lh-row ${live ? 'live' : ''} ${blocked ? 'blocked' : ''}">
-      <div class="lh-time" title="${new Date(e.ts_start * 1000).toLocaleString('de-DE')}">${fmtTime(e.ts_start)}</div>
+      <div class="lh-time" title="${new Date(e.ts_start * 1000).toLocaleString(N8Kit.locale())}">${fmtTime(e.ts_start)}</div>
       <div class="lh-user">${avatar(e.source, avatarKey(e.source, e), cs)}<div style="min-width:0"><div class="lh-cs">${esc(cs)}</div>
         <div class="lh-name">${esc(nm)}${e.dmr_id ? ' · ' + e.dmr_id : ''}</div></div></div>
       <div>${badge(e.source)}</div>
@@ -393,7 +393,7 @@ async function loadEvents() {
 }
 function addEvent(m) {
   EV.unshift(m); EV.length = Math.min(EV.length, 40);
-  $('#evList').innerHTML = EV.map(e => `<div class="ev-row ${e.level === 'warn' ? 'warn' : ''}"><time>${new Date(e.ts * 1000).toLocaleTimeString('de-DE')}</time><div>${esc(e.text)}</div></div>`).join('');
+  $('#evList').innerHTML = EV.map(e => `<div class="ev-row ${e.level === 'warn' ? 'warn' : ''}"><time>${new Date(e.ts * 1000).toLocaleTimeString(N8Kit.locale())}</time><div>${esc(e.text)}</div></div>`).join('');
 }
 
 /* ---------- Statistik ---------- */
@@ -426,7 +426,7 @@ function renderNetDetails() {
   const on = (x) => !x?.enabled ? '<span class="badge warn">deaktiviert</span>' : x.online ? '<span class="badge ok">online</span>' : `<span class="badge off">${esc(x.state || 'offline')}</span>`;
   const f = p.frn || {}, d = p.dmr || {}, z = p.zello || {};
   const wd = (x) => [['Watchdog', `${x.watchdog?.reconnects || 0} Wiederverbindungen · ${x.watchdog?.wd_restarts || 0} Neuaufbauten${x.watchdog?.wd_reason ? ' (zuletzt: ' + esc(x.watchdog.wd_reason) + ')' : ''}`],
-    [x.online ? 'Online seit' : 'Offline seit', (x.online ? x.watchdog?.online_since : x.watchdog?.offline_since) ? new Date((x.online ? x.watchdog.online_since : x.watchdog.offline_since) * 1000).toLocaleString('de-DE') : '–']];
+    [x.online ? 'Online seit' : 'Offline seit', (x.online ? x.watchdog?.online_since : x.watchdog?.offline_since) ? new Date((x.online ? x.watchdog.online_since : x.watchdog.offline_since) * 1000).toLocaleString(N8Kit.locale()) : '–']];
   const card = (k, title, body) => `<div><h2 class="section-header">${NET[k]?.icon || '🎛️'} ${title}</h2><div class="card">${body}</div></div>`;
   $('#netDetails').innerHTML =
     card('frn', 'FRN – FreeRadioNetwork', kv([['Status', on(f)], ['Server', esc(f.server)], ['Raum', esc(f.net)], ['Zugang', esc(f.access)],
@@ -434,10 +434,10 @@ function renderNetDetails() {
       ['Info', esc(f.net_info)], ['Durchgänge', `⇣ ${f.counters?.rx || 0} empfangen · ⇡ ${f.counters?.tx || 0} gesendet`], ...wd(f)])) +
     card('dmr', 'DMR – HomeBrew (HBlink4 / FreeDMR)', kv([['Status', on(d)], ['Server', esc(d.server)], ['Login-Phase', esc(d.login)],
       ['Peer-ID', esc(d.peer_id)], ['Zeitschlitz', 'TS' + esc(d.slot)], ['RX-Talkgroup', esc(d.tg_rx)], ['TX-Talkgroup', esc(d.tg_tx)],
-      ['Verbunden seit', d.since ? new Date(d.since * 1000).toLocaleString('de-DE') : '–'],
+      ['Verbunden seit', d.since ? new Date(d.since * 1000).toLocaleString(N8Kit.locale()) : '–'],
       ['Ping / Pong', `${d.stats?.pings || 0} / ${d.stats?.pongs || 0}`], ['Pakete', `⇣ ${d.stats?.rx_pkts || 0} · ⇡ ${d.stats?.tx_pkts || 0}`],
       ['RX-/TX-Talkgroup-Name', `${esc(d.tg_rx_name || '–')} / ${esc(d.tg_tx_name || '–')}`],
-      ['ID-Listen', d.userdb ? `${(d.userdb.count || 0).toLocaleString('de-DE')} DMR-IDs · ${(d.userdb.registered || 0).toLocaleString('de-DE')} FreeRadioID · ${(d.userdb.talkgroups || 0).toLocaleString('de-DE')} Talkgroups${d.userdb.updated ? ' · Stand ' + new Date(d.userdb.updated * 1000).toLocaleString('de-DE') : ''}` : '–'], ...wd(d)])) +
+      ['ID-Listen', d.userdb ? `${(d.userdb.count || 0).toLocaleString(N8Kit.locale())} DMR-IDs · ${(d.userdb.registered || 0).toLocaleString(N8Kit.locale())} FreeRadioID · ${(d.userdb.talkgroups || 0).toLocaleString(N8Kit.locale())} Talkgroups${d.userdb.updated ? ' · Stand ' + new Date(d.userdb.updated * 1000).toLocaleString(N8Kit.locale()) : ''}` : '–'], ...wd(d)])) +
     card('zello', 'Zello – Channel API', kv([['Status', on(z)], ['Server', esc(z.server)], ['Kanal', esc(z.channel)], ['Konto', esc(z.username)],
       ['Kanal-Status', esc(z.channel_status)], ['Benutzer online', z.users_online ?? '–'],
       ['Durchgänge', `⇣ ${z.counters?.rx || 0} · ⇡ ${z.counters?.tx || 0}`], ...wd(z)])) +
@@ -449,26 +449,21 @@ function renderNetDetails() {
 
 /* ---------- Login / Setup ---------- */
 let loginMode = 'login';
+// N8 Kit 1.6: the same login window as in every N8 system (first start: create the superadmin)
 function openLogin(mode = 'login') {
-  loginMode = mode;
-  $('#loginTitle').textContent = mode === 'setup' ? '🧭 Superadmin anlegen' : '🔐 Anmelden';
-  $('#loginHint').textContent = mode === 'setup' ? 'Erster Start: lege das Superadmin-Konto an (Passwort min. 8 Zeichen).' : 'Adminbereich der N8 Crosslink.';
-  $('#lPass2Wrap').hidden = mode !== 'setup'; $('#lOk').textContent = mode === 'setup' ? 'Anlegen' : 'Anmelden';
-  $('#lErr').textContent = ''; $('#loginModal').classList.add('open'); setTimeout(() => $('#lUser').focus(), 50);
+  const setup = mode === 'setup';
+  N8Kit.login.open({
+    logo: document.querySelector('header img.logo')?.src || '/static/n8crosslink-icon.svg',
+    title: setup ? 'Superadmin anlegen' : (document.querySelector('header h1')?.textContent || 'N8 Crosslink'),
+    subtitle: setup ? 'Erster Start: lege das Superadmin-Konto an (Passwort min. 8 Zeichen).' : 'Adminbereich der N8 Crosslink.',
+    setup, minLength: setup ? 8 : 0,
+    submit: async ({ username, password }) => {
+      if (setup) await api('/api/setup', { method: 'POST', body: { username, password } });
+      else await api('/api/login', { method: 'POST', body: { username, password } });
+      setTimeout(async () => { await loadMe(); showTab('admin'); toast('Angemeldet als ' + username); }, 0);
+    },
+  });
 }
-$('#lCancel').addEventListener('click', () => $('#loginModal').classList.remove('open'));
-$('#lPass').addEventListener('keydown', e => { if (e.key === 'Enter' && loginMode === 'login') $('#lOk').click(); });
-$('#lOk').addEventListener('click', async () => {
-  const username = $('#lUser').value.trim(), password = $('#lPass').value;
-  try {
-    if (loginMode === 'setup') {
-      if (password !== $('#lPass2').value) throw new Error('Passwörter stimmen nicht überein');
-      await api('/api/setup', { method: 'POST', body: { username, password } });
-    } else await api('/api/login', { method: 'POST', body: { username, password } });
-    $('#loginModal').classList.remove('open'); $('#lPass').value = ''; $('#lPass2').value = '';
-    await loadMe(); showTab('admin'); toast('Angemeldet als ' + username);
-  } catch (e) { $('#lErr').textContent = e.message; }
-});
 $('#setupBtn').addEventListener('click', () => openLogin('setup'));
 async function loadMe() {
   const before = S.me ? !!S.me.user : null;
@@ -480,12 +475,17 @@ async function loadMe() {
   $('#tabAdminBtn').hidden = !S.me.user;
   $('#listenMenu').hidden = !S.me.user;
   if (!S.me.user && typeof L !== 'undefined' && L.on) listenStop();
-  $('#userArea').innerHTML = S.me.user
-    ? `<button class="hdr-btn" id="logoutBtn" title="Abmelden">👤 ${esc(S.me.user)} · ⎋</button>`
-    : `<button class="hdr-btn login" id="loginBtn">🔐 Login</button>`;
-  if (S.me.user) $('#logoutBtn').onclick = async () => { await api('/api/logout', { method: 'POST' }); await loadMe(); showTab('live'); };
+  // N8 Kit 1.6: 🔐 Anmelden – or avatar + name ▾ with admin area and log out, the same in every N8 system
+  const ROLE = { superadmin: 'Superadmin', admin: 'Admin', user: 'Benutzer' };
+  N8Kit.userMenu($('#userArea'), S.me.user && { name: S.me.user, role: S.me.role || 'admin' }, {
+    btnClass: S.me.user ? 'hdr-btn' : 'hdr-btn login', roleLabel: ROLE[S.me.role] || S.me.role,
+    onLogin: () => openLogin(S.me.setup_required ? 'setup' : 'login'),
+    onLogout: async () => { await api('/api/logout', { method: 'POST' }); await loadMe(); showTab('live'); },
+    items: [
+      { icon: '⚙️', label: 'Adminbereich', onClick: () => showTab('admin') },
+    ],
+  });
   if (S.me.user) checkCrashes(before === false);      // gerade angemeldet: neue Abstürze sofort zeigen
-  else $('#loginBtn').onclick = () => openLogin(S.me.setup_required ? 'setup' : 'login');
 }
 async function loadInfo() {
   const i = await api('/api/info');
@@ -931,7 +931,7 @@ async function renderSystem() {
       <label class="btn secondary" style="cursor:pointer">⬆️ Importieren<input type="file" id="sysImp" accept=".json" hidden></label>
       ${sy.reboot ? `<button class="btn danger" id="sysReboot" ${sy.sudo ? '' : 'disabled'}>⏻ Server neu starten</button>` : ''}</div>
     <h2 class="section-header">Ereignisprotokoll</h2>
-    <div class="ev-list">${ev.map(e => `<div class="ev-row ${e.level === 'warn' ? 'warn' : ''}"><time>${new Date(e.ts * 1000).toLocaleString('de-DE')}</time><div>${esc(e.text)}</div></div>`).join('') || '<div class="empty">Leer.</div>'}</div>`;
+    <div class="ev-list">${ev.map(e => `<div class="ev-row ${e.level === 'warn' ? 'warn' : ''}"><time>${new Date(e.ts * 1000).toLocaleString(N8Kit.locale())}</time><div>${esc(e.text)}</div></div>`).join('') || '<div class="empty">Leer.</div>'}</div>`;
   if ($('#sysReboot')) $('#sysReboot').onclick = async () => { if (!confirm('Den ganzen Server jetzt neu starten?')) return; const r = await api('/api/admin/system/reboot', { method: 'POST' }); toast(r.message); };
   $('#sysRestart').onclick = async () => { await api('/api/admin/restart', { method: 'POST' }); toast('🔄 Bridge startet neu …'); };
   $('#sysSvc').onclick = async () => { if (!confirm('Dienst komplett neu starten? Das Dashboard ist ein paar Sekunden weg.')) return; await api('/api/admin/service-restart', { method: 'POST' }); toast('♻️ Dienst startet neu …'); };
@@ -958,12 +958,12 @@ const IDS_FIELDS = [
 ];
 async function renderIds() {
   const i = await api('/api/admin/ids'); const L = i.lists, A = i.avatars;
-  const dt = (t) => t ? new Date(t * 1000).toLocaleString('de-DE') : 'noch nie';
+  const dt = (t) => t ? new Date(t * 1000).toLocaleString(N8Kit.locale()) : 'noch nie';
   const c = S.cfg.ids;
   $('#adminBody').innerHTML = `${kv([
-      ['DMR-IDs', `${L.users.toLocaleString('de-DE')} · Stand ${dt(L.users_updated)}`], ['Quelle', esc(L.users_source)],
-      ['Bei FreeRadioID registriert', `${L.registered.toLocaleString('de-DE')} · Stand ${dt(L.frid_updated)}`],
-      ['Talkgroup-Namen', `${L.talkgroups.toLocaleString('de-DE')} · Stand ${dt(L.tg_updated)}`],
+      ['DMR-IDs', `${L.users.toLocaleString(N8Kit.locale())} · Stand ${dt(L.users_updated)}`], ['Quelle', esc(L.users_source)],
+      ['Bei FreeRadioID registriert', `${L.registered.toLocaleString(N8Kit.locale())} · Stand ${dt(L.frid_updated)}`],
+      ['Talkgroup-Namen', `${L.talkgroups.toLocaleString(N8Kit.locale())} · Stand ${dt(L.tg_updated)}`],
       ['Avatare im Cache', `${A.with_avatar} mit Bild (${(A.bytes / 1024).toFixed(0)} KB) · ${A.without} ohne · zuletzt aktualisiert ${dt(A.refreshed)}`],
       ['Zeitplan', 'ID-Listen und Avatare 1× täglich automatisch, sofort per Knopf']])}
     <div class="form-actions" style="justify-content:flex-start">
@@ -1184,8 +1184,8 @@ function renderBackup() {
     file64 = await b64(f);
     try {
       const r = await api('/api/admin/restore/inspect', { method: 'POST', body: { file: file64, password: $('#rsPw').value } }); const m = r.manifest;
-      $('#rsInfo').innerHTML = kv([['Erstellt', new Date(m.created * 1000).toLocaleString('de-DE') + ' von ' + esc(m.created_by)], ['Version', esc(m.version)], ['Rechner', esc(m.host)],
-        ['Inhalt', esc((m.contents || []).join(', '))], ['Umfang', `${m.counts?.users} Benutzer · ${(m.counts?.dmr_ids || 0).toLocaleString('de-DE')} DMR-IDs · ${m.counts?.talkgroups} TGs · ${m.counts?.avatars} Avatare`]]);
+      $('#rsInfo').innerHTML = kv([['Erstellt', new Date(m.created * 1000).toLocaleString(N8Kit.locale()) + ' von ' + esc(m.created_by)], ['Version', esc(m.version)], ['Rechner', esc(m.host)],
+        ['Inhalt', esc((m.contents || []).join(', '))], ['Umfang', `${m.counts?.users} Benutzer · ${(m.counts?.dmr_ids || 0).toLocaleString(N8Kit.locale())} DMR-IDs · ${m.counts?.talkgroups} TGs · ${m.counts?.avatars} Avatare`]]);
       $('#rsBtn').disabled = false;
     } catch (e) { $('#rsInfo').innerHTML = `<div class="err">⚠️ ${esc(e.message)}</div>`; $('#rsBtn').disabled = true; }
   };

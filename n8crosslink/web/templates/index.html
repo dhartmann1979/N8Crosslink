@@ -37,6 +37,7 @@
   <script>N8Theme.apply({{ theme|tojson }});</script>
   <script src="/static/n8-kit.js?v={{ version }}"></script>
   <script src="/static/i18n-crosslink.js?v={{ version }}"></script>
+  <script src="/static/n8-i18n-intl.js?v={{ version }}"></script>
 </head>
 <body>
 <div class="container">
@@ -65,10 +66,10 @@
           </div>
         </div>
         <div class="links-menu" id="linksMenu">
-          <button type="button" class="links-btn" id="linksBtn"><span class="links-label">🔗 Links</span> ▾</button>
+          <button type="button" class="links-btn" id="linksBtn"><span aria-hidden="true">🔗</span><span class="links-label"> Links</span> ▾</button>
           <div class="links-pop" id="linksPop"></div>
         </div>
-        <div id="userArea"><button class="hdr-btn login" id="loginBtn">🔐 Login</button></div>
+        <div id="userArea"></div>
       </div>
     </header>
     <div class="status-strip" role="status">
@@ -210,17 +211,6 @@
     <a href="https://github.com/dhartmann1979/N8Crosslink" target="_blank" rel="noopener">GitHub</a></footer>
 </div>
 
-<div class="modal-overlay" id="loginModal">
-  <div class="modal-content">
-    <h2 id="loginTitle">🔐 Anmelden</h2>
-    <p id="loginHint">Adminbereich der N8 Crosslink.</p>
-    <div class="field"><label>Benutzername</label><input type="text" id="lUser" autocomplete="username"></div>
-    <div class="field"><label>Passwort</label><input type="password" id="lPass" autocomplete="current-password"></div>
-    <div class="field" id="lPass2Wrap" hidden><label>Passwort wiederholen</label><input type="password" id="lPass2" autocomplete="new-password"></div>
-    <div class="err" id="lErr"></div>
-    <div class="form-actions"><button class="btn secondary" id="lCancel">Abbrechen</button><button class="btn" id="lOk">Anmelden</button></div>
-  </div>
-</div>
 <div class="modal-overlay" id="statusModal">
   <div class="modal-content status-pop" id="statusBox">
     <div class="sp-icon" id="spIcon"><span class="spinner"></span></div>

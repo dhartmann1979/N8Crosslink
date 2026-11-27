@@ -179,7 +179,9 @@ class Router:
         self.audio_listeners: set[asyncio.Queue] = set()   # Mithören (nur angemeldete Admins)
         self._dirty = asyncio.Event()
         self.meter = SpectrumMeter()       # Live-Anzeige: Pegel + Audio-Spektrum der sprechenden Station
-        self._meter_t = 0.0
+        self._mq: list = []
+        self._mflush = False
+        self._msrc = ""
         self.started = time.time()
         self.vocoder = None
         self.dsp: dict = {}                      # (netz, "in"/"out") -> audio.agc.Chain
@@ -348,19 +350,30 @@ class Router:
             except Exception as e:  # noqa: BLE001
                 log.exception("tx_audio %s: %s", t.key, e)
 
-    METER_INTERVAL = 0.04                  # 25 Meldungen je Sekunde – die Seite glättet dazwischen
-
     def _meter(self, port: Port, pcm: bytes, now: float) -> None:
-        """Pegel, Spitze und Spektrum als kleine Live-Meldung ``meter`` (nur Anzeige)."""
+        """Echtzeit-Anzeige: Pegel, Spitze und Spektrum für jeden 20-ms-Rahmen. Rahmen, die zusammen ankommen
+        (FRN: 10 Rahmen je 200-ms-Paket, DMR/Zello: 3 je 60 ms), gehen als eine Meldung ``meter`` hinaus; die Seite
+        spielt sie im 20-ms-Takt ab – so läuft die Anzeige so schnell wie der Ton."""
         try:
-            self.meter.push(pcm)
-            if now - self._meter_t < self.METER_INTERVAL or not self.listeners:
+            if not self.listeners:
                 return
-            self._meter_t = now
-            self.broadcast({"type": "meter", "src": port.key, "l": round(self.meter.level, 1),
-                            "p": round(self.meter.peak, 1), "b": self.meter.bands()}, limit=25)   # langsamer Client: Anzeige auslassen, Status nie
+            self._mq.append(self.meter.frame(pcm))
+            self._msrc = port.key
+            if not self._mflush:
+                self._mflush = True
+                try:
+                    asyncio.get_running_loop().call_soon(self._meter_flush)
+                except RuntimeError:
+                    self._meter_flush()
         except Exception as e:  # noqa: BLE001 – die Anzeige darf den Ton nie anhalten
             log.debug("Spektrum: %s", e)
+
+    def _meter_flush(self) -> None:
+        self._mflush = False
+        frames, self._mq = self._mq[-50:], []
+        if frames:
+            self.broadcast({"type": "meter", "src": self._msrc, "ms": 20, "fmax": self.meter.f_max, "f": frames},
+                           limit=60)          # langsamer Client: Anzeige auslassen, Status nie
 
     def rx_update_talker(self, port: Port, **kw) -> None:  # noqa: ANN003
         s = self.active

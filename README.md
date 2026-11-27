@@ -21,7 +21,7 @@ Alles läuft in **einem** Python-Dienst mit Live-Dashboard und Adminportal – i
 
 ## Funktionen
 
-- **📻 Live-Ansicht wie ein Funkgerät:** OnAir-Display mit RX/TX-Lampen und Laufzeit, flüssige Pegelanzeige mit Spitzenwert, **Audio-Spektrum** (32 Bänder, 120 Hz – 3,9 kHz, in der Farbe des sprechenden Netzes), Vocoder-Qualität, Tagesgrafik je Stunde; kompakte Netz-Karten mit den Logos der verbundenen Plattformen und eigener Vocoder-Karte. Schrift wählbar (Standard IBM Plex Sans, Zahlen in JetBrains Mono).
+- **📻 Live-Ansicht wie ein Funkgerät:** OnAir-Display mit RX/TX-Lampen und Laufzeit, Pegel und **Audio-Spektrum in Echtzeit** (jeder 20-ms-Tonrahmen, 48 Bänder von 0 Hz bis 4 kHz, in der Farbe des sprechenden Netzes), Vocoder-Qualität, Tagesgrafik je Stunde; kompakte Netz-Karten mit den Logos der verbundenen Plattformen und eigener Vocoder-Karte. Schrift wählbar (Standard IBM Plex Sans, Zahlen in JetBrains Mono).
 
 | | |
 |---|---|

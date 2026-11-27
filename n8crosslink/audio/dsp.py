@@ -17,30 +17,41 @@ def level_dbfs(pcm: bytes) -> float:
     return -90.0 if rms < 1 else max(-90.0, 20 * math.log10(rms / 32768.0))
 
 
-class SpectrumMeter:
-    """Live-Anzeige: Pegel, Spitze und Audio-Spektrum der sprechenden Station (nur Anzeige, nie zum Schalten).
+B64 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_"   # 6 Bit je Band, ein Zeichen
 
-    Hält die letzten ``size`` Abtastwerte (512 = 64 ms @ 8 kHz), rechnet mit Hann-Fenster eine FFT und fasst
-    sie in ``bands`` logarithmisch verteilte Bänder zwischen ``f_lo`` und ``f_hi`` zusammen. Die Bänder kommen
-    als ganze Zahlen 0…100 heraus (0 = −70 dB, 100 = Vollaussteuerung) – klein genug für 25 Meldungen je Sekunde.
+
+def _mel(f):  # noqa: ANN001, ANN202
+    return 2595.0 * np.log10(1.0 + np.asarray(f, dtype=np.float64) / 700.0)
+
+
+def _imel(m):  # noqa: ANN001, ANN202
+    return 700.0 * (10 ** (np.asarray(m, dtype=np.float64) / 2595.0) - 1.0)
+
+
+class SpectrumMeter:
+    """Live-Anzeige in Echtzeit: für **jeden 20-ms-Rahmen** Pegel, Spitze und Audio-Spektrum (nur Anzeige, nie zum Schalten).
+
+    Spektrum: Hann-Fenster über die letzten ``size`` Abtastwerte (256 = 32 ms @ 8 kHz), FFT mit ``nfft`` Punkten
+    (mit Nullen aufgefüllt, feiner aufgelöst), zusammengefasst in ``bands`` Bänder von **0 Hz bis zur Nyquist-Grenze**
+    (bei 8 kHz Abtastrate = 4 kHz, mehr enthält das Signal nicht). Die Bänder liegen auf der Mel-Skala – wie man hört:
+    unten feiner, oben gröber. Jedes Band ist ein Zeichen aus ``B64`` (0…63; 0 = −72 dB, 63 = Vollaussteuerung).
     """
 
-    def __init__(self, bands: int = 32, size: int = 512, rate: int = 8000,
-                 f_lo: float = 120.0, f_hi: float = 3900.0, floor_db: float = -70.0) -> None:
-        self.size, self.floor = size, floor_db
+    def __init__(self, bands: int = 48, size: int = 256, nfft: int = 512, rate: int = 8000, floor_db: float = -72.0) -> None:
+        self.size, self.nfft, self.floor, self.rate = size, nfft, floor_db, rate
+        self.f_max = rate / 2
         self.buf = np.zeros(size, dtype=np.float32)
         self.win = np.hanning(size).astype(np.float32)
-        # Vollaussteuerungs-Sinus -> 0 dB (kohärente Verstärkung Hann = 0,5)
-        self.ref = (32768.0 * size / 4.0) ** 2
-        freqs = np.fft.rfftfreq(size, 1.0 / rate)
-        edges = np.geomspace(f_lo, f_hi, bands + 1)
+        self.ref = (32768.0 * size / 4.0) ** 2           # Vollaussteuerungs-Sinus -> 0 dB (Hann: kohärente Verstärkung 0,5)
+        freqs = np.fft.rfftfreq(nfft, 1.0 / rate)
+        edges = _imel(np.linspace(0.0, float(_mel(self.f_max)), bands + 1))
         self.idx: list[tuple[int, int]] = []
         for lo, hi in zip(edges[:-1], edges[1:]):
             a, b = int(np.searchsorted(freqs, lo)), int(np.searchsorted(freqs, hi))
-            if b <= a:                       # schmales Band unten: nächstgelegenen Bin nehmen
+            if b <= a:
                 a = int(np.argmin(np.abs(freqs - (lo + hi) / 2)))
                 b = a + 1
-            self.idx.append((a, b))
+            self.idx.append((max(1, a), max(2, b)))           # Gleichanteil (0 Hz) nie anzeigen
         self.edges = [round(float(e)) for e in edges]
         self.level, self.peak = -90.0, -90.0
 
@@ -63,14 +74,20 @@ class SpectrumMeter:
         self.peak = -90.0 if pk < 1 else max(-90.0, 20 * math.log10(pk / 32768.0))
 
     def bands(self) -> list[int]:
-        spec = np.fft.rfft(self.buf * self.win)
+        """Bänder als Zahlen 0…63."""
+        spec = np.fft.rfft(self.buf * self.win, self.nfft)
         pw = (spec.real * spec.real + spec.imag * spec.imag) / self.ref
         out = []
         for a, b in self.idx:
             v = float(np.max(pw[a:b]))
             db = 10 * math.log10(v) if v > 1e-12 else -120.0
-            out.append(int(max(0, min(100, round((db - self.floor) / -self.floor * 100)))))
+            out.append(int(max(0, min(63, round((db - self.floor) / -self.floor * 63)))))
         return out
+
+    def frame(self, pcm: bytes) -> list:
+        """Einen Rahmen aufnehmen und ``[Pegel, Spitze, "Bänder"]`` für die Live-Meldung liefern."""
+        self.push(pcm)
+        return [round(self.level, 1), round(self.peak, 1), "".join(B64[v] for v in self.bands())]
 
 
 def gain(pcm: bytes, db: float) -> bytes:

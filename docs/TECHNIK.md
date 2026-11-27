@@ -20,19 +20,28 @@ n8crosslink/
 
 Internes Audioformat: 8 kHz, 16 Bit mono, Rahmen zu 20 ms (160 Samples).
 
-### 📊 Live-Anzeige: Pegel und Audio-Spektrum (seit 1.29.0)
+### 📊 Live-Anzeige: Pegel und Audio-Spektrum in Echtzeit (seit 1.30.0)
 
-Während einer Durchsage schickt der Router über `/ws` bis zu **25× je Sekunde** eine kleine Meldung
-`{"type":"meter","src":"frn","l":-24.3,"p":-9.8,"b":[…32 Werte…]}`:
+Für **jeden 20-ms-Tonrahmen** der sprechenden Station rechnet der Router (`SpectrumMeter` in `audio/dsp.py`):
 
-- `l` Pegel (RMS, dBFS) und `p` Spitze (dBFS) des letzten Rahmens der sprechenden Station (nach der Eingangs-Aufbereitung),
-- `b` das Spektrum: FFT über die letzten 512 Abtastwerte (64 ms, Hann-Fenster), zusammengefasst in **32 logarithmisch verteilte
-  Bänder von 120 Hz bis 3,9 kHz**, je 0…100 (0 = −70 dB, 100 = Vollaussteuerung).
+- Pegel (RMS) und Spitze des Rahmens in dBFS (nach der Eingangs-Aufbereitung),
+- das Spektrum: Hann-Fenster über die letzten 256 Abtastwerte (32 ms), FFT mit 512 Punkten, **48 Bänder von 0 Hz bis 4 kHz**
+  auf der Mel-Skala (unten feiner, oben gröber – wie man hört), je ein Zeichen `0-9A-Za-z-_` = 0…63 (0 = −72 dB, 63 = 0 dBFS).
 
-Die Werte sind reine Anzeige – geschaltet wird nie über den Pegel. Sie enthalten keine Adressen und gehen deshalb an alle Besucher,
-nicht nur an Admins (hören lässt sich daraus nichts). Kommt ein Client nicht hinterher, werden Spektrum-Meldungen ausgelassen
-(Warteschlange > 25), Statusmeldungen nie. Die Seite zeichnet mit der Bildwiederholrate des Bildschirms (`requestAnimationFrame`)
-und glättet dazwischen: Anstieg ~40 ms, Abfall 26 dB/s, Spitzenmarken mit Haltezeit. Ist alles in Ruhe, zeichnet sie nichts.
+Rahmen, die zusammen ankommen, gehen als **eine** Meldung über `/ws` hinaus:
+`{"type":"meter","src":"frn","ms":20,"fmax":4000,"f":[[-24.3,-9.8,"…48 Zeichen…"], …]}` – bei FRN 10 Rahmen je 200-ms-Paket,
+bei DMR und Zello 3 Rahmen je 60 ms. Die Seite spielt sie **im 20-ms-Takt** ab (wie der Ton), zeichnet mit der Bildwiederholrate,
+übernimmt jeden neuen Wert sofort und lässt nur nach unten kurz ausklingen (Pegel 60 dB/s, Bänder volle Höhe in ~0,35 s).
+Liegt sie mehr als ~250 ms zurück, springt sie auf den neuesten Stand. Schneller als das Netz liefert geht es nicht:
+FRN schickt Ton immer in 200-ms-Paketen.
+
+**Warum 0–4 kHz und nicht mehr?** Alle drei Netze kommen mit **8 kHz Abtastrate** in die Bridge (FRN: GSM 06.10, DMR: AMBE+2,
+Zello wird schon beim Dekodieren auf 8 kHz gebracht). Nach Nyquist enthält ein 8-kHz-Signal nur Frequenzen bis **4 kHz** –
+das ist der ganze mögliche Bereich. 16 kHz würde eine Abtastrate von 32 kHz voraussetzen, die es in keinem dieser Funknetze gibt.
+
+Die Werte sind reine Anzeige – geschaltet wird nie über den Pegel. Sie enthalten keine Adressen und gehen an alle Besucher
+(hören lässt sich daraus nichts). Kommt ein Client nicht hinterher, werden Spektrum-Meldungen ausgelassen (Warteschlange > 60),
+Statusmeldungen nie. Ist alles in Ruhe, zeichnet die Seite nichts.
 
 | Netz | Codec | Paket |
 |---|---|---|

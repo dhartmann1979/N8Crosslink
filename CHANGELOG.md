@@ -2,6 +2,34 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.30.0] – 2026-11-27
+
+### ⚡ Pegel und Audio-Spektrum in Echtzeit, Spektrum über den ganzen Bereich 0–4 kHz
+
+**Echtzeit statt geglättet**
+- Bisher schickte die Bridge höchstens alle 40 ms einen Messwert – und weil FRN den Ton in **200-ms-Paketen** liefert, kam dort
+  praktisch nur **ein Wert je 200 ms** an. Die Seite glättete dazwischen stark, dadurch wirkte alles träge.
+- Jetzt wird **jeder 20-ms-Tonrahmen** einzeln gemessen (Pegel, Spitze, Spektrum) – **50 Werte je Sekunde**. Rahmen, die zusammen
+  ankommen, gehen als eine Meldung hinaus, und die Seite **spielt sie im 20-ms-Takt ab**, so wie der Ton selbst läuft.
+- Anzeige ohne Trägheit nach oben: jeder neue Wert wird **sofort** übernommen. Nach unten klingt sie nur kurz aus
+  (Pegel 60 dB/s statt 26 dB/s, Spektrum-Balken volle Höhe in ~0,35 s). Spitzenmarken halten 0,35 s (Spektrum) bzw. 0,8 s (Pegel).
+- Hängt die Anzeige mehr als ~250 ms hinterher (z. B. nach einem Netz-Stau), springt sie auf den neuesten Stand.
+- Schneller als das Netz liefert, geht es nicht: Bei FRN liegt immer ein 200-ms-Paket dazwischen, bei DMR und Zello 60 ms.
+
+**Spektrum über den ganzen möglichen Bereich**
+- **0 Hz bis 4 kHz** statt 120 Hz bis 3,9 kHz, **48 Bänder** statt 32, auf der **Mel-Skala** (unten feiner, oben gröber – wie man
+  hört). Achse: 0 · 250 · 500 · 1k · 2k · 3k · 4k. Feinere Auflösung: 32-ms-Fenster, FFT mit 512 Punkten.
+- **Warum nicht bis 16 kHz?** Alle drei Netze kommen mit **8 kHz Abtastrate** in die Bridge (FRN GSM, DMR AMBE+2, Zello wird
+  beim Dekodieren auf 8 kHz gebracht). Ein 8-kHz-Signal enthält nach Nyquist nur Frequenzen bis **4 kHz** – das ist der ganze
+  mögliche Bereich. Eine Achse bis 16 kHz wäre zu drei Vierteln immer leer. Die Seite richtet die Achse nach dem Wert `fmax`, den
+  der Server mitschickt.
+
+**Technik, Tests, Doku**
+- Meldung `meter` jetzt `{"src","ms":20,"fmax":4000,"f":[[Pegel, Spitze, "48 Zeichen"], …]}`, ein Zeichen je Band (0…63) –
+  50 Rahmen/s brauchen so nur rund 3 KB/s je Browser. Beschreibung in [docs/TECHNIK.md](docs/TECHNIK.md).
+- `tests/test_spectrum.py` prüft Bänder 0–4 kHz, Pegel, Spitze und die Bündelung je Paket. Alle Tests und die Simulation
+  (56/56) laufen durch. Bildschirmfotos `docs/screenshots/dashboard-live-*.png` erneuert.
+
 ## [1.29.1] – 2026-11-27
 
 ### 🔑 Eigenes Passwort ändern – auch als Superadmin

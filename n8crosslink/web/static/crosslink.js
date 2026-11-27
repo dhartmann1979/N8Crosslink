@@ -118,7 +118,7 @@ function renderState() {
   $('#ssTalk').classList.toggle('live', !!act);
   $('#ssTalker').innerHTML = act ? `🎙 ${esc(act.talker.name || act.talker.callsign || '')} <span style="color:var(--text-dim);font-weight:400">· ${esc(NET[act.source]?.label || act.source)}</span>` : 'Ruhe';
   // Rückfall, falls (noch) keine Spektrum-Meldungen kommen: Pegel aus dem Status
-  if (act && performance.now() - MTR.t > 500) { MTR.tl = st.ports[act.source]?.rx_level ?? -90; MTR.src = act.source; MTR.tf = performance.now(); }
+  if (act && performance.now() - MTR.t > 500) { MTR.tl = st.ports[act.source]?.rx_level ?? -90; MTR.src = act.source; MTR.idle = false; }
   renderOnAir(); renderNetCards(); renderRoom();
   const up = st.update;
   if (!S.me?.user) $('#updateBanner').hidden = true;
@@ -146,35 +146,47 @@ function setVu(lvl, peak) {
 }
 function cssVar(name, fb) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fb; }
 
-/* Live-Anzeige: der Server schickt während einer Durchsage 25× je Sekunde Pegel, Spitze und 32 Spektrum-Bänder
- * (Meldung "meter"). Die Seite zeichnet mit der Bildwiederholrate des Bildschirms und glättet dazwischen:
- * schneller Anstieg, ruhiger Abfall, Spitzenwerte mit Haltezeit – so laufen Pegel und Spektrum flüssig. */
-const MTR = { n: 32, f0: 120, f1: 3900, t: 0, tf: 0, src: '', tl: -90, l: -90, vp: -90, vpT: 0,
-  tb: new Float32Array(32), b: new Float32Array(32), pk: new Float32Array(32), pkT: new Float64Array(32), last: 0, idle: false };
+/* Live-Anzeige in Echtzeit: der Server schickt für JEDEN 20-ms-Tonrahmen Pegel, Spitze und 48 Spektrum-Bänder
+ * (0 Hz bis 4 kHz, Mel-Skala). Rahmen, die gebündelt ankommen (FRN 200 ms, DMR/Zello 60 ms), spielt die Seite im
+ * 20-ms-Takt ab – wie der Ton selbst. Gezeichnet wird mit der Bildwiederholrate; Anstieg sofort, Abfall schnell. */
+const MB64 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_';
+const MTR = { n: 48, fmax: 4000, q: [], due: 0, cur: null, curT: 0, t: 0, tf: 0, src: '', tl: -90, l: -90, vp: -90, vpT: 0,
+  b: new Float32Array(48), pk: new Float32Array(48), pkT: new Float64Array(48), last: 0, idle: false };
 function onMeter(m) {
-  const now = performance.now(), b = m.b || [];
-  MTR.t = MTR.tf = now; MTR.src = m.src; MTR.tl = m.l;
-  for (let i = 0; i < MTR.n; i++) MTR.tb[i] = b[i] || 0;
-  if (m.l > -60) { OA.peak = Math.max(OA.peak, m.l); OA.sum += m.l; OA.n++; }
-  MTR.idle = false;
+  const now = performance.now(), fr = m.f || [];
+  if (!fr.length) return;
+  const n = fr[0][2].length;
+  if (n !== MTR.n) { MTR.n = n; MTR.b = new Float32Array(n); MTR.pk = new Float32Array(n); MTR.pkT = new Float64Array(n); }
+  MTR.fmax = m.fmax || 4000; MTR.src = m.src; MTR.t = MTR.tf = now; MTR.idle = false;
+  if (!MTR.q.length && now - MTR.due > 30) MTR.due = now;          // nach einer Pause: sofort weiter
+  for (const [l, p, bs] of fr) {
+    const b = new Float32Array(n);
+    for (let i = 0; i < n; i++) b[i] = MB64.indexOf(bs[i]) / 63;
+    MTR.q.push({ l, p, b });
+    if (l > -60) { OA.peak = Math.max(OA.peak, l); OA.sum += l; OA.n++; }
+  }
+  if (MTR.q.length > 15) { MTR.q.splice(0, MTR.q.length - 12); MTR.due = now; }   // nie mehr als ~250 ms hinterher
 }
 function meterFrame(now) {
   requestAnimationFrame(meterFrame);
   const dt = Math.min(0.1, (now - (MTR.last || now)) / 1000); MTR.last = now;
   const live = !!S.state?.active;
-  // Daten veraltet (Pause zwischen zwei Paketen, Ende der Durchsage): Ziel sinkt auf Ruhe
-  if (!live || now - MTR.tf > 180) { MTR.tl = -90; MTR.tb.fill(0); }
-  // Pegel: Anstieg ~40 ms, Abfall 26 dB/s; Spitzenmarke hält 1,2 s und fällt dann mit 14 dB/s
-  MTR.l = MTR.tl > MTR.l ? MTR.l + (MTR.tl - MTR.l) * Math.min(1, dt * 25) : Math.max(MTR.tl, MTR.l - 26 * dt);
-  if (MTR.l >= MTR.vp) { MTR.vp = MTR.l; MTR.vpT = now; } else if (now - MTR.vpT > 1200) MTR.vp = Math.max(-90, MTR.vp - 14 * dt);
+  if (now - MTR.due > 200) MTR.due = now;                          // Tab war im Hintergrund
+  while (MTR.q.length && now >= MTR.due) { MTR.cur = MTR.q.shift(); MTR.curT = now; MTR.due += 20; }
+  // Ziel: aktueller Rahmen; kommt nichts mehr (Pause, Ende), fällt die Anzeige ab
+  const fresh = live && MTR.cur && now - MTR.curT < 60;
+  const tl = fresh ? MTR.cur.l : (live && now - MTR.t > 500 ? MTR.tl : -90);   // Rückfall: Pegel aus dem Status
+  // Pegel: Anstieg sofort, Abfall 60 dB/s; Spitzenmarke hält 0,8 s und fällt dann mit 30 dB/s
+  MTR.l = tl >= MTR.l ? tl : Math.max(tl, MTR.l - 60 * dt);
+  if (MTR.l >= MTR.vp) { MTR.vp = MTR.l; MTR.vpT = now; } else if (now - MTR.vpT > 800) MTR.vp = Math.max(-90, MTR.vp - 30 * dt);
   let busy = MTR.l > -61 || MTR.vp > -61;
   for (let i = 0; i < MTR.n; i++) {
-    const t = MTR.tb[i], v = MTR.b[i];
-    MTR.b[i] = t > v ? v + (t - v) * Math.min(1, dt * 30) : Math.max(t, v - 75 * dt);
-    if (MTR.b[i] >= MTR.pk[i]) { MTR.pk[i] = MTR.b[i]; MTR.pkT[i] = now; } else if (now - MTR.pkT[i] > 450) MTR.pk[i] = Math.max(0, MTR.pk[i] - 45 * dt);
-    if (MTR.b[i] > .3 || MTR.pk[i] > .3) busy = true;
+    const t = fresh ? MTR.cur.b[i] : 0, v = MTR.b[i];
+    MTR.b[i] = t >= v ? t : Math.max(t, v - 2.8 * dt);           // Abfall: ganze Höhe in ~0,35 s
+    if (MTR.b[i] >= MTR.pk[i]) { MTR.pk[i] = MTR.b[i]; MTR.pkT[i] = now; } else if (now - MTR.pkT[i] > 350) MTR.pk[i] = Math.max(0, MTR.pk[i] - 0.9 * dt);
+    if (MTR.b[i] > .003 || MTR.pk[i] > .003) busy = true;
   }
-  if (!busy && MTR.idle) return;                   // alles in Ruhe und schon gezeichnet: nichts zu tun
+  if (!busy && MTR.idle) return;                                   // alles in Ruhe und schon gezeichnet: nichts zu tun
   MTR.idle = !busy;
   setVu(MTR.l, MTR.vp);
   setSegMeter(MTR.l);
@@ -182,12 +194,13 @@ function meterFrame(now) {
   if (e && e.textContent !== db) e.textContent = db;
   drawSpectrum(NETCOL[MTR.src] || '#5ac8fa');
 }
+const mel = f => 2595 * Math.log10(1 + f / 700);
 function drawSpectrum(col) {
   const c = $('#oaSpec'); if (!c) return;
   const w = c.clientWidth || 300, h = c.clientHeight || 150, dpr = window.devicePixelRatio || 1;
   if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
   const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
-  const axis = 13, top = 4, ph = h - axis - top, n = MTR.n, gap = Math.max(2, Math.round(w / n * 0.22)), bw = (w - gap * (n - 1)) / n;
+  const axis = 13, top = 4, ph = h - axis - top, n = MTR.n, gap = Math.max(1.5, w / n * 0.2), bw = (w - gap * (n - 1)) / n;
   // Raster und leere Balken wie auf einem LCD
   g.fillStyle = 'rgba(207,239,255,.055)';
   for (let i = 0; i < n; i++) g.fillRect(i * (bw + gap), top, bw, ph);
@@ -196,9 +209,9 @@ function drawSpectrum(col) {
   // Balken: Farbe des sprechenden Netzes, nach oben heller, mit Glühen
   const gr = g.createLinearGradient(0, top + ph, 0, top);
   gr.addColorStop(0, col + 'cc'); gr.addColorStop(.6, col); gr.addColorStop(1, '#eafcff');
-  g.save(); g.shadowColor = col; g.shadowBlur = 10; g.fillStyle = gr;
+  g.save(); g.shadowColor = col; g.shadowBlur = 8; g.fillStyle = gr;
   g.beginPath();
-  for (let i = 0; i < n; i++) { const v = MTR.b[i] / 100; if (v > .004) { const bh = v * ph; g.rect(i * (bw + gap), top + ph - bh, bw, bh); } }
+  for (let i = 0; i < n; i++) { const v = MTR.b[i]; if (v > .004) { const bh = v * ph; g.rect(i * (bw + gap), top + ph - bh, bw, bh); } }
   g.fill(); g.restore();
   // waagerechte Fugen -> Segmente wie bei einer LED-Kette
   g.save(); g.globalCompositeOperation = 'destination-out'; g.fillStyle = '#000';
@@ -206,14 +219,12 @@ function drawSpectrum(col) {
   g.restore();
   // Spitzenwerte
   g.fillStyle = 'rgba(255,255,255,.9)';
-  for (let i = 0; i < n; i++) { const v = MTR.pk[i] / 100; if (v > .01) g.fillRect(i * (bw + gap), Math.round(top + ph - v * ph) - 2, bw, 2); }
-  // Frequenzachse (logarithmisch)
+  for (let i = 0; i < n; i++) { const v = MTR.pk[i]; if (v > .01) g.fillRect(i * (bw + gap), Math.round(top + ph - v * ph) - 2, bw, 2); }
+  // Frequenzachse (Mel-Skala, 0 Hz bis Nyquist)
   g.fillStyle = 'rgba(207,239,255,.45)'; g.font = '9px ' + cssVar('--n8-mono', 'monospace'); g.textBaseline = 'bottom';
-  const lx = f => Math.log(f / MTR.f0) / Math.log(MTR.f1 / MTR.f0) * w;
-  [[250, '250'], [500, '500'], [1000, '1k'], [2000, '2k'], [3000, '3k']].forEach(([f, t]) => {
-    const x = lx(f), tw = g.measureText(t).width; g.fillText(t, Math.max(0, Math.min(w - tw, x - tw / 2)), h);
-  });
-  g.fillText('Hz', 0, h);
+  const M = mel(MTR.fmax), lx = f => mel(f) / M * w;
+  const ticks = [[0, '0'], [250, '250'], [500, '500'], [1000, '1k'], [2000, '2k'], [3000, '3k'], [4000, '4k'], [6000, '6k'], [8000, '8k']].filter(([f]) => f <= MTR.fmax);
+  ticks.forEach(([f, t]) => { const x = lx(f), tw = g.measureText(t).width; g.fillText(t, Math.max(0, Math.min(w - tw, x - tw / 2)), h); });
 }
 requestAnimationFrame(meterFrame);
 function drawHours(hours, now) {
@@ -243,7 +254,7 @@ function renderInstruments(a) {
   if (a && OA.talk !== a.since) { OA.talk = a.since; OA.peak = -90; OA.sum = 0; OA.n = 0; OA.voc0 = v ? { ...v } : null; OA.src = a.source; }
   $('#oaLvlInfo').textContent = OA.n ? `Spitze ${Math.round(OA.peak)} dB · Ø ${Math.round(OA.sum / OA.n)} dB` + (a ? '' : ' (letzter Durchgang)') : 'Spitze – · Ø –';
   const tdy = S.today || {};
-  $('#oaGraphInfo').textContent = a ? `${NET[a.source]?.label || a.source} · 0–4 kHz` : '0–4 kHz';
+  $('#oaGraphInfo').textContent = a ? `${NET[a.source]?.label || a.source} · 0–${MTR.fmax / 1000} kHz` : `0–${MTR.fmax / 1000} kHz`;
   $('#oaPkts').textContent = tdy.talks ? `Ø ${fmtDur((tdy.airtime || 0) / tdy.talks)} je Durchgang · ${tdy.talks} heute` : 'noch kein Durchgang heute';
   // Vocoder: Qualität des laufenden Durchgangs (wenn DMR beteiligt), sonst gesamt
   const ring = $('#oaVocRing');

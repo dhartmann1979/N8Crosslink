@@ -26,6 +26,7 @@ Alles läuft in **einem** Python-Dienst mit Live-Dashboard und Adminportal – i
 | | |
 |---|---|
 | 🔀 **3-Wege-Routing** | FRN ↔ DMR ↔ Zello, jede der 6 Richtungen einzeln schaltbar (wirkt sofort) |
+| 📰 **Portal-Widget** | Netze, wer spricht und Last Heard als Widget am Rand der Portal-Seite des adn-frn-server – verschlüsselt mit dem Sync-Schlüssel, ohne IPs ([mehr](docs/KONFIGURATION.md)) |
 | 🎙️ **Sendeerkennung ohne VOX** | Beginn und Ende jeder Durchsage kommen aus dem jeweiligen Protokoll – nicht aus dem Audiopegel (Details unten) |
 | 🛡️ **Schleifenschutz** | Immer nur eine aktive Quelle; alles andere wird gesperrt und als „blockiert“ protokolliert, plus Sperrzeit nach jeder Aussendung |
 | 🏷️ **Stationsnamen überall** | FRN-Sprecher (aus der Raumliste), DMR-Rufzeichen (ID-Datenbank + empfangener Talker Alias) und Zello-Benutzer erscheinen im Dashboard, im Last Heard, als **DMR Talker Alias** (Embedded LC, 7-Bit) und als **Zello-Textnachricht** |

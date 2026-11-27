@@ -35,6 +35,20 @@ Wichtig: Der ganze Durchgang läuft um die Länge der Ansage verzögert (Buchsta
 
 ![Allgemein – Sprachansage](screenshots/admin-allgemein-ansage.png)
 
+### 📰 Live-Daten für die Portal-Seite des ADN FRN Servers
+
+![Portal-Feed](screenshots/admin-portal-feed.png)
+
+Ab **1.28.0** zeigt die Portal-Seite eines [adn-frn-server](https://github.com/dhartmann1979/adn-frn-server/blob/main/docs/de/portal.md#-widgets-am-rand-live-daten-der-anderen-n8-systeme) diesen Crosslink als **Widget am Rand**: Netze online (FRN/DMR/Zello),
+wer gerade spricht und wohin es geht, Durchgänge, Sprechzeit und Stationen heute, zuletzt gehört.
+
+1. Im adn-frn-server: *📰 Portal → 🧩 Widgets → ＋ N8 Crosslink*, Adresse dieses Webinterfaces, **🎲 Neuer Schlüssel**, kopieren.
+2. Hier unter **🏠 Allgemein**: *📰 Live-Daten für die Portal-Seite* an, *Sync-Schlüssel für das Portal* einfügen, speichern (wirkt sofort).
+3. Im Portal speichern – es ruft sofort ab.
+
+Der Abruf (`POST /api/n8/feed`) ist mit dem Sync-Schlüssel verschlüsselt, jede Anfrage gilt nur einmal und höchstens 5 Minuten. Es geht nur
+hinaus, was die öffentliche Seite zeigt – keine IP-Adressen, keine Ports, keine Konten. Standard: aus.
+
 ## 🔀 Routing
 Matrix mit allen sechs Richtungen. Wirkt sofort, ohne Neustart.
 

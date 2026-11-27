@@ -266,6 +266,11 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
     # ------------------------------------------------------------ 📰 Portal-Feed für den adn-frn-server (n8feed.py)
     feed_replay = n8feed.Replay()
 
+    def _nm(call: str, name: str) -> str:
+        """„DL1ABC Hans“ → „Hans“ – das Rufzeichen steht im Widget schon davor."""
+        n = (name or "").strip()
+        return n[len(call):].strip(" ,-") if call and n.upper().startswith(call.upper()) else n
+
     def feed_summary() -> dict:
         snap = bridge.router.snapshot()
         g = bridge.cfg["general"]
@@ -276,11 +281,11 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         air = []
         if a:
             t = a.get("talker") or {}
-            air.append({"call": t.get("callsign") or "", "name": t.get("name") or "",
+            air.append({"call": t.get("callsign") or "", "name": _nm(t.get("callsign") or "", t.get("name") or ""),
                         "where": f"{t.get('label') or t.get('source', '')}"
                                  + (f" · {t.get('detail')}" if t.get("detail") else "")
                                  + (" → " + ", ".join(str(x).upper() for x in a.get("targets") or []) if a.get("targets") else "")})
-        lh = [{"call": r.get("callsign") or "", "name": r.get("name") or "",
+        lh = [{"call": r.get("callsign") or r.get("name") or "", "name": _nm(r.get("callsign") or "", r.get("name") or "") if r.get("callsign") else "",
                "where": f"{str(r.get('source') or '').upper()}" + (f" · {r.get('detail')}" if r.get("detail") else ""),
                "ts": r.get("ts_start"), "duration": r.get("duration")}
               for r in public.scrub(db.lh_recent(12)) if r.get("status") != "blocked"][:8]

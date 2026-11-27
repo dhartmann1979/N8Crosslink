@@ -2,6 +2,21 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.28.0] – 2026-11-27
+
+### 📰 Live-Daten für die Portal-Seite des ADN FRN Servers
+
+- **Neu: Portal-Feed.** Die Portal-Seite eines adn-frn-server (ab 2.33.0) zeigt diesen Crosslink als **Widget am Rand**: Netze online
+  (FRN/DMR/Zello, 🟡 wenn eines offline ist), wer gerade spricht und in welche Netze es geht, Durchgänge, Sprechzeit und Stationen heute
+  und zuletzt gehört (gesperrte Durchgänge nicht).
+- Einstellung unter **🏠 Allgemein**: *📰 Live-Daten für die Portal-Seite* (Standard aus) und *Sync-Schlüssel für das Portal* (kommt aus dem
+  Portal: 📰 Portal → 🧩 Widgets → 🎲 Neuer Schlüssel). Der Schlüssel wird wie die Passwörter nie angezeigt; leer lassen = unverändert.
+- Neuer Endpunkt `POST /api/n8/feed`: **verschlüsselt mit dem Sync-Schlüssel** (scrypt, SHAKE-256, HMAC-SHA-256), jede Anfrage nur einmal
+  und höchstens 5 Minuten gültig, falsche Versuche werden gebremst. Inhalt geht durch denselben Filter wie die öffentliche Seite –
+  **keine IP-Adressen, keine Ports, keine Konten**.
+- Neue Datei `n8crosslink/n8feed.py` (in allen N8-Systemen gleich). Tests: `tests/test_portal_feed.py`.
+- Doku: [docs/KONFIGURATION.md](docs/KONFIGURATION.md) Abschnitt „📰 Live-Daten für die Portal-Seite“ mit Bildschirmfoto.
+
 ## [1.27.1] – 2026-11-26
 
 ### 📘 Neue Schritt-für-Schritt-Anleitung in neun Sprachen, bereinigte Doku

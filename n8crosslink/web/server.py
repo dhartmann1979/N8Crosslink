@@ -955,10 +955,12 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         return {"ok": True}
 
     @app.patch("/api/admin/users/{name}")
-    async def edit_user(name: str, data: dict = Body(...), me_: str = Depends(require_admin)) -> dict:
+    async def edit_user(name: str, request: Request, data: dict = Body(...), me_: str = Depends(require_admin)) -> dict:
         cur = db.user_role(name)
         if not cur:
             raise HTTPException(404, "Benutzer nicht gefunden")
+        if name == me_:
+            return await _edit_self(name, request, data)
         _may_manage(me_, cur)
         role = data.get("role")
         if role is not None:
@@ -977,6 +979,33 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         _dflt["t"] = 0.0
         bridge.router.event("info", f"Benutzer {name} geändert durch {me_}")
         return {"ok": True}
+
+    async def _edit_self(name: str, request: Request, data: dict) -> dict:
+        """Eigenes Konto (auch als Superadmin): Anzeigename und Passwort – nur mit dem aktuellen Passwort.
+        Rolle, Sperre und Löschen gibt es für das eigene Konto nicht."""
+        if data.get("role") not in (None, "", db.user_role(name)) or data.get("disabled"):
+            raise HTTPException(400, "Die eigene Rolle und Sperre lassen sich nicht ändern")
+        pw = str(data.get("password") or "")
+        if pw:
+            if len(pw) < 8:
+                raise HTTPException(400, "Passwort min. 8 Zeichen")
+            if "password2" in data and str(data.get("password2") or "") != pw:
+                raise HTTPException(400, "Die beiden neuen Passwörter stimmen nicht überein")
+            ok = await asyncio.to_thread(db.verify_user, name, str(data.get("current_password") or ""))
+            if not ok:
+                await asyncio.sleep(1.0)                 # Raten bremsen
+                raise HTTPException(403, "Aktuelles Passwort ist falsch")
+            if pw == str(data.get("current_password") or ""):
+                raise HTTPException(400, "Das neue Passwort ist dasselbe wie das alte")
+        db.update_user(name, display_name=data.get("display_name"), password=pw or None)
+        ended = db.end_other_sessions(name, request.cookies.get(COOKIE)) if pw else 0
+        _dflt["t"] = 0.0
+        if pw:
+            bridge.router.event("info", f"Benutzer {name} hat das eigene Passwort geändert"
+                                        + (f" – {ended} andere Anmeldung(en) beendet" if ended else ""))
+        else:
+            bridge.router.event("info", f"Benutzer {name} hat das eigene Konto geändert")
+        return {"ok": True, "password_changed": bool(pw), "sessions_ended": ended}
 
     @app.delete("/api/admin/users/{name}")
     async def del_user(name: str, me_: str = Depends(require_admin)) -> dict:

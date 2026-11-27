@@ -530,6 +530,7 @@ async function loadMe() {
     onLogout: async () => { await api('/api/logout', { method: 'POST' }); await loadMe(); showTab('live'); },
     items: [
       { icon: '⚙️', label: 'Adminbereich', onClick: () => showTab('admin') },
+      { icon: '🔑', label: 'Passwort ändern', onClick: () => openOwnAccount() },
     ],
   });
   if (S.me.user) checkCrashes(before === false);      // gerade angemeldet: neue Abstürze sofort zeigen
@@ -846,7 +847,9 @@ function accessView(name) {
     roles: [{ id: 'superadmin', label: 'Superadmin', assign: 'superadmin' }, { id: 'admin', label: 'Admin', assign: 'all' }],
     fields: ['display_name'], toast: (m, bad) => toast((bad ? '⚠️ ' : '✅ ') + m),
     intro: 'Wer sich am Adminbereich anmelden darf. Superadmins dürfen zusätzlich Backups wiederherstellen, alles zurücksetzen und andere Superadmins verwalten.',
-    locked: (u, me) => u.username === me.username ? 'du' : (u.role === 'superadmin' && me.role !== 'superadmin' ? 'nur Superadmin' : ''),
+    locked: (u, me) => u.username === me.username ? '' : (u.role === 'superadmin' && me.role !== 'superadmin' ? 'nur Superadmin' : ''),
+    openSelf: name === 'users' && S.openSelf ? (S.openSelf = false, true) : false,
+    onSelfPassword: () => { if (S.me.role === 'superadmin') toast('🔐 Neue Backups verschlüsselt jetzt das neue Passwort. Ältere Backups öffnest du weiter mit dem alten Passwort.'); loadMe(); },
   });
 }
 
@@ -1066,7 +1069,8 @@ async function startUpdate(u) {
     timeout: 600000,
   });
 }
-$('#pwChangeBtn')?.addEventListener('click', () => { S.adminSec = 'users'; showTab('admin'); });
+function openOwnAccount() { S.openSelf = true; S.adminSec = 'users'; showTab('admin'); }
+$('#pwChangeBtn')?.addEventListener('click', openOwnAccount);
 
 $('#spOk').addEventListener('click', () => $('#statusModal').classList.remove('open'));
 

@@ -404,3 +404,8 @@ html[data-theme-mode=light] :is(.n8-iform > input, .n8-iform > select, .n8-in) {
   .n8-tbl td.n8-num .n8-in { width: 90px; }
 }
 .n8-tbl select.n8-target { min-width: 180px; width: auto; }
+/* 👥 eigenes Konto: „du“-Kennzeichen und Formular „Mein Konto“ (Passwort nur mit dem aktuellen Passwort) */
+.n8-role-me { color: #8fdcff; border-color: rgba(90, 200, 250, .5); background: rgba(90, 200, 250, .12); }
+.n8-self .n8-iform { flex-wrap: wrap; }
+.n8-self-h { align-self: center; margin-right: 4px; white-space: nowrap; }
+.n8-self small { flex-basis: 100%; }

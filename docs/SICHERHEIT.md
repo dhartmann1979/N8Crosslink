@@ -45,7 +45,25 @@ Sitzungs-Cookie `HttpOnly`, `SameSite=Strict`, über HTTPS `Secure`. Jede schrei
 Das **Anmeldefenster** ist in allen N8-Systemen gleich: Logo und Titel des Systems, Benutzername und Passwort mit 👁 zum Anzeigen, Hinweis bei
 eingeschalteter Feststelltaste, Schalter „Angemeldet bleiben“, Sprachmenü und ein Hinweis, ob die Verbindung verschlüsselt ist. Ein falsches
 Passwort oder eine Sperre wird direkt im Fenster gemeldet. Angemeldet zeigt die Kopfleiste **Avatar + Name ▾** – das Menü darunter enthält
-Rolle, Konto bzw. Passwort, den Adminbereich und **Abmelden**.
+Rolle, Konto bzw. Passwort, den Adminbereich, **🔑 Passwort ändern** und **Abmelden**.
+
+### 🔑 Eigenes Passwort ändern (auch als Superadmin, seit 1.29.1)
+
+![Mein Konto](screenshots/admin-mein-konto.png)
+
+Jeder angemeldete Benutzer – **auch der Superadmin** – ändert sein Passwort selbst: Benutzermenü → **🔑 Passwort ändern**
+(oder *⚙️ Admin → 👥 Benutzer & Zugang → Benutzer*, eigene Zeile mit **DU** → *Bearbeiten*). Es öffnet sich **🔑 Mein Konto**:
+
+- **Aktuelles Passwort** ist Pflicht (falsche Eingabe wird gebremst), das neue Passwort braucht mindestens 8 Zeichen und wird
+  **zweimal** eingegeben; dasselbe wie das alte geht nicht.
+- Danach werden **alle anderen Anmeldungen** dieses Kontos beendet (andere Browser/Geräte), die aktuelle bleibt bestehen. Im
+  📜 Protokoll steht „Benutzer … hat das eigene Passwort geändert“.
+- Rolle, Sperre und Löschen gibt es für das eigene Konto nicht – so kann sich niemand aus Versehen aussperren.
+- Gespeichert wird nur ein **PBKDF2-SHA256-Hash** (200 000 Runden, eigenes Zufalls-Salz je Benutzer) in der SQLite-Datenbank,
+  nie das Passwort selbst.
+- **Superadmin und Backups:** Neue Backups werden ab sofort mit dem **neuen** Passwort verschlüsselt. Ältere Backups öffnet man weiter
+  mit dem Passwort, das zum Zeitpunkt des Backups galt (siehe [BACKUP.md](BACKUP.md)) – nach dem Wechsel am besten gleich ein
+  neues Backup machen.
 
 
 Solange der Standard-Login `n8schicht / n8schicht` gilt, sind alle Admin-Änderungen gesperrt – außer dem Ändern des Passworts unter *Admin → Benutzer & Zugang*. Mithören läuft über einen eigenen WebSocket, der nur angemeldete Admins annimmt.

@@ -953,16 +953,24 @@
             const load = async () => {
                 let users; try { users = await A.list(); } catch (e) { paint(card('👥 Benutzer', msg(e))); return; }
                 const inp = (f, u) => `<input name="${f}" placeholder="${esc(t(FIELD[f][0]))}" ${FIELD[f][1] === 'numeric' ? 'inputmode="numeric"' : ''} value="${esc(u ? (u[f] ?? '') : '')}">`;
+                const isMe = u => me && u.username === me.username;
                 const rows = users.map((u, i) => {
                     const lk = locked(u);
                     return `<tr class="${u.disabled ? 'off' : ''}"><td><span class="n8-user-c">${o.avatar ? o.avatar(u) : `<span class="n8-av">${initials(u)}</span>`}
-                            <span><b>${esc(u.username)}</b>${u.display_name ? `<br><small>${esc(u.display_name)}</small>` : ''}</span></span></td>
+                            <span><b>${esc(u.username)}</b>${isMe(u) ? ` <span class="n8-role n8-role-me">${esc(t('du'))}</span>` : ''}${u.display_name ? `<br><small>${esc(u.display_name)}</small>` : ''}</span></span></td>
                         <td>${role(u.role)}${u.disabled ? ` <span class="n8-role n8-role-off">${esc(t('gesperrt'))}</span>` : ''}</td>
                         ${fields.filter(f => f !== 'display_name').map(f => `<td>${esc(u[f] || '–')}</td>`).join('')}
                         ${cols.map(c => `<td>${c.html(u)}</td>`).join('')}
                         <td>${esc(ago(u.last_login))}</td>
                         <td class="n8-act">${(o.actions ? o.actions(u) : []).map((a, k) => `<button type="button" class="n8-btn sm" data-x="${i}:${k}">${esc(t(a.label))}</button>`).join('')}${lk ? `<small class="n8-dim">${esc(lk)}</small>` : `<button type="button" class="n8-btn sm" data-edit="${i}">${esc(t('Bearbeiten'))}</button>`}</td></tr>
-                        ${lk ? '' : `<tr class="n8-edit" data-row="${i}" hidden><td colspan="${4 + cols.length + fields.filter(f => f !== 'display_name').length}"><form class="n8-iform" data-i="${i}">
+                        ${lk ? '' : isMe(u) ? `<tr class="n8-edit n8-self" data-row="${i}" ${o.openSelf ? '' : 'hidden'}><td colspan="${4 + cols.length + fields.filter(f => f !== 'display_name').length}"><form class="n8-iform" data-i="${i}" data-self="1">
+                            <b class="n8-self-h">🔑 ${esc(t('Mein Konto'))}</b>
+                            ${fields.map(f => inp(f, u)).join('')}
+                            <input name="current_password" type="password" placeholder="${esc(t('Aktuelles Passwort'))}" autocomplete="current-password">
+                            <input name="password" type="password" placeholder="${esc(t('Neues Passwort (min. {n})').replace('{n}', minPw))}" minlength="${minPw}" autocomplete="new-password">
+                            <input name="password2" type="password" placeholder="${esc(t('Neues Passwort wiederholen'))}" autocomplete="new-password">
+                            <button class="n8-btn primary sm" type="submit">${esc(t('Speichern'))}</button>
+                            <small class="n8-dim">${esc(t(o.selfNote || 'Rolle, Sperre und Löschen gehen beim eigenen Konto nicht. Nach dem Passwortwechsel werden deine anderen Anmeldungen beendet.'))}</small></form></td></tr>` : `<tr class="n8-edit" data-row="${i}" hidden><td colspan="${4 + cols.length + fields.filter(f => f !== 'display_name').length}"><form class="n8-iform" data-i="${i}">
                             ${fields.map(f => inp(f, u)).join('')}
                             <input name="password" type="password" placeholder="${esc(t('Neues Passwort (optional)'))}" autocomplete="new-password">
                             <select name="role">${opts(u.role)}</select>
@@ -988,8 +996,21 @@
                 el.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { const r = el.querySelector(`tr[data-row="${b.dataset.edit}"]`); r.hidden = !r.hidden; });
                 el.querySelectorAll('[data-x]').forEach(b => b.onclick = () => { const [i, k] = b.dataset.x.split(':').map(Number); o.actions(users[i])[k].run(users[i], load); });
                 el.querySelectorAll('form[data-i]').forEach(f => f.onsubmit = async e => {
-                    e.preventDefault(); const d = fd(f); if (!d.password) delete d.password;
-                    try { await A.update(users[f.dataset.i], d); toast(t('Gespeichert')); load(); } catch (x) { toast(x.message, true); }
+                    e.preventDefault(); const d = fd(f);
+                    if (f.dataset.self) {
+                        if (d.password) {
+                            if (d.password !== d.password2) { toast(t('Die beiden neuen Passwörter stimmen nicht überein'), true); return; }
+                            if (!d.current_password) { toast(t('Bitte das aktuelle Passwort eingeben'), true); return; }
+                        } else { delete d.current_password; delete d.password2; }
+                    }
+                    if (!d.password) delete d.password;
+                    try {
+                        const r = await A.update(users[f.dataset.i], d);
+                        if (r && r.password_changed) toast(t('Passwort geändert') + (r.sessions_ended ? ' · ' + t('{n} andere Anmeldung(en) beendet').replace('{n}', r.sessions_ended) : ''));
+                        else toast(t('Gespeichert'));
+                        if (r && r.password_changed && o.onSelfPassword) o.onSelfPassword(users[f.dataset.i]);
+                        o.openSelf = false; load();
+                    } catch (x) { toast(x.message, true); }
                 });
                 el.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
                     if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = t('Wirklich löschen?'); return; }
@@ -1184,6 +1205,7 @@
             // 1.4.0: Benutzer & Zugang, Netz, Ports & Domains
             '🌐 Netz, Ports & Domains': '🌐 Network, ports & domains', '👥 Benutzer': '👥 Users', '🔑 Sitzungen': '🔑 Sessions', '📜 Protokoll': '📜 Log',
             'Benutzer': 'User', 'Rolle': 'Role', 'Letzte Anmeldung': 'Last login', 'Bearbeiten': 'Edit', 'gesperrt': 'disabled', 'Anzeigename': 'Display name',
+            'Mein Konto': 'My account', 'Aktuelles Passwort': 'Current password', 'Neues Passwort (min. {n})': 'New password (min. {n})', 'Neues Passwort wiederholen': 'Repeat new password', 'Passwort geändert': 'Password changed', '{n} andere Anmeldung(en) beendet': '{n} other login(s) ended', 'Die beiden neuen Passwörter stimmen nicht überein': 'The two new passwords do not match', 'Bitte das aktuelle Passwort eingeben': 'Please enter the current password', 'du': 'you', 'Rolle, Sperre und Löschen gehen beim eigenen Konto nicht. Nach dem Passwortwechsel werden deine anderen Anmeldungen beendet.': 'Role, lock and delete are not available for your own account. After changing the password, your other logins are ended.', 'Passwort ändern': 'Change password',
             'Rufzeichen': 'Callsign', 'Benutzername': 'Username', 'Passwort (min. {n})': 'Password (min. {n})', 'Neues Passwort (optional)': 'New password (optional)',
             'Benutzer anlegen': 'Add user', 'Löschen': 'Delete', 'Wirklich löschen?': 'Really delete?', 'Benutzer angelegt': 'User created', 'Benutzer gelöscht': 'User deleted',
             'nur Superadmin': 'superadmin only', 'Superadmin': 'Superadmin', 'Admin': 'Admin', 'Betrachter': 'Viewer', 'Autor': 'Author', 'Redakteur': 'Editor',

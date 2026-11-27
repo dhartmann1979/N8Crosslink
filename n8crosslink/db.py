@@ -326,6 +326,12 @@ class Database:
         if scope == "all":
             self.set_user(DEFAULT_USER, DEFAULT_PASSWORD, "superadmin")
 
+    def verify_user(self, username: str, password: str) -> bool:
+        """Passwort prüfen, ohne „letzte Anmeldung“ zu ändern (z. B. vor dem eigenen Passwortwechsel)."""
+        with self.lock:
+            row = self.conn.execute("SELECT pw_hash FROM users WHERE username=?", (username,)).fetchone()
+        return bool(row) and verify_password(password, row["pw_hash"])
+
     def check_login(self, username: str, password: str) -> bool:
         with self.lock:
             row = self.conn.execute("SELECT pw_hash, COALESCE(disabled, 0) AS disabled FROM users WHERE username=?", (username,)).fetchone()
@@ -391,6 +397,14 @@ class Database:
                     self.conn.commit()
                 return row["username"]
         return None
+
+    def end_other_sessions(self, username: str, keep_token: str | None) -> int:
+        """Nach eigenem Passwortwechsel: alle anderen Anmeldungen dieses Benutzers beenden, die aktuelle behalten."""
+        keep = self._skey(keep_token) if keep_token else ""
+        with self.lock:
+            n = self.conn.execute("DELETE FROM sessions WHERE username=? AND token<>?", (username, keep)).rowcount
+            self.conn.commit()
+        return n
 
     def end_session(self, token: str) -> None:
         with self.lock:

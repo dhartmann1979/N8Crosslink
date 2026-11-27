@@ -3,6 +3,7 @@
 > ## 🔐 WICHTIG – das Superadmin-Passwort ist der Schlüssel
 > Jedes Backup ist **vollständig verschlüsselt**. Der Schlüssel ist das **Passwort des Superadmins zum Zeitpunkt des Backups**.
 > **Ohne dieses Passwort lässt sich das Backup nicht wiederherstellen** – auch nicht durch den Entwickler.
+> Änderst du dein Superadmin-Passwort (Benutzermenü → 🔑 Passwort ändern), gilt für **neue** Backups das neue Passwort, für ältere weiter das alte – mach nach dem Wechsel gleich ein neues Backup.
 > Bewahre das Superadmin-Passwort im **Passwortsafe** auf, am besten zusammen mit dem Namen der Backupdatei.
 > Wird das Passwort später geändert, brauchen ältere Backups weiterhin das alte Passwort.
 

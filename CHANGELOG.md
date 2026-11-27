@@ -2,6 +2,29 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.29.1] – 2026-11-27
+
+### 🔑 Eigenes Passwort ändern – auch als Superadmin
+
+- Bisher war die **eigene Zeile** in *👥 Benutzer* gesperrt („du“): Ein Superadmin konnte sein Passwort nur von einem zweiten
+  Superadmin ändern lassen. Jetzt ändert **jeder sein eigenes Passwort selbst**.
+- Neuer Punkt im Benutzermenü oben rechts: **🔑 Passwort ändern**. Er öffnet *Admin → Benutzer* mit dem Formular **🔑 Mein Konto**
+  (eigene Zeile, gekennzeichnet mit **DU**). Auch der Knopf *Passwort ändern* im Hinweis zum Standard-Login führt direkt dorthin.
+- **Mein Konto:** Anzeigename · **aktuelles Passwort** · neues Passwort (min. 8 Zeichen) · neues Passwort wiederholen.
+  - Ohne oder mit falschem aktuellem Passwort wird abgelehnt (mit 1 s Bremse gegen Raten), ebenso bei abweichender Wiederholung
+    oder wenn das neue Passwort dem alten gleicht.
+  - Nach dem Wechsel werden **alle anderen Anmeldungen** dieses Kontos beendet; die aktuelle bleibt. Die Meldung sagt, wie viele.
+  - Eintrag im 📜 Protokoll: „Benutzer … hat das eigene Passwort geändert“.
+  - Rolle, Sperre und Löschen gibt es für das eigene Konto weiterhin nicht (auch nicht über die API).
+- Gespeichert wird wie bisher nur ein **PBKDF2-SHA256-Hash** (200 000 Runden, eigenes Salz) in der SQLite-Datenbank.
+- **Superadmin:** Nach dem Wechsel erscheint der Hinweis, dass neue Backups mit dem neuen Passwort verschlüsselt werden und ältere
+  weiter mit dem alten zu öffnen sind (auch in [docs/BACKUP.md](docs/BACKUP.md)).
+- Technik: `PATCH /api/admin/users/<eigener Name>` mit `current_password`, `password`, `password2`; neue Funktionen
+  `Database.verify_user()` (prüft, ohne „letzte Anmeldung“ zu ändern) und `Database.end_other_sessions()`. Das N8 Kit
+  (`n8-kit.js`, `n8-kit.css`) kennt dafür das Formular „Mein Konto“ (`openSelf`, `onSelfPassword`), übersetzt ins Englische.
+- Neuer Test `tests/test_own_password.py`. Doku: [docs/SICHERHEIT.md](docs/SICHERHEIT.md) Abschnitt „🔑 Eigenes Passwort ändern“
+  mit neuem Bildschirmfoto `admin-mein-konto.png`; Bildschirmfoto `benutzermenue.png` erneuert.
+
 ## [1.29.0] – 2026-11-27
 
 ### 📊 Flüssige Pegelanzeige und Audio-Spektrum im On-Air-Display

@@ -18,6 +18,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .. import __version__
 from .. import backup as bk
+from .. import n8feed
 from ..db import DEFAULT_USER, DEFAULTS, Database
 
 HERE = Path(__file__).parent
@@ -261,6 +262,48 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
         return {"title": g.get("title"), "server_name": sn if sees_all(request) else public.text(sn), "announcement": g.get("announcement"),
                 "nets": [k for k, _ in NET_LABELS if (cfg.get(k) or {}).get("enabled")], "nets_label": nets_label(cfg),
                 "links": g.get("links", []), "version": __version__, "routes": bridge.cfg["routes"]}
+
+    # ------------------------------------------------------------ 📰 Portal-Feed für den adn-frn-server (n8feed.py)
+    feed_replay = n8feed.Replay()
+
+    def feed_summary() -> dict:
+        snap = bridge.router.snapshot()
+        g = bridge.cfg["general"]
+        ports = snap.get("ports") or {}
+        on = [p for p in ports.values() if p.get("enabled")]
+        up = [p for p in on if p.get("online")]
+        a = snap.get("active")
+        air = []
+        if a:
+            t = a.get("talker") or {}
+            air.append({"call": t.get("callsign") or "", "name": t.get("name") or "",
+                        "where": f"{t.get('label') or t.get('source', '')}"
+                                 + (f" · {t.get('detail')}" if t.get("detail") else "")
+                                 + (" → " + ", ".join(str(x).upper() for x in a.get("targets") or []) if a.get("targets") else "")})
+        lh = [{"call": r.get("callsign") or "", "name": r.get("name") or "",
+               "where": f"{str(r.get('source') or '').upper()}" + (f" · {r.get('detail')}" if r.get("detail") else ""),
+               "ts": r.get("ts_start"), "duration": r.get("duration")}
+              for r in public.scrub(db.lh_recent(12)) if r.get("status") != "blocked"][:8]
+        st = db.stats(_since("today"))
+        status = "ok" if on and len(up) == len(on) else "warn" if up else "down"
+        txt = "" if status == "ok" else "offline: " + ", ".join(p.get("label", "") for p in on if not p.get("online"))
+        return n8feed.summary("crosslink", g.get("title") or "N8 Crosslink", __version__, status, txt,
+                              [("Networks online", f"{len(up)}/{len(on)}"), ("Talks today", st.get("talks", 0)),
+                               ("Airtime today", n8feed.fmt_dur(st.get("airtime", 0))), ("Stations today", st.get("stations", 0))],
+                              air, lh)
+
+    @app.post(n8feed.PATH)
+    async def portal_feed(request: Request) -> Response:
+        """Live-Zusammenfassung für die Portal-Seite des adn-frn-server – verschlüsselt mit dem Sync-Schlüssel."""
+        g = db.load_config().get("general") or {}
+        key = str(g.get("portal_feed_key") or "") if g.get("portal_feed") else ""
+        raw = await request.body()
+        try:
+            blob = await asyncio.to_thread(n8feed.answer_request, raw, key, feed_replay, feed_summary)
+        except n8feed.FeedError as e:
+            await asyncio.sleep(1.0)
+            return JSONResponse({"detail": str(e)}, status_code=403 if key else 404)
+        return Response(blob, media_type=n8feed.CTYPE)
 
     @app.get("/api/avatar/{source}/{key}")
     async def avatar(source: str, key: str) -> Response:

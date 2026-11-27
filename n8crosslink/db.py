@@ -36,6 +36,8 @@ DEFAULTS: dict = {
         "watchdog_offline_s": 120,   # Netz so lange offline -> Watchdog baut es komplett neu auf
         "update_check": True,        # stündlich zur vollen Stunde auf GitHub prüfen
         "update_repo": "dhartmann1979/N8Crosslink",
+        "portal_feed": False,        # 📰 Live-Daten für die Portal-Seite des adn-frn-server (n8feed.py)
+        "portal_feed_key": "",       # Sync-Schlüssel dafür – kommt aus dem Portal (🎲 Neuer Schlüssel)
         "update_branch": "main",
         "links": [
             {"name": "Auf der Nachtschicht FRN", "url": "https://frn.auf-der-nachtschicht.de"},
@@ -140,7 +142,7 @@ DEFAULT_USER = "n8schicht"
 DEFAULT_PASSWORD = "n8schicht"
 
 SECRET_KEYS = {("frn", "password"), ("dmr", "password"), ("zello", "password"),
-               ("zello", "auth_token"), ("zello", "private_key")}
+               ("zello", "auth_token"), ("zello", "private_key"), ("general", "portal_feed_key")}
 
 
 def hash_password(pw: str) -> str:

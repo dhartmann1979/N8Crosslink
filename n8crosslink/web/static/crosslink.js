@@ -508,6 +508,8 @@ const SCHEMA = {
     F('watchdog_offline_s', 'Watchdog: Netz nach … s offline komplett neu aufbauen', 'number', { help: 'Zusätzlich zur normalen Wiederverbindung (Standard 120 s)' }),
     F('update_check', 'Stündlich (zur vollen Stunde) auf Updates prüfen', 'bool'),
     F('update_repo', 'GitHub-Repository für Updates'), F('update_branch', 'Branch'),
+    F('portal_feed', '📰 Live-Daten für die Portal-Seite des adn-frn-server', 'bool', { wide: true, help: 'Das Portal zeigt Status, wer gerade spricht und Last Heard dieses Crosslinks als Widget – verschlüsselt mit dem Sync-Schlüssel, ohne IP-Adressen' }),
+    F('portal_feed_key', 'Sync-Schlüssel für das Portal', 'password', { wide: true, help: 'Aus dem Portal kopieren (adn-frn-server: 📰 Portal → 🧩 Widgets → 🎲 Neuer Schlüssel), mindestens 24 Zeichen · leer lassen = unverändert' }),
     F('announcement', 'Hinweis-Banner im Dashboard', 'text', { wide: true }),
     F('links', 'Links-Menü (JSON-Liste mit name/url)', 'json', { wide: true }),
     F('announce_enabled', '🔊 Sprachansage des Rufzeichens am Anfang eines Durchgangs', 'bool', { wide: true, help: 'Computerstimme (espeak-ng) sagt das Rufzeichen an, danach folgt der Ton – der Durchgang läuft um die Länge der Ansage verzögert' }),

@@ -89,6 +89,7 @@ function connectWS() {
   ws.onmessage = (ev) => {
     const m = JSON.parse(ev.data);
     if (m.type === 'state') { S.state = m; renderState(); }
+    if (m.type === 'meter') { onMeter(m); return; }
     else if (m.type === 'talk_start' || m.type === 'talk_end') { loadLastHeard(); if (m.type === 'talk_end') loadToday(); }
     else if (m.type === 'event') addEvent(m);
   };
@@ -116,7 +117,8 @@ function renderState() {
   const act = st.active;
   $('#ssTalk').classList.toggle('live', !!act);
   $('#ssTalker').innerHTML = act ? `🎙 ${esc(act.talker.name || act.talker.callsign || '')} <span style="color:var(--text-dim);font-weight:400">· ${esc(NET[act.source]?.label || act.source)}</span>` : 'Ruhe';
-  setSegMeter(act ? (st.ports[act.source]?.rx_level ?? -90) : -90);
+  // Rückfall, falls (noch) keine Spektrum-Meldungen kommen: Pegel aus dem Status
+  if (act && performance.now() - MTR.t > 500) { MTR.tl = st.ports[act.source]?.rx_level ?? -90; MTR.src = act.source; MTR.tf = performance.now(); }
   renderOnAir(); renderNetCards(); renderRoom();
   const up = st.update;
   if (!S.me?.user) $('#updateBanner').hidden = true;
@@ -128,36 +130,92 @@ function renderState() {
   if ($('#tab-nets') && !$('#tab-nets').classList.contains('hidden')) renderNetDetails();
 }
 
-/* ---------- On Air: Display wie ein Funkgerät, mit Pegel, Verlauf, Vocoder und Tagesstatistik ---------- */
-const OA = { talk: 0, hist: [], last: [], peak: -90, sum: 0, n: 0, voc0: null, src: '' };
+/* ---------- On Air: Display wie ein Funkgerät, mit Pegel, Audio-Spektrum, Vocoder und Tagesstatistik ---------- */
+const OA = { talk: 0, peak: -90, sum: 0, n: 0, voc0: null, src: '' };
 (function buildVu() {
   const m = $('#oaVu'); if (!m) return;
   m.innerHTML = Array.from({ length: 30 }, (_, i) => { const db = -60 + (i + 1) * 2; return `<i class="${db > -6 ? 'r' : db > -18 ? 'y' : 'g'}"></i>`; }).join('');
 })();
+const VU = { n: -1, pk: -1, segs: null };
 function setVu(lvl, peak) {
-  const segs = $$('#oaVu i'); if (!segs.length) return;
-  const n = Math.max(0, Math.min(30, Math.round((lvl + 60) / 2))), pk = Math.max(0, Math.min(30, Math.round((peak + 60) / 2))) - 1;
-  segs.forEach((el, i) => { el.classList.toggle('lit', i < n); el.classList.toggle('peak', i === pk && peak > -60); });
+  const segs = VU.segs || (VU.segs = $$('#oaVu i')); if (!segs.length) return;
+  const n = Math.max(0, Math.min(30, Math.round((lvl + 60) / 2))), pk = peak > -60 ? Math.max(0, Math.min(30, Math.round((peak + 60) / 2))) - 1 : -1;
+  if (n === VU.n && pk === VU.pk) return;          // nur ändern, was sich ändert
+  VU.n = n; VU.pk = pk;
+  segs.forEach((el, i) => { el.classList.toggle('lit', i < n); el.classList.toggle('peak', i === pk); });
 }
 function cssVar(name, fb) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fb; }
-function drawGraph(hist, col, faded) {
-  const c = $('#oaGraph'); if (!c) return;
-  const w = c.clientWidth || 300, h = c.clientHeight || 70, dpr = window.devicePixelRatio || 1;
-  if (c.width !== w * dpr) { c.width = w * dpr; c.height = h * dpr; }
-  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
-  g.strokeStyle = 'rgba(255,255,255,.07)'; g.lineWidth = 1;
-  [-20, -40].forEach(db => { const y = h * (-db / 60); g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); });
-  if (!hist.length) return;
-  const t1 = hist[hist.length - 1].t, span = 30;
-  const x = t => w - (t1 - t) / span * w, y = l => h - Math.max(0, Math.min(1, (l + 60) / 60)) * h;
-  g.beginPath(); g.moveTo(x(hist[0].t), h);
-  hist.forEach(p => g.lineTo(x(p.t), y(p.l)));
-  g.lineTo(x(t1), h); g.closePath();
-  const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, col + (faded ? '55' : 'aa')); gr.addColorStop(1, col + '08');
-  g.fillStyle = gr; g.fill();
-  g.beginPath(); hist.forEach((p, k) => k ? g.lineTo(x(p.t), y(p.l)) : g.moveTo(x(p.t), y(p.l)));
-  g.strokeStyle = col; g.globalAlpha = faded ? .5 : 1; g.lineWidth = 1.6; g.stroke(); g.globalAlpha = 1;
+
+/* Live-Anzeige: der Server schickt während einer Durchsage 25× je Sekunde Pegel, Spitze und 32 Spektrum-Bänder
+ * (Meldung "meter"). Die Seite zeichnet mit der Bildwiederholrate des Bildschirms und glättet dazwischen:
+ * schneller Anstieg, ruhiger Abfall, Spitzenwerte mit Haltezeit – so laufen Pegel und Spektrum flüssig. */
+const MTR = { n: 32, f0: 120, f1: 3900, t: 0, tf: 0, src: '', tl: -90, l: -90, vp: -90, vpT: 0,
+  tb: new Float32Array(32), b: new Float32Array(32), pk: new Float32Array(32), pkT: new Float64Array(32), last: 0, idle: false };
+function onMeter(m) {
+  const now = performance.now(), b = m.b || [];
+  MTR.t = MTR.tf = now; MTR.src = m.src; MTR.tl = m.l;
+  for (let i = 0; i < MTR.n; i++) MTR.tb[i] = b[i] || 0;
+  if (m.l > -60) { OA.peak = Math.max(OA.peak, m.l); OA.sum += m.l; OA.n++; }
+  MTR.idle = false;
 }
+function meterFrame(now) {
+  requestAnimationFrame(meterFrame);
+  const dt = Math.min(0.1, (now - (MTR.last || now)) / 1000); MTR.last = now;
+  const live = !!S.state?.active;
+  // Daten veraltet (Pause zwischen zwei Paketen, Ende der Durchsage): Ziel sinkt auf Ruhe
+  if (!live || now - MTR.tf > 180) { MTR.tl = -90; MTR.tb.fill(0); }
+  // Pegel: Anstieg ~40 ms, Abfall 26 dB/s; Spitzenmarke hält 1,2 s und fällt dann mit 14 dB/s
+  MTR.l = MTR.tl > MTR.l ? MTR.l + (MTR.tl - MTR.l) * Math.min(1, dt * 25) : Math.max(MTR.tl, MTR.l - 26 * dt);
+  if (MTR.l >= MTR.vp) { MTR.vp = MTR.l; MTR.vpT = now; } else if (now - MTR.vpT > 1200) MTR.vp = Math.max(-90, MTR.vp - 14 * dt);
+  let busy = MTR.l > -61 || MTR.vp > -61;
+  for (let i = 0; i < MTR.n; i++) {
+    const t = MTR.tb[i], v = MTR.b[i];
+    MTR.b[i] = t > v ? v + (t - v) * Math.min(1, dt * 30) : Math.max(t, v - 75 * dt);
+    if (MTR.b[i] >= MTR.pk[i]) { MTR.pk[i] = MTR.b[i]; MTR.pkT[i] = now; } else if (now - MTR.pkT[i] > 450) MTR.pk[i] = Math.max(0, MTR.pk[i] - 45 * dt);
+    if (MTR.b[i] > .3 || MTR.pk[i] > .3) busy = true;
+  }
+  if (!busy && MTR.idle) return;                   // alles in Ruhe und schon gezeichnet: nichts zu tun
+  MTR.idle = !busy;
+  setVu(MTR.l, MTR.vp);
+  setSegMeter(MTR.l);
+  const db = MTR.l > -60 ? `${Math.round(MTR.l)} dB` : '– dB', e = $('#oaDb');
+  if (e && e.textContent !== db) e.textContent = db;
+  drawSpectrum(NETCOL[MTR.src] || '#5ac8fa');
+}
+function drawSpectrum(col) {
+  const c = $('#oaSpec'); if (!c) return;
+  const w = c.clientWidth || 300, h = c.clientHeight || 150, dpr = window.devicePixelRatio || 1;
+  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const axis = 13, top = 4, ph = h - axis - top, n = MTR.n, gap = Math.max(2, Math.round(w / n * 0.22)), bw = (w - gap * (n - 1)) / n;
+  // Raster und leere Balken wie auf einem LCD
+  g.fillStyle = 'rgba(207,239,255,.055)';
+  for (let i = 0; i < n; i++) g.fillRect(i * (bw + gap), top, bw, ph);
+  g.strokeStyle = 'rgba(207,239,255,.07)'; g.lineWidth = 1;
+  [.25, .5, .75].forEach(f => { const y = Math.round(top + ph * f) + .5; g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); });
+  // Balken: Farbe des sprechenden Netzes, nach oben heller, mit Glühen
+  const gr = g.createLinearGradient(0, top + ph, 0, top);
+  gr.addColorStop(0, col + 'cc'); gr.addColorStop(.6, col); gr.addColorStop(1, '#eafcff');
+  g.save(); g.shadowColor = col; g.shadowBlur = 10; g.fillStyle = gr;
+  g.beginPath();
+  for (let i = 0; i < n; i++) { const v = MTR.b[i] / 100; if (v > .004) { const bh = v * ph; g.rect(i * (bw + gap), top + ph - bh, bw, bh); } }
+  g.fill(); g.restore();
+  // waagerechte Fugen -> Segmente wie bei einer LED-Kette
+  g.save(); g.globalCompositeOperation = 'destination-out'; g.fillStyle = '#000';
+  for (let y = top + ph - 4; y > top; y -= 4) g.fillRect(0, y, w, 1);
+  g.restore();
+  // Spitzenwerte
+  g.fillStyle = 'rgba(255,255,255,.9)';
+  for (let i = 0; i < n; i++) { const v = MTR.pk[i] / 100; if (v > .01) g.fillRect(i * (bw + gap), Math.round(top + ph - v * ph) - 2, bw, 2); }
+  // Frequenzachse (logarithmisch)
+  g.fillStyle = 'rgba(207,239,255,.45)'; g.font = '9px ' + cssVar('--n8-mono', 'monospace'); g.textBaseline = 'bottom';
+  const lx = f => Math.log(f / MTR.f0) / Math.log(MTR.f1 / MTR.f0) * w;
+  [[250, '250'], [500, '500'], [1000, '1k'], [2000, '2k'], [3000, '3k']].forEach(([f, t]) => {
+    const x = lx(f), tw = g.measureText(t).width; g.fillText(t, Math.max(0, Math.min(w - tw, x - tw / 2)), h);
+  });
+  g.fillText('Hz', 0, h);
+}
+requestAnimationFrame(meterFrame);
 function drawHours(hours, now) {
   const c = $('#oaHours'); if (!c || !hours) return;
   const w = c.clientWidth || 300, h = c.clientHeight || 70, dpr = window.devicePixelRatio || 1;
@@ -180,24 +238,12 @@ function vocQuality(v, base) {
 }
 function renderInstruments(a) {
   const st = S.state || {}, v = st.vocoder;
-  // Pegel + Verlauf
+  // Pegel und Spektrum zeichnet meterFrame(); hier nur die Werte des Durchgangs
   const now = Date.now() / 1000;
-  if (a) {
-    if (OA.talk !== a.since) { OA.talk = a.since; OA.hist = []; OA.peak = -90; OA.sum = 0; OA.n = 0; OA.voc0 = v ? { ...v } : null; OA.src = a.source; }
-    const lvl = st.ports?.[a.source]?.rx_level ?? -90;
-    OA.hist.push({ t: now, l: lvl }); OA.hist = OA.hist.filter(p => now - p.t <= 30);
-    if (lvl > -60) { OA.peak = Math.max(OA.peak, lvl); OA.sum += lvl; OA.n++; }
-    OA.last = OA.hist.slice();
-    setVu(lvl, OA.peak);
-    $('#oaDb').textContent = lvl > -60 ? `${Math.round(lvl)} dB` : '– dB';
-    drawGraph(OA.hist, NETCOL[a.source] || '#5ac8fa', false);
-  } else {
-    setVu(-90, -90); $('#oaDb').textContent = '– dB';
-    drawGraph(OA.last, NETCOL[OA.src] || '#5ac8fa', true);
-  }
+  if (a && OA.talk !== a.since) { OA.talk = a.since; OA.peak = -90; OA.sum = 0; OA.n = 0; OA.voc0 = v ? { ...v } : null; OA.src = a.source; }
   $('#oaLvlInfo').textContent = OA.n ? `Spitze ${Math.round(OA.peak)} dB · Ø ${Math.round(OA.sum / OA.n)} dB` + (a ? '' : ' (letzter Durchgang)') : 'Spitze – · Ø –';
   const tdy = S.today || {};
-  $('#oaGraphInfo').textContent = a ? fmtDur(now - a.since) : '30 s';
+  $('#oaGraphInfo').textContent = a ? `${NET[a.source]?.label || a.source} · 0–4 kHz` : '0–4 kHz';
   $('#oaPkts').textContent = tdy.talks ? `Ø ${fmtDur((tdy.airtime || 0) / tdy.talks)} je Durchgang · ${tdy.talks} heute` : 'noch kein Durchgang heute';
   // Vocoder: Qualität des laufenden Durchgangs (wenn DMR beteiligt), sonst gesamt
   const ring = $('#oaVocRing');
@@ -274,8 +320,9 @@ function setSegMeter(lvl) {
   const now = Date.now();
   if (lvl > SEG.peak || now - SEG.peakT > 1500) { SEG.peak = lvl; SEG.peakT = now; }
   const pk = Math.max(0, Math.min(SEG.n, Math.round((SEG.peak + 60) / 3))) - 1;
-  segs.forEach((el, i) => { el.classList.toggle('lit', i < n); el.classList.toggle('peak', i === pk && SEG.peak > -60); });
-  $('#ssMeterDb').textContent = lvl > -60 ? `${Math.round(lvl)} dB` : '';
+  const key = n * 100 + (SEG.peak > -60 ? pk : -1);
+  if (key !== SEG.key) { SEG.key = key; segs.forEach((el, i) => { el.classList.toggle('lit', i < n); el.classList.toggle('peak', i === pk && SEG.peak > -60); }); }
+  const t = lvl > -60 ? `${Math.round(lvl)} dB` : '', d = $('#ssMeterDb'); if (d.textContent !== t) d.textContent = t;
 }
 setInterval(() => {
   const a = S.state?.active;

@@ -337,7 +337,8 @@ def create_app(bridge) -> FastAPI:  # noqa: ANN001, C901
             await sock.send_text(json.dumps(view(bridge.router.snapshot()), default=str))
             while True:
                 msg = await q.get()
-                await sock.send_text(json.dumps(view(msg), default=str))
+                # Spektrum-Meldungen enthalten nur Zahlen – ohne Filter, 25× je Sekunde
+                await sock.send_text(json.dumps(msg if msg.get("type") == "meter" else view(msg), default=str))
         except (WebSocketDisconnect, RuntimeError):
             pass
         finally:

@@ -17,6 +17,62 @@ def level_dbfs(pcm: bytes) -> float:
     return -90.0 if rms < 1 else max(-90.0, 20 * math.log10(rms / 32768.0))
 
 
+class SpectrumMeter:
+    """Live-Anzeige: Pegel, Spitze und Audio-Spektrum der sprechenden Station (nur Anzeige, nie zum Schalten).
+
+    Hält die letzten ``size`` Abtastwerte (512 = 64 ms @ 8 kHz), rechnet mit Hann-Fenster eine FFT und fasst
+    sie in ``bands`` logarithmisch verteilte Bänder zwischen ``f_lo`` und ``f_hi`` zusammen. Die Bänder kommen
+    als ganze Zahlen 0…100 heraus (0 = −70 dB, 100 = Vollaussteuerung) – klein genug für 25 Meldungen je Sekunde.
+    """
+
+    def __init__(self, bands: int = 32, size: int = 512, rate: int = 8000,
+                 f_lo: float = 120.0, f_hi: float = 3900.0, floor_db: float = -70.0) -> None:
+        self.size, self.floor = size, floor_db
+        self.buf = np.zeros(size, dtype=np.float32)
+        self.win = np.hanning(size).astype(np.float32)
+        # Vollaussteuerungs-Sinus -> 0 dB (kohärente Verstärkung Hann = 0,5)
+        self.ref = (32768.0 * size / 4.0) ** 2
+        freqs = np.fft.rfftfreq(size, 1.0 / rate)
+        edges = np.geomspace(f_lo, f_hi, bands + 1)
+        self.idx: list[tuple[int, int]] = []
+        for lo, hi in zip(edges[:-1], edges[1:]):
+            a, b = int(np.searchsorted(freqs, lo)), int(np.searchsorted(freqs, hi))
+            if b <= a:                       # schmales Band unten: nächstgelegenen Bin nehmen
+                a = int(np.argmin(np.abs(freqs - (lo + hi) / 2)))
+                b = a + 1
+            self.idx.append((a, b))
+        self.edges = [round(float(e)) for e in edges]
+        self.level, self.peak = -90.0, -90.0
+
+    def reset(self) -> None:
+        self.buf[:] = 0
+        self.level, self.peak = -90.0, -90.0
+
+    def push(self, pcm: bytes) -> None:
+        a = np.frombuffer(pcm, dtype="<i2").astype(np.float32)
+        if not a.size:
+            return
+        if a.size >= self.size:
+            self.buf[:] = a[-self.size:]
+        else:
+            self.buf[:-a.size] = self.buf[a.size:]
+            self.buf[-a.size:] = a
+        rms = float(np.sqrt(np.mean(a * a)))
+        self.level = -90.0 if rms < 1 else max(-90.0, 20 * math.log10(rms / 32768.0))
+        pk = float(np.max(np.abs(a)))
+        self.peak = -90.0 if pk < 1 else max(-90.0, 20 * math.log10(pk / 32768.0))
+
+    def bands(self) -> list[int]:
+        spec = np.fft.rfft(self.buf * self.win)
+        pw = (spec.real * spec.real + spec.imag * spec.imag) / self.ref
+        out = []
+        for a, b in self.idx:
+            v = float(np.max(pw[a:b]))
+            db = 10 * math.log10(v) if v > 1e-12 else -120.0
+            out.append(int(max(0, min(100, round((db - self.floor) / -self.floor * 100)))))
+        return out
+
+
 def gain(pcm: bytes, db: float) -> bytes:
     if not db:
         return pcm

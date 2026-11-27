@@ -9,7 +9,7 @@ N8Kit.i18n.add({
         'Widerrufen': 'Revoke', 'Token widerrufen': 'Token revoked', 'Zuletzt benutzt': 'Last used', 'Angelegt': 'Created', 'Kopiert': 'Copied', 'Kopieren': 'Copy',
         'Token jetzt kopieren – er wird nur einmal angezeigt:': 'Copy the token now – it is shown only once:', 'keine Netze aktiv': 'no networks enabled',
         'Live-Daten': 'Live data', 'Statistik': 'Statistics', 'Netze': 'Networks', 'Mithören': 'Listen in', 'Mithören (nur für angemeldete Admins)': 'Listen in (logged-in admins only)',
-        'Lautstärke': 'Volume', 'Lautstärke Mithören': 'Listen-in volume', 'Ruhe': 'Quiet', 'Pegel der sprechenden Station': 'Level of the talking station', 'Anmelden': 'Log in', 'Abmelden': 'Log out',
+        'Lautstärke': 'Volume', 'Lautstärke Mithören': 'Listen-in volume', 'Ruhe': 'Quiet', 'Pegel der sprechenden Station': 'Level of the talking station', 'AUDIO-SPEKTRUM': 'AUDIO SPECTRUM', 'Anmelden': 'Log in', 'Abmelden': 'Log out',
         'Ruhe auf allen Netzen': 'Quiet on all networks', 'Gerade aktiv': 'Active now', 'On Air · über DMR': 'On air · via DMR', 'On Air · über FRN': 'On air · via FRN', 'On Air · über Zello': 'On air · via Zello',
         'Netze online': 'Networks online', 'Durchgänge heute': 'Talks today', 'Sendezeit heute': 'Airtime today', 'Stationen heute': 'Stations today', 'Blockiert heute': 'Blocked today',
         'Durchgänge': 'Talks', 'Durchg': 'Talks', 'Sendezeit': 'Airtime', 'Stationen': 'Stations', 'Blockiert': 'Blocked', 'Mehr anzeigen': 'Show more', 'Zuletzt': 'Last',

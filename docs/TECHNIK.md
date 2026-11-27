@@ -20,6 +20,20 @@ n8crosslink/
 
 Internes Audioformat: 8 kHz, 16 Bit mono, Rahmen zu 20 ms (160 Samples).
 
+### 📊 Live-Anzeige: Pegel und Audio-Spektrum (seit 1.29.0)
+
+Während einer Durchsage schickt der Router über `/ws` bis zu **25× je Sekunde** eine kleine Meldung
+`{"type":"meter","src":"frn","l":-24.3,"p":-9.8,"b":[…32 Werte…]}`:
+
+- `l` Pegel (RMS, dBFS) und `p` Spitze (dBFS) des letzten Rahmens der sprechenden Station (nach der Eingangs-Aufbereitung),
+- `b` das Spektrum: FFT über die letzten 512 Abtastwerte (64 ms, Hann-Fenster), zusammengefasst in **32 logarithmisch verteilte
+  Bänder von 120 Hz bis 3,9 kHz**, je 0…100 (0 = −70 dB, 100 = Vollaussteuerung).
+
+Die Werte sind reine Anzeige – geschaltet wird nie über den Pegel. Sie enthalten keine Adressen und gehen deshalb an alle Besucher,
+nicht nur an Admins (hören lässt sich daraus nichts). Kommt ein Client nicht hinterher, werden Spektrum-Meldungen ausgelassen
+(Warteschlange > 25), Statusmeldungen nie. Die Seite zeichnet mit der Bildwiederholrate des Bildschirms (`requestAnimationFrame`)
+und glättet dazwischen: Anstieg ~40 ms, Abfall 26 dB/s, Spitzenmarken mit Haltezeit. Ist alles in Ruhe, zeichnet sie nichts.
+
 | Netz | Codec | Paket |
 |---|---|---|
 | FRN | GSM 06.10 (MS-GSM/WAV49) | 325 Byte = 10 Rahmen = 200 ms |

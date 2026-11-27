@@ -38,8 +38,27 @@ def check(name: str, ok: bool, info: str = "") -> None:
 
 
 def tone(n: int, f: float = 700, amp: int = 9000, start: int = 0) -> bytes:
+    if SPEECH is not None:       # Demo-Server: echte Sprache statt Sinus (für Spektrum und Bildschirmfotos)
+        idx = (np.arange(n) + start) % SPEECH.size
+        return SPEECH[idx].tobytes()
     t = (np.arange(n) + start) / 8000
     return (np.sin(2 * np.pi * f * t) * amp).astype("<i2").tobytes()
+
+
+SPEECH = None                    # np.int16-Array @ 8 kHz; None = Sinustöne (Tests)
+
+
+def load_speech(folder: str) -> None:
+    """Lädt alle WAV-Dateien (8 kHz, 16 Bit, mono) aus ``folder`` hintereinander als Demo-Sprache."""
+    import glob
+    import wave
+    global SPEECH
+    parts = []
+    for f in sorted(glob.glob(os.path.join(folder, "*.wav"))):
+        with wave.open(f) as w:
+            if w.getframerate() == 8000 and w.getsampwidth() == 2 and w.getnchannels() == 1:
+                parts.append(np.frombuffer(w.readframes(w.getnframes()), dtype="<i2"))
+    SPEECH = np.concatenate(parts) if parts else None
 
 
 # ---------------------------------------------------------------------------- Fake-Vocoder
@@ -64,7 +83,7 @@ class FakeVocoder(asyncio.DatagramProtocol):
                 self.tr.sendto(struct.pack(">BHB", 0x61, len(p), 0) + p, addr)
         elif ptype == 0x01:      # AMBE -> PCM
             self.dec += 1
-            pcm = np.frombuffer(tone(160, 440), dtype="<i2").astype(">i2").tobytes()
+            pcm = np.frombuffer(tone(160, 440, start=self.dec * 160), dtype="<i2").astype(">i2").tobytes()
             p = bytes([0x00, 160]) + pcm
             self.tr.sendto(struct.pack(">BHB", 0x61, len(p), 2) + p, addr)
         elif ptype == 0x02:      # PCM -> AMBE
@@ -247,8 +266,9 @@ class FakeFRN:
     async def talk(self, index: int, seconds: float) -> None:
         enc = gsm.GsmEncoder()
         n = int(seconds / 0.2)
+        self.spos = getattr(self, "spos", 0) + 13000
         for i in range(n):
-            pcm = tone(1600, 600, start=i * 1600)
+            pcm = tone(1600, 600, start=self.spos + i * 1600)
             self.writer.write(bytes([2, 0, index]) + enc.encode_packet(pcm))
             await self.writer.drain()
             await asyncio.sleep(0.2)
@@ -314,8 +334,11 @@ class FakeZello:
                                            "codec_header": "gD4BPA==", "packet_duration": 60, "stream_id": 9001,
                                            "channel": "N8test", "from": user}))
         for i in range(int(seconds / 0.06)):
-            t = (np.arange(960) + i * 960) / 16000
-            pcm = (np.sin(2 * np.pi * 500 * t) * 9000).astype("<i2").tobytes()
+            if SPEECH is not None:   # Demo: Sprache 8 kHz -> 16 kHz (Wiederholen reicht für die Anzeige)
+                pcm = np.repeat(np.frombuffer(tone(480, start=40000 + i * 480), dtype="<i2"), 2).tobytes()
+            else:
+                t = (np.arange(960) + i * 960) / 16000
+                pcm = (np.sin(2 * np.pi * 500 * t) * 9000).astype("<i2").tobytes()
             await self.ws.send_bytes(b"\x01" + struct.pack(">II", 9001, i) + enc.encode(pcm))
             await asyncio.sleep(0.06)
         await self.ws.send_str(json.dumps({"command": "on_stream_stop", "stream_id": 9001}))

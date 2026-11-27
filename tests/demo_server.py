@@ -61,6 +61,7 @@ async def demo_avatar(request):  # noqa: ANN001, ANN201
 async def main(port: int) -> None:
     from aiohttp import web
     loop = asyncio.get_running_loop()
+    sim.load_speech(os.path.join(os.path.dirname(os.path.abspath(__file__)), "audio"))
     voc = sim.FakeVocoder()
     await loop.create_datagram_endpoint(lambda: voc, local_addr=("127.0.0.1", sim.VOC_PORT))
     hb = sim.FakeHB()

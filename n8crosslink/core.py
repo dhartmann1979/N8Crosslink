@@ -26,7 +26,7 @@ import time
 from dataclasses import asdict, dataclass, field
 
 from .announce import Announcer, Feed
-from .audio.dsp import level_dbfs
+from .audio.dsp import SpectrumMeter, level_dbfs
 
 log = logging.getLogger("router")
 
@@ -178,6 +178,8 @@ class Router:
         self.listeners: set[asyncio.Queue] = set()
         self.audio_listeners: set[asyncio.Queue] = set()   # Mithören (nur angemeldete Admins)
         self._dirty = asyncio.Event()
+        self.meter = SpectrumMeter()       # Live-Anzeige: Pegel + Audio-Spektrum der sprechenden Station
+        self._meter_t = 0.0
         self.started = time.time()
         self.vocoder = None
         self.dsp: dict = {}                      # (netz, "in"/"out") -> audio.agc.Chain
@@ -213,9 +215,9 @@ class Router:
             pass
         self.broadcast({"type": "event", "ts": time.time(), "level": level, "text": text})
 
-    def broadcast(self, msg: dict) -> None:
+    def broadcast(self, msg: dict, limit: int = 200) -> None:
         for q in list(self.listeners):
-            if q.qsize() < 200:
+            if q.qsize() < limit:
                 q.put_nowait(msg)
 
     def snapshot(self) -> dict:
@@ -284,6 +286,7 @@ class Router:
         for c in [self._chain(port.key, "in")] + [self._chain(t.key, "out") for t in targets]:
             if c:
                 c.reset()
+        self.meter.reset()
         self.active = Session(port, talker, targets, now, lh, now)
         self.feeds = {}
         for t in targets:
@@ -323,6 +326,7 @@ class Router:
             return
         s.last_audio = time.time()
         s.frames += 1
+        self._meter(port, pcm, s.last_audio)
         for q in list(self.audio_listeners):
             if q.qsize() < 100:          # ~2 s Rückstau, danach verwerfen (langsamer Client)
                 q.put_nowait(pcm)
@@ -343,6 +347,20 @@ class Router:
                 t.tx_audio(out)
             except Exception as e:  # noqa: BLE001
                 log.exception("tx_audio %s: %s", t.key, e)
+
+    METER_INTERVAL = 0.04                  # 25 Meldungen je Sekunde – die Seite glättet dazwischen
+
+    def _meter(self, port: Port, pcm: bytes, now: float) -> None:
+        """Pegel, Spitze und Spektrum als kleine Live-Meldung ``meter`` (nur Anzeige)."""
+        try:
+            self.meter.push(pcm)
+            if now - self._meter_t < self.METER_INTERVAL or not self.listeners:
+                return
+            self._meter_t = now
+            self.broadcast({"type": "meter", "src": port.key, "l": round(self.meter.level, 1),
+                            "p": round(self.meter.peak, 1), "b": self.meter.bands()}, limit=25)   # langsamer Client: Anzeige auslassen, Status nie
+        except Exception as e:  # noqa: BLE001 – die Anzeige darf den Ton nie anhalten
+            log.debug("Spektrum: %s", e)
 
     def rx_update_talker(self, port: Port, **kw) -> None:  # noqa: ANN003
         s = self.active

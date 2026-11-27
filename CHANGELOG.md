@@ -2,6 +2,44 @@
 
 Alle Änderungen an N8 Crosslink. Versionierung nach [SemVer](https://semver.org/lang/de/).
 
+## [1.29.0] – 2026-11-27
+
+### 📊 Flüssige Pegelanzeige und Audio-Spektrum im On-Air-Display
+
+**Pegel läuft flüssig**
+- Bisher kam der Pegel nur mit den Statusmeldungen (5× je Sekunde) und sprang von Wert zu Wert. Jetzt schickt die Bridge während
+  einer Durchsage eine eigene, kleine Live-Meldung **25× je Sekunde**, und die Seite zeichnet mit der **Bildwiederholrate des
+  Bildschirms** (60 Hz und mehr): schneller Anstieg (~40 ms), ruhiger Abfall (26 dB/s), die weiße Spitzenmarke hält 1,2 s und
+  sinkt dann langsam. Pausen zwischen den Paketen (FRN liefert 200-ms-Blöcke, DMR 60 ms, Zello 60 ms) werden überbrückt, statt
+  dass die Anzeige auf null fällt und wieder hochspringt.
+- Gilt für die Pegelanzeige im On-Air-Display **und** für die segmentierte Anzeige in der Statusleiste oben.
+- Es werden nur noch die Segmente geändert, die sich wirklich ändern – das spart Rechenzeit im Browser.
+
+**Audio-Spektrum statt Pegelverlauf**
+- Rechts neben dem On-Air-Display steht jetzt **AUDIO-SPEKTRUM** statt des Pegelverlaufs: **32 Bänder von 120 Hz bis 3,9 kHz**
+  (logarithmisch, wie man Sprache hört), als LED-Kette mit Fugen, leicht glühend, in der **Farbe des sprechenden Netzes**
+  (FRN blau · DMR grün · Zello orange), nach oben heller. Jedes Band hat eine **Spitzenmarke**, die kurz stehen bleibt.
+- Frequenzachse unten (250 · 500 · 1k · 2k · 3k Hz), oben rechts das Netz der sprechenden Station. Unten weiter Spitze und Ø des
+  Durchgangs sowie die Ø-Dauer je Durchgang.
+- Nach dem Durchgang sinken die Balken weich ab; danach zeichnet die Seite nichts mehr, bis wieder jemand spricht.
+- Berechnet wird das Spektrum auf dem Server (`SpectrumMeter` in `n8crosslink/audio/dsp.py`: FFT über 64 ms mit Hann-Fenster) –
+  der Browser muss nicht mithören, das Spektrum sehen also **alle Besucher**, ohne dass Ton übertragen wird. Die Meldung enthält nur
+  Zahlen (keine Adressen); kommt ein langsamer Client nicht hinterher, wird nur die Anzeige ausgelassen, nie der Status.
+- Rückfall: kommen (z. B. direkt nach einem Update vor dem Neustart) keine Spektrum-Meldungen, läuft der Pegel weiter aus den
+  Statusmeldungen.
+
+**Technik, Tests, Doku**
+- Neue WebSocket-Meldung `meter` – beschrieben in [docs/TECHNIK.md](docs/TECHNIK.md) („Live-Anzeige: Pegel und Audio-Spektrum“).
+- Neuer Test `tests/test_spectrum.py` (Bänder, Pegel, Spitze). Alle bisherigen Tests und die Simulation `tests/sim_e2e.py` laufen durch.
+- Der Demo-Server (`tests/demo_server.py`) spielt jetzt echte Sprache aus `tests/audio/` statt Sinustönen, damit Spektrum und
+  Bildschirmfotos realistisch aussehen. Die Bildschirmfotos `docs/screenshots/dashboard-live-*.png` sind neu.
+- Übersetzung: „AUDIO-SPEKTRUM“ → „AUDIO SPECTRUM“.
+
+**Benutzer & Passwörter (zur Klarstellung, unverändert)**
+- Jeder Benutzer steht in der SQLite-Datenbank und lässt sich unter **⚙️ Admin → 👥 Benutzer & Zugang → Bearbeiten** ändern –
+  auch das **Passwort** („Neues Passwort (optional)“, mindestens 8 Zeichen). Gespeichert wird nie das Passwort selbst, sondern ein
+  **PBKDF2-SHA256-Hash mit 200 000 Runden und eigenem Zufalls-Salz** je Benutzer. Superadmins kann nur ein Superadmin ändern.
+
 ## [1.28.0] – 2026-11-27
 
 ### 📰 Live-Daten für die Portal-Seite des ADN FRN Servers
